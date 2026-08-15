@@ -10,6 +10,7 @@ import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, type MathContext } from './mathInstance.js';
 import { preprocess } from './preprocess.js';
+import { Multiplier, Percentage, Rate } from './values.js';
 import type { Engine, EngineOptions, LineResult, Statistic } from './types.js';
 
 export function createEngine(options: EngineOptions = {}): Engine {
@@ -279,6 +280,11 @@ function compute(
   try {
     const value = ctx.math.evaluate(resolved, state.scope);
     if (value === undefined || typeof value === 'function') return { output: '' };
+    // `0/0` and `10^1000` are arithmetic that did not survive. Showing "NaN"
+    // or "Infinity" in the answer column is noise; a quiet error is honest.
+    if (!isFinitePresentable(value)) {
+      return { output: '', error: 'That does not work out to a number' };
+    }
     return format(value);
   } catch (error) {
     // "I spent $128 + $45 on clothes" is a note with a sum in it, not a broken
@@ -310,6 +316,25 @@ function applyAssignment(
   } catch {
     return value;
   }
+}
+
+/**
+ * Whether a value is a number the answer column can honestly show.
+ *
+ * Anything that has become NaN or Infinity is reported as an error instead:
+ * an answer of "NaN" tells the reader nothing they can act on.
+ */
+function isFinitePresentable(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (value instanceof Percentage) return Number.isFinite(value.ratio);
+  if (value instanceof Multiplier) return Number.isFinite(value.factor);
+  if (value instanceof Rate) return isFinitePresentable(value.amount);
+
+  const unit = value as { formatUnits?: () => string; toNumeric?: (u: string) => number };
+  if (typeof unit?.formatUnits === 'function' && unit.toNumeric) {
+    return Number.isFinite(unit.toNumeric(unit.formatUnits()));
+  }
+  return true;
 }
 
 /** Whether a bare word means something to the engine, rather than being prose. */

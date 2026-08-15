@@ -172,7 +172,15 @@ export function parseMoment(text: string, now: Date): CalendarDate | null {
  * that has already passed.
  */
 export function parseDate(text: string, now: Date): CalendarDate | null {
-  const s = text.trim().toLowerCase().replace(/,/g, '');
+  let s = text.trim().toLowerCase().replace(/,/g, '');
+  if (!s) return null;
+
+  /*
+   * Dates are rendered as "Thu 3 Sep 2026", so that form has to parse back —
+   * otherwise the engine cannot read its own output, and `date + 80 days -
+   * 80 days` fails. The lookahead keeps a bare "friday" as a weekday.
+   */
+  s = s.replace(new RegExp(`^(?:${WEEKDAY_ALT})\\s+(?=\\d|[a-z])`), '');
   if (!s) return null;
 
   if (s === 'today') return new CalendarDate(startOfDay(now));

@@ -83,7 +83,7 @@ export function evaluateTemporal(
   const s = input.trim();
   if (!s) return null;
 
-  return (
+  const value =
     timecodeExpression(s, options) ??
     laptimeExpression(s) ??
     conversion(s, options) ??
@@ -92,8 +92,25 @@ export function evaluateTemporal(
     calendarFacts(s, options) ??
     interval(s, options) ??
     offsetExpression(s, options) ??
-    bareMoment(s, options)
-  );
+    bareMoment(s, options);
+
+  // `today + 999999 years` runs off the end of what a JavaScript Date can
+  // hold. Every field of an invalid date reads NaN, which the formatter would
+  // happily render as "undefined NaN undefined NaN" — so it is rejected here,
+  // at the one point every temporal answer passes through.
+  return isRepresentable(value) ? value : null;
+}
+
+function isRepresentable(value: TemporalValue | null): boolean {
+  if (value === null) return false;
+  if (value instanceof CalendarDate) return !Number.isNaN(value.date.getTime());
+  if (value instanceof Timespan) {
+    return value.parts.every((part) => Number.isFinite(part.value));
+  }
+  if (value instanceof Timecode) return Number.isFinite(value.frames);
+  if (value instanceof FrameCount) return Number.isFinite(value.frames);
+  if (value instanceof TemporalNumber) return Number.isFinite(value.value);
+  return true;
 }
 
 /* ------------------------------------------------------------------ *

@@ -192,11 +192,24 @@ const ROUND_STEPS: Record<string, number> = {
  * the value, so it becomes arithmetic.
  */
 function extractRounding(s: string): { expr: string; decimals?: number } {
-  const dp = new RegExp(
-    String.raw`^(.+?)\s+(?:to|as)\s+(\d+)\s*(?:dp|d\.p\.|decimals?|decimal places?|digits?|sig(?:nificant)?\s*(?:figs?|figures?)?)\s*$`,
+  /*
+   * Greedy on the left and applied repeatedly, so `1/3 to 4 dp to 2 dp` is
+   * read as a re-rounding rather than leaving a stray suffix for math.js. The
+   * rightmost instruction is the one the reader wrote last, so it wins.
+   */
+  const dpPattern = new RegExp(
+    String.raw`^(.+)\s+(?:to|as)\s+(\d+)\s*(?:dp|d\.p\.|decimals?|decimal places?|digits?|sig(?:nificant)?\s*(?:figs?|figures?)?)\s*$`,
     'i',
-  ).exec(s);
-  if (dp) return { expr: dp[1]!.trim(), decimals: Number(dp[2]) };
+  );
+  let decimals: number | undefined;
+  let remaining = s;
+  for (let guard = 0; guard < 8; guard++) {
+    const match = dpPattern.exec(remaining);
+    if (!match) break;
+    if (decimals === undefined) decimals = Number(match[2]);
+    remaining = match[1]!.trim();
+  }
+  if (decimals !== undefined) return { expr: remaining, decimals };
 
   const nearest = new RegExp(
     String.raw`^(.+?)\s+(?:rounded\s+)?(?:(up|down)\s+)?to\s+(?:the\s+)?nearest\s+(${NUM}|ten|hundred|thousand|million)\s*$`,

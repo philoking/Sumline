@@ -22,6 +22,17 @@ export interface Folder {
 
 export type SheetSummary = Omit<Sheet, 'content'> & { lines: number };
 
+/**
+ * Removes characters a text sheet cannot hold.
+ *
+ * A NUL byte survives the write but comes back truncated at that point, so
+ * text after it would be silently lost. Stripping on the way in means what is
+ * read back always matches what was stored.
+ */
+export function sanitiseText(value: string): string {
+  return value.replace(/\u0000/g, '');
+}
+
 /** Names an untitled sheet from its first meaningful line. */
 export function deriveTitle(current: string, content: string): string {
   if (current && current !== 'Untitled') return current;
@@ -197,7 +208,9 @@ export class Store {
     return row ? toSheet(row) : null;
   }
 
-  createSheet(title: string, content = '', folderId: string | null = null): Sheet {
+  createSheet(rawTitle: string, rawContent = '', folderId: string | null = null): Sheet {
+    const title = sanitiseText(rawTitle);
+    const content = sanitiseText(rawContent);
     const now = new Date().toISOString();
     const id = randomUUID();
     this.db
@@ -236,12 +249,12 @@ export class Store {
       throw new VersionConflictError(current);
     }
 
-    const content = changes.content ?? current.content;
+    const content = sanitiseText(changes.content ?? current.content);
     const next: Sheet = {
       ...current,
       // An untitled sheet names itself from its first line, so a new sheet
       // does not have to be named before it can be found again.
-      title: changes.title ?? deriveTitle(current.title, content),
+      title: sanitiseText(changes.title ?? deriveTitle(current.title, content)),
       content,
       folderId: changes.folderId === undefined ? current.folderId : changes.folderId,
       version: current.version + 1,

@@ -81,7 +81,7 @@ export function buildApp(options: AppOptions): App {
   server.get('/api/folders', async () => ({ folders: store.listFolders() }));
 
   server.post<{ Body: { name?: string } }>('/api/folders', async (request, reply) => {
-    const name = (request.body?.name ?? '').trim();
+    const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
     if (!name) return reply.code(400).send({ error: 'name is required' });
     reply.code(201);
     return store.createFolder(name);
@@ -90,7 +90,7 @@ export function buildApp(options: AppOptions): App {
   server.put<{ Params: { id: string }; Body: { name?: string } }>(
     '/api/folders/:id',
     async (request, reply) => {
-      const name = (request.body?.name ?? '').trim();
+      const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
       if (!name) return reply.code(400).send({ error: 'name is required' });
       if (!store.renameFolder(request.params.id, name)) {
         return reply.code(404).send({ error: 'Folder not found' });
@@ -140,11 +140,16 @@ export function buildApp(options: AppOptions): App {
   server.post<{ Body: { title?: string; content?: string; folderId?: string | null } }>(
     '/api/sheets',
     async (request, reply) => {
-      const title = (request.body?.title ?? '').trim() || 'Untitled';
+      // Anything that is not a string is treated as absent rather than
+      // crashing the handler — a client sending the wrong type gets a sheet,
+      // not a 500.
+      const rawTitle = request.body?.title;
+      const rawContent = request.body?.content;
+      const title = (typeof rawTitle === 'string' ? rawTitle : '').trim() || 'Untitled';
       const sheet = store.createSheet(
         title,
-        request.body?.content ?? '',
-        request.body?.folderId ?? null,
+        typeof rawContent === 'string' ? rawContent : '',
+        typeof request.body?.folderId === 'string' ? request.body.folderId : null,
       );
       reply.code(201);
       return sheet;
