@@ -15,8 +15,11 @@
 
   /* dark is the app's own appearance and the default here */
   --bg: #1e1e1e;
-  --panel: #262626;
-  --surface: #1e1e1e;
+  --panel: #272727;
+  /* Deeper than the chrome around it, so the sheet reads as the document.
+     In dark mode a small tonal step almost disappears, which is why this is
+     further from --panel than the light palette's equivalent needs to be. */
+  --surface: #191919;
   --border: #383838;
   --text: #ededed;
   --muted: #8b8b8b;
@@ -79,12 +82,21 @@ body {
 
 /* ---- top bar ---- */
 
+/*
+ * The top bar belongs with the sidebar, not with the sheet.
+ *
+ * Both are chrome and share the panel tone; the sheet is the document and
+ * keeps the surface tone. Without that split the bar and the sheet were the
+ * same colour with no seam, so the sheet appeared to start at the window's
+ * top edge while the sidebar visibly did not.
+ */
 .topbar {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 7px 12px;
-  background: var(--bg);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
   flex: none;
 }
 
@@ -141,13 +153,13 @@ button.ghost:hover {
 
 /* ---- banners ---- */
 
+/* No top border: the bar above already draws that line. */
 .banner {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 7px 14px;
   background: var(--panel);
-  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   font-size: 12.5px;
   flex: none;
