@@ -14,6 +14,7 @@ import { Editor } from './Editor';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
 import { useEngine, useResults } from './useEngine';
+import { useTheme } from './useTheme';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 type Status = 'idle' | 'unsaved' | 'saving' | 'saved' | 'readonly' | 'error';
@@ -24,6 +25,7 @@ const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
 
 export function App() {
   const identity = useMemo(clientIdentity, []);
+  const theme = useTheme();
 
   const [settings, setSettings] = useState<Settings>({});
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
@@ -386,6 +388,15 @@ export function App() {
             </>
           )}
         </div>
+        <button
+          type="button"
+          className="ghost"
+          onClick={theme.cycle}
+          title={theme.label}
+          aria-label={theme.label}
+        >
+          {theme.icon}
+        </button>
         <button
           type="button"
           className="ghost"

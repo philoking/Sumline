@@ -35,8 +35,16 @@
   --selection: #2f4a55;
 }
 
+/*
+ * The light palette, applied in two situations: the system asks for light and
+ * the reader has not overridden it, or the reader has chosen light outright.
+ *
+ * The values are repeated because CSS has no way to name a block and apply it
+ * from two selectors. The alternative — a second layer of indirection through
+ * more custom properties — costs more in clarity than the duplication does.
+ */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     --bg: #ffffff;
     --panel: #f2f2f0;
     --surface: #ffffff;
@@ -54,6 +62,25 @@
     --warn-soft: #fdf3dc;
     --selection: #cfe6ee;
   }
+}
+
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --panel: #f2f2f0;
+  --surface: #ffffff;
+  --border: #e0dfdc;
+  --text: #1d1d1f;
+  --muted: #86868b;
+  --line-number: #b9b9b9;
+  --input-text: #1a6f8c;
+  --answer-text: #1d1d1f;
+  --accent: #1a6f8c;
+  --hover: #e8e8e6;
+  --active: #dedddb;
+  --danger: #b3271e;
+  --warn: #8a5a00;
+  --warn-soft: #fdf3dc;
+  --selection: #cfe6ee;
 }
 
 * {

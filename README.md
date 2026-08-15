@@ -325,6 +325,13 @@ when deleted rather than destroyed — restore them, or empty the trash to remov
 Deleting a folder keeps its sheets and returns them to the top level. An untitled sheet names
 itself from its first line.
 
+### Appearance
+
+The ◐ button in the top bar cycles **system → light → dark**. It starts on
+system, following your OS setting. The choice is stored per browser rather than
+on the server, since which appearance suits you depends on the screen you are
+sitting at. `?theme=light` (or `dark`, or `system`) sets it from a link.
+
 ### The reference panel
 
 Press `?` for a searchable list of everything the calculator understands, grouped, with each
