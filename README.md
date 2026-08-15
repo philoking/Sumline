@@ -158,6 +158,27 @@ case in the golden table.
 
 Dates bypass math.js entirely — see [engine/src/dates.ts](engine/src/dates.ts).
 
+## Deployment
+
+Pushing to `main` deploys automatically via [Gitea Actions](.gitea/workflows/deploy.yml). The
+job runs on a self-hosted runner on the target host, so there is no registry and no SSH:
+
+1. **Test** — `docker build --target test` runs the whole suite inside the image, so the host
+   needs no Node of its own and the tests run against the Node that actually ships. A failure
+   here stops the deploy.
+2. **Build** — the runtime image, reusing the layers the test stage just built.
+3. **Deploy** — copies `docker-compose.prod.yml` to `~/webcalc` and brings the stack up with a
+   pinned project name.
+4. **Smoke test** — polls `/api/health` and fails the run with container logs if the app doesn't
+   actually serve. A container that starts isn't the same as an app that works.
+
+Docs-only pushes are skipped. The workflow can also be run by hand from the Actions tab.
+
+`docker-compose.prod.yml` has no `build:` stanza — it only runs the image the runner built, so
+the deploy directory never holds source. The compose project name is pinned to `webcalc` so the
+sheets volume keeps its existing name; **renaming the project or the volume key would start the
+app on an empty database.**
+
 ## Configuration
 
 | Variable | Default | Meaning |

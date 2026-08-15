@@ -21,6 +21,13 @@ COPY web web
 RUN npm run build
 
 
+# Not part of the default build: CI targets this stage explicitly. Running the
+# suite here means the deploy host needs no Node of its own, and the tests run
+# against exactly the Node that ships in the image.
+FROM build AS test
+RUN npm test
+
+
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     PORT=8080 \

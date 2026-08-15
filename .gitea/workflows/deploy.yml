@@ -1,0 +1,66 @@
+name: Deploy
+
+# Runs on the self-hosted act_runner ON Shuri (label `shuri`). Tests, builds and
+# deploys locally with docker compose — no registry, no SSH.
+#
+# Deploy layout on Shuri:
+#   ~/webcalc/docker-compose.prod.yml   copied here by this workflow
+#   ~/webcalc/.env                      optional, sets TZ
+#   volume webcalc_webcalc-data         the sheets database; never renamed
+#
+# The compose project name is pinned with `-p webcalc` so the volume keeps its
+# existing name. Changing the project name or the volume key would silently
+# start the app on an empty database.
+
+on:
+  push:
+    branches: [main]
+    # Docs-only changes don't need a rebuild/redeploy.
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: shuri
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test
+        # The `test` stage runs the engine and server suites inside the image,
+        # so this needs no Node on the host. A failure here stops the deploy.
+        #
+        # --network=host: build RUN steps use Shuri's resolver. The default
+        # container DNS drops npm's burst of tarball fetches (EAI_AGAIN).
+        run: docker build --network=host --target test -t webcalc:test .
+
+      - name: Build image
+        # Reuses the layers the test stage just built, so this is nearly free.
+        run: docker build --network=host -t webcalc:latest .
+
+      - name: Deploy
+        run: |
+          DIR="$HOME/webcalc"
+          mkdir -p "$DIR"
+          cp docker-compose.prod.yml "$DIR/"
+          cd "$DIR"
+          docker compose -p webcalc -f docker-compose.prod.yml up -d
+          docker image prune -f
+
+      - name: Smoke test
+        # A container that starts is not the same as an app that serves. Fail
+        # the run loudly, with logs, rather than reporting a broken deploy green.
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8422/api/health; then
+              echo
+              echo "WebCalc is serving after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "WebCalc did not become healthy within 60s."
+          docker logs --tail 50 webcalc || true
+          exit 1

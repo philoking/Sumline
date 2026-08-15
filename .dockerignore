@@ -11,4 +11,6 @@ coverage
 !README.md
 Dockerfile
 docker-compose.yml
+docker-compose.prod.yml
 .dockerignore
+.gitea

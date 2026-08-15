@@ -1,0 +1,32 @@
+# Deployment compose file, used by .gitea/workflows/deploy.yml on Shuri.
+#
+# Unlike docker-compose.yml this has no `build:` stanza — the runner builds the
+# image and this file only runs it, so the deploy directory holds no source.
+services:
+  webcalc:
+    image: webcalc:latest
+    container_name: webcalc
+    restart: unless-stopped
+    ports:
+      - "8422:8080"
+    environment:
+      # Date maths resolves in this zone. Overridable from ~/webcalc/.env.
+      TZ: ${TZ:-America/Los_Angeles}
+    volumes:
+      - webcalc-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  # Resolves to webcalc_webcalc-data under `-p webcalc`, which is the volume
+  # the existing deployment already uses. Renaming either would orphan the
+  # sheets, so both stay fixed.
+  webcalc-data:
