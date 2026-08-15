@@ -1,0 +1,1 @@
+I use Soulver every once and awhile on Mac. It doesn't exist on PC and it is expecting another paid update. This project builds an open source browser based clone. 
