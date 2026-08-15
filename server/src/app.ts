@@ -71,13 +71,81 @@ export function buildApp(options: AppOptions): App {
 
   server.get('/api/holidays', async () => holidays.current());
 
-  server.get('/api/sheets', async () => ({ sheets: store.listSheets() }));
+  server.get('/api/settings', async () => store.getSettings());
 
-  server.post<{ Body: { title?: string; content?: string } }>(
+  server.put<{ Body: Record<string, unknown> }>(
+    '/api/settings',
+    async (request) => store.saveSettings(request.body ?? {}),
+  );
+
+  server.get('/api/folders', async () => ({ folders: store.listFolders() }));
+
+  server.post<{ Body: { name?: string } }>('/api/folders', async (request, reply) => {
+    const name = (request.body?.name ?? '').trim();
+    if (!name) return reply.code(400).send({ error: 'name is required' });
+    reply.code(201);
+    return store.createFolder(name);
+  });
+
+  server.put<{ Params: { id: string }; Body: { name?: string } }>(
+    '/api/folders/:id',
+    async (request, reply) => {
+      const name = (request.body?.name ?? '').trim();
+      if (!name) return reply.code(400).send({ error: 'name is required' });
+      if (!store.renameFolder(request.params.id, name)) {
+        return reply.code(404).send({ error: 'Folder not found' });
+      }
+      return { id: request.params.id, name };
+    },
+  );
+
+  server.delete<{ Params: { id: string } }>(
+    '/api/folders/:id',
+    async (request, reply) => {
+      if (!store.deleteFolder(request.params.id)) {
+        return reply.code(404).send({ error: 'Folder not found' });
+      }
+      // The folder's sheets are not deleted with it — they return to the top
+      // level, because losing notes to a folder tidy-up would be indefensible.
+      return { deleted: true };
+    },
+  );
+
+  server.get<{ Querystring: { folder?: string; q?: string; trash?: string } }>(
+    '/api/sheets',
+    async (request) => {
+      const { folder, q, trash } = request.query ?? {};
+      return {
+        sheets: store.listSheets({
+          ...(folder !== undefined && { folderId: folder === '' ? null : folder }),
+          ...(q !== undefined && { query: q }),
+          ...(trash === '1' && { trashed: true }),
+        }),
+      };
+    },
+  );
+
+  server.post<{ Params: { id: string } }>(
+    '/api/sheets/:id/restore',
+    async (request, reply) => {
+      if (!store.restoreSheet(request.params.id)) {
+        return reply.code(404).send({ error: 'Sheet not found' });
+      }
+      return { restored: true };
+    },
+  );
+
+  server.delete('/api/trash', async () => ({ purged: store.emptyTrash() }));
+
+  server.post<{ Body: { title?: string; content?: string; folderId?: string | null } }>(
     '/api/sheets',
     async (request, reply) => {
       const title = (request.body?.title ?? '').trim() || 'Untitled';
-      const sheet = store.createSheet(title, request.body?.content ?? '');
+      const sheet = store.createSheet(
+        title,
+        request.body?.content ?? '',
+        request.body?.folderId ?? null,
+      );
       reply.code(201);
       return sheet;
     },
@@ -94,15 +162,21 @@ export function buildApp(options: AppOptions): App {
 
   server.put<{
     Params: { id: string };
-    Body: { title?: string; content?: string; version?: number };
+    Body: {
+      title?: string;
+      content?: string;
+      version?: number;
+      folderId?: string | null;
+    };
   }>('/api/sheets/:id', async (request, reply) => {
     if (!store.getSheet(request.params.id)) {
       return reply.code(404).send({ error: 'Sheet not found' });
     }
     try {
-      const changes: { title?: string; content?: string } = {};
+      const changes: { title?: string; content?: string; folderId?: string | null } = {};
       if (typeof request.body?.title === 'string') changes.title = request.body.title;
       if (typeof request.body?.content === 'string') changes.content = request.body.content;
+      if (request.body?.folderId !== undefined) changes.folderId = request.body.folderId;
       return store.updateSheet(request.params.id, changes, request.body?.version);
     } catch (error) {
       if (error instanceof VersionConflictError) {
@@ -116,12 +190,16 @@ export function buildApp(options: AppOptions): App {
     }
   });
 
-  server.delete<{ Params: { id: string } }>(
+  server.delete<{ Params: { id: string }; Querystring: { purge?: string } }>(
     '/api/sheets/:id',
     async (request, reply) => {
-      if (!store.deleteSheet(request.params.id)) {
-        return reply.code(404).send({ error: 'Sheet not found' });
-      }
+      // Deleting moves a sheet to the trash. Permanent removal is opt-in,
+      // because a working note is not worth losing to a mis-click.
+      const removed =
+        request.query?.purge === '1'
+          ? store.deleteSheet(request.params.id)
+          : store.trashSheet(request.params.id);
+      if (!removed) return reply.code(404).send({ error: 'Sheet not found' });
       return { deleted: true };
     },
   );

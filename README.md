@@ -278,6 +278,58 @@ line 1 + 100               1,600
   when a sheet mixes things that can't be added, rather than showing a meaningless number.
 
 
+## Using the app
+
+### Keyboard
+
+| Shortcut | Action |
+| --- | --- |
+| `Mod`+`\` | Insert a reference to the line above |
+| `Mod`+`T` | Turn the current blank line into a subtotal |
+| `Mod`+`/` | Comment the line out |
+| `Mod`+`Shift`+`U` | Unlink — freeze this line's references at their values |
+| `Mod`+`Shift`+`N` | New sheet |
+| `Mod`+`F` | Search sheets |
+
+Typing a variable name offers the names already declared in the sheet.
+
+### The answer column
+
+Click an answer to cite it, or drag it into a line. Right-click for a menu: copy, insert a
+reference, set decimal places, write the number out in full, or reset formatting.
+Double-clicking an empty answer slot turns that line into a subtotal.
+
+Formatting chosen from that menu is **written into the line as text** (` to 2 dp`, ` in full`)
+rather than stored invisibly against it. A sheet is plain text, and hidden per-line state would
+not survive being copied, exported, or having its lines moved around.
+
+### The total
+
+The figure in the corner cycles between **total, average, count and median** when clicked, and
+can be hidden. Both choices persist across sheets and browsers.
+
+### Sheets
+
+Sheets can be grouped into folders, searched by title or content, and are moved to a **trash**
+when deleted rather than destroyed — restore them, or empty the trash to remove them for good.
+Deleting a folder keeps its sheets and returns them to the top level. An untitled sheet names
+itself from its first line.
+
+### Export
+
+From the ⤓ menu: copy with answers, or download as text, Markdown or CSV. **Print / save as PDF**
+uses a print stylesheet that lays the answer column beside the text on paper.
+
+### Global variables
+
+Variables available to every sheet, set through `PUT /api/settings`:
+
+```bash
+curl -X PUT http://localhost:8422/api/settings   -H 'content-type: application/json'   -d '{"globals": {"day rate": "$550", "vat": "20%"}}'
+```
+
+A sheet can use them like any other variable, and can shadow one by declaring the same name.
+
 ## Sharing and concurrent editing
 
 Sheets live on the server, so any browser on your network sees the same set. When you open a

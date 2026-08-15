@@ -50,7 +50,15 @@ export interface EngineOptions {
   holidays?: readonly string[];
   /** Default frame rate for timecodes that do not name one. */
   fps?: number;
+  /**
+   * Variables available to every sheet, as `name` to expression. Evaluated
+   * before the sheet itself, so a sheet can use or shadow them.
+   */
+  globals?: Readonly<Record<string, string>>;
 }
+
+/** Which figure the sheet-level summary reports. */
+export type Statistic = 'total' | 'average' | 'count' | 'median';
 
 export interface Engine {
   evaluate(source: string | string[]): LineResult[];
@@ -60,6 +68,11 @@ export interface Engine {
    * Empty when there is nothing to add up.
    */
   total(results: LineResult[]): string;
+  /**
+   * The sheet-level figure, as total, average, count or median. `total` is
+   * the same calculation `total()` performs.
+   */
+  summary(results: LineResult[], statistic: Statistic): string;
   /** ISO codes this engine knows how to convert between. */
   currencies: string[];
   rateDate: string | null;

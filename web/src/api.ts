@@ -6,8 +6,32 @@ export interface SheetSummary {
   version: number;
   /** Number of lines in the sheet, counted server-side for the sheet list. */
   lines: number;
+  folderId: string | null;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  position: number;
+}
+
+export type Statistic = 'total' | 'average' | 'count' | 'median';
+
+export interface Settings {
+  statistic?: Statistic;
+  showTotal?: boolean;
+  largeNumberNotation?: boolean;
+  countVariablesInTotal?: boolean;
+  globals?: Record<string, string>;
+}
+
+export interface SheetQuery {
+  folderId?: string | null;
+  query?: string;
+  trashed?: boolean;
 }
 
 export interface Lock {
@@ -60,20 +84,56 @@ export const api = {
 
   holidays: () => request<HolidayTable>('/api/holidays'),
 
-  listSheets: () =>
-    request<{ sheets: SheetSummary[] }>('/api/sheets').then((r) => r.sheets),
+  listSheets: (filter: SheetQuery = {}) => {
+    const params = new URLSearchParams();
+    if (filter.folderId !== undefined) params.set('folder', filter.folderId ?? '');
+    if (filter.query) params.set('q', filter.query);
+    if (filter.trashed) params.set('trash', '1');
+    const suffix = params.toString();
+    return request<{ sheets: SheetSummary[] }>(
+      `/api/sheets${suffix ? `?${suffix}` : ''}`,
+    ).then((r) => r.sheets);
+  },
+
+  settings: () => request<Settings>('/api/settings'),
+
+  saveSettings: (values: Settings) =>
+    request<Settings>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(values),
+    }),
+
+  listFolders: () =>
+    request<{ folders: Folder[] }>('/api/folders').then((r) => r.folders),
+
+  createFolder: (name: string) =>
+    request<Folder>('/api/folders', { method: 'POST', body: JSON.stringify({ name }) }),
+
+  renameFolder: (id: string, name: string) =>
+    request<Folder>(`/api/folders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteFolder: (id: string) =>
+    request<{ deleted: boolean }>(`/api/folders/${id}`, { method: 'DELETE' }),
+
+  restoreSheet: (id: string) =>
+    request<{ restored: boolean }>(`/api/sheets/${id}/restore`, { method: 'POST' }),
+
+  emptyTrash: () => request<{ purged: number }>('/api/trash', { method: 'DELETE' }),
 
   getSheet: (id: string) => request<Sheet>(`/api/sheets/${id}`),
 
-  createSheet: (title: string, content = '') =>
+  createSheet: (title: string, content = '', folderId: string | null = null) =>
     request<Sheet>('/api/sheets', {
       method: 'POST',
-      body: JSON.stringify({ title, content }),
+      body: JSON.stringify({ title, content, folderId }),
     }),
 
   saveSheet: (
     id: string,
-    changes: { title?: string; content?: string },
+    changes: { title?: string; content?: string; folderId?: string | null },
     version: number,
   ) =>
     request<Sheet>(`/api/sheets/${id}`, {
@@ -81,8 +141,12 @@ export const api = {
       body: JSON.stringify({ ...changes, version }),
     }),
 
-  deleteSheet: (id: string) =>
-    request<{ deleted: boolean }>(`/api/sheets/${id}`, { method: 'DELETE' }),
+  /** Moves to the trash by default; `purge` removes it permanently. */
+  deleteSheet: (id: string, purge = false) =>
+    request<{ deleted: boolean }>(
+      `/api/sheets/${id}${purge ? '?purge=1' : ''}`,
+      { method: 'DELETE' },
+    ),
 
   acquireLock: (id: string, clientId: string, clientName: string, force = false) =>
     request<{ granted: boolean; lock: Lock; ttlMs: number }>(

@@ -9,7 +9,10 @@ import { api, type HolidayTable } from './api';
  * delays an answer; the engine simply starts without currency support and
  * gains it when the rates arrive.
  */
-export function useEngine(options: { largeNumberNotation: boolean }) {
+export function useEngine(options: {
+  largeNumberNotation: boolean;
+  globals?: Record<string, string>;
+}) {
   const [rates, setRates] = useState<RateTable | null>(null);
   const [holidays, setHolidays] = useState<HolidayTable | null>(null);
 
@@ -35,9 +38,10 @@ export function useEngine(options: { largeNumberNotation: boolean }) {
       createEngine({
         ...(rates && { rates }),
         ...(holidays && { holidays: holidays.dates }),
+        ...(options.globals && { globals: options.globals }),
         largeNumberNotation: options.largeNumberNotation,
       }),
-    [rates, holidays, options.largeNumberNotation],
+    [rates, holidays, options.largeNumberNotation, options.globals],
   );
 
   return { engine, rates, holidays };

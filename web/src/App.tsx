@@ -3,30 +3,34 @@ import {
   api,
   clientIdentity,
   ConflictError,
+  type Folder,
   type Lock,
+  type Settings,
   type Sheet,
   type SheetSummary,
+  type Statistic,
 } from './api';
 import { Editor } from './Editor';
 import { Sidebar } from './Sidebar';
 import { useEngine, useResults } from './useEngine';
+import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 type Status = 'idle' | 'unsaved' | 'saving' | 'saved' | 'readonly' | 'error';
 
 const AUTOSAVE_DELAY_MS = 800;
 const LOCK_HEARTBEAT_MS = 15_000;
+const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
 
 export function App() {
-  // Large-number notation is Soulver's default, but it is worth being able to
-  // switch off until per-line formatting exists.
-  const [siNotation, setSiNotation] = useState(
-    () => localStorage.getItem('webcalc.si') !== 'off',
-  );
-  const { engine, rates } = useEngine({ largeNumberNotation: siNotation });
   const identity = useMemo(clientIdentity, []);
 
+  const [settings, setSettings] = useState<Settings>({});
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeFolder, setActiveFolder] = useState<string | null | undefined>(undefined);
+  const [query, setQuery] = useState('');
+  const [viewingTrash, setViewingTrash] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [version, setVersion] = useState(0);
@@ -38,17 +42,39 @@ export function App() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  const siNotation = settings.largeNumberNotation !== false;
+  const statistic = settings.statistic ?? 'total';
+  const showTotal = settings.showTotal !== false;
+
+  const { engine, rates } = useEngine({
+    largeNumberNotation: siNotation,
+    ...(settings.globals && { globals: settings.globals }),
+  });
+  const results = useResults(engine, content);
+  const summary = useMemo(
+    () => engine.summary(results, statistic),
+    [engine, results, statistic],
+  );
 
   /** The content the server last confirmed, so we never save a no-op. */
   const savedContent = useRef('');
-  const results = useResults(engine, content);
-  const sheetTotal = useMemo(() => engine.total(results), [engine, results]);
+
+  const persistSettings = useCallback(async (changes: Settings) => {
+    setSettings((current) => ({ ...current, ...changes }));
+    await api.saveSettings(changes).catch(() => undefined);
+  }, []);
 
   const refreshSheets = useCallback(async () => {
-    const list = await api.listSheets();
+    const list = await api.listSheets({
+      ...(activeFolder !== undefined && { folderId: activeFolder }),
+      ...(query && { query }),
+      ...(viewingTrash && { trashed: true }),
+    });
     setSheets(list);
     return list;
-  }, []);
+  }, [activeFolder, query, viewingTrash]);
 
   const openSheet = useCallback(async (id: string) => {
     const sheet = await api.getSheet(id);
@@ -61,10 +87,19 @@ export function App() {
     return sheet;
   }, []);
 
-  // First load: restore the sheet named in the URL, else the most recent one.
+  // First load: settings, folders, then the sheet named in the URL.
   useEffect(() => {
-    refreshSheets()
-      .then(async (list) => {
+    void (async () => {
+      const [loaded, folderList] = await Promise.all([
+        api.settings().catch(() => ({}) as Settings),
+        api.listFolders().catch(() => [] as Folder[]),
+      ]);
+      setSettings(loaded);
+      setFolders(folderList);
+
+      try {
+        const list = await api.listSheets();
+        setSheets(list);
         const fromUrl = window.location.hash.replace(/^#\/?/, '');
         const target = list.find((s) => s.id === fromUrl) ?? list[0];
         if (target) {
@@ -72,10 +107,16 @@ export function App() {
           return;
         }
         const created = await api.createSheet('Untitled');
-        await refreshSheets();
+        setSheets(await api.listSheets());
         setActiveId(created.id);
-      })
-      .catch((cause: unknown) => setError(describe(cause)));
+      } catch (cause) {
+        setError(describe(cause));
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void refreshSheets().catch(() => undefined);
   }, [refreshSheets]);
 
   // Load the sheet and try to claim the editing lock whenever the selection
@@ -100,9 +141,7 @@ export function App() {
     const releasing = activeId;
     return () => {
       cancelled = true;
-      void api.releaseLock(releasing, identity.id).catch(() => {
-        // The lock expires on its own; a failed release is not worth surfacing.
-      });
+      void api.releaseLock(releasing, identity.id).catch(() => undefined);
     };
   }, [activeId, identity.id, identity.name, openSheet]);
 
@@ -118,8 +157,6 @@ export function App() {
     return () => clearInterval(timer);
   }, [activeId, lock.granted, identity.id, identity.name]);
 
-  // Best-effort release when the tab goes away, so the next person does not
-  // have to wait out the TTL.
   useEffect(() => {
     const release = () => {
       if (!activeId) return;
@@ -131,13 +168,17 @@ export function App() {
   }, [activeId, identity.id]);
 
   const save = useCallback(
-    async (changes: { title?: string; content?: string }, useVersion = version) => {
+    async (
+      changes: { title?: string; content?: string; folderId?: string | null },
+      useVersion = version,
+    ) => {
       if (!activeId) return;
       setStatus('saving');
       try {
         const sheet = await api.saveSheet(activeId, changes, useVersion);
         setVersion(sheet.version);
         savedContent.current = sheet.content;
+        setTitle(sheet.title);
         setStatus('saved');
         setConflict(null);
         void refreshSheets();
@@ -154,8 +195,6 @@ export function App() {
     [activeId, version, refreshSheets],
   );
 
-  // Autosave on a debounce, but only while this tab holds the lock and only
-  // when the text has actually moved on from what the server has.
   useEffect(() => {
     if (!activeId || !lock.granted || conflict) return;
     if (content === savedContent.current) return;
@@ -163,6 +202,42 @@ export function App() {
     const handle = setTimeout(() => void save({ content }), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(handle);
   }, [content, activeId, lock.granted, conflict, save]);
+
+  const createSheet = useCallback(async () => {
+    try {
+      const sheet = await api.createSheet('Untitled', '', activeFolder ?? null);
+      await refreshSheets();
+      setViewingTrash(false);
+      setActiveId(sheet.id);
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  }, [activeFolder, refreshSheets]);
+
+  // App-level shortcuts. The editor owns everything that edits text.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.key.toLowerCase() === 'n' && event.shiftKey) {
+        event.preventDefault();
+        void createSheet();
+      }
+      // Autosave already handles persistence; this only stops the browser
+      // offering to save the page.
+      if (mod && event.key.toLowerCase() === 's') event.preventDefault();
+      if (mod && event.key.toLowerCase() === 'f') {
+        const search = document.querySelector<HTMLInputElement>('.sidebar-search input');
+        if (search) {
+          event.preventDefault();
+          setSidebarOpen(true);
+          search.focus();
+        }
+      }
+      if (event.key === 'Escape') setExportOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [createSheet]);
 
   const takeOver = async () => {
     if (!activeId) return;
@@ -176,26 +251,12 @@ export function App() {
     }
   };
 
-  const createSheet = async () => {
-    try {
-      const sheet = await api.createSheet('Untitled');
-      await refreshSheets();
-      setActiveId(sheet.id);
-    } catch (cause) {
-      setError(describe(cause));
-    }
-  };
-
   const renameSheet = async (sheet: SheetSummary) => {
     const next = window.prompt('Rename sheet', sheet.title);
     if (next === null || next.trim() === '' || next === sheet.title) return;
     try {
       await api.saveSheet(sheet.id, { title: next.trim() }, sheet.version);
-      if (sheet.id === activeId) {
-        const updated = await api.getSheet(sheet.id);
-        setTitle(updated.title);
-        setVersion(updated.version);
-      }
+      if (sheet.id === activeId) await openSheet(sheet.id);
       await refreshSheets();
     } catch (cause) {
       setError(describe(cause));
@@ -203,9 +264,15 @@ export function App() {
   };
 
   const deleteSheet = async (sheet: SheetSummary) => {
-    if (!window.confirm(`Delete "${sheet.title}"? This cannot be undone.`)) return;
+    const permanent = viewingTrash;
+    if (
+      permanent &&
+      !window.confirm(`Permanently delete "${sheet.title}"? This cannot be undone.`)
+    ) {
+      return;
+    }
     try {
-      await api.deleteSheet(sheet.id);
+      await api.deleteSheet(sheet.id, permanent);
       const list = await refreshSheets();
       if (sheet.id === activeId) setActiveId(list[0]?.id ?? null);
     } catch (cause) {
@@ -213,12 +280,25 @@ export function App() {
     }
   };
 
-  const commitTitle = async () => {
-    const trimmed = title.trim();
-    if (!activeId || trimmed === '') return;
-    const current = sheets.find((s) => s.id === activeId);
-    if (current && current.title === trimmed) return;
-    await save({ title: trimmed });
+  const exportAs = (kind: 'text' | 'markdown' | 'csv' | 'clipboard') => {
+    const options = { title, content, results };
+    setExportOpen(false);
+    if (kind === 'clipboard') {
+      void navigator.clipboard?.writeText(toPlainText(options));
+      return;
+    }
+    if (kind === 'text') {
+      download(safeFilename(title, 'txt'), toPlainText(options), 'text/plain');
+    } else if (kind === 'markdown') {
+      download(safeFilename(title, 'md'), toMarkdown(options), 'text/markdown');
+    } else {
+      download(safeFilename(title, 'csv'), toCsv(options), 'text/csv');
+    }
+  };
+
+  const cycleStatistic = () => {
+    const next = STATISTICS[(STATISTICS.indexOf(statistic) + 1) % STATISTICS.length]!;
+    void persistSettings({ statistic: next });
   };
 
   return (
@@ -228,7 +308,12 @@ export function App() {
           className="title-input"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => void commitTitle()}
+          onBlur={() => {
+            const trimmed = title.trim();
+            if (trimmed && trimmed !== sheets.find((s) => s.id === activeId)?.title) {
+              void save({ title: trimmed });
+            }
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') event.currentTarget.blur();
           }}
@@ -242,14 +327,53 @@ export function App() {
             {rates.date}
           </span>
         )}
+        <div className="menu-anchor">
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setExportOpen((open) => !open)}
+            title="Export this sheet"
+          >
+            ⤓
+          </button>
+          {exportOpen && (
+            <>
+              <div className="menu-backdrop" onClick={() => setExportOpen(false)} />
+              <ul className="answer-menu export-menu">
+                <li>
+                  <button type="button" onClick={() => exportAs('clipboard')}>
+                    Copy with answers
+                  </button>
+                </li>
+                <li>
+                  <button type="button" onClick={() => exportAs('text')}>
+                    Download as text
+                  </button>
+                </li>
+                <li>
+                  <button type="button" onClick={() => exportAs('markdown')}>
+                    Download as Markdown
+                  </button>
+                </li>
+                <li>
+                  <button type="button" onClick={() => exportAs('csv')}>
+                    Download as CSV
+                  </button>
+                </li>
+                <li className="menu-separator" />
+                <li>
+                  <button type="button" onClick={() => window.print()}>
+                    Print / save as PDF
+                  </button>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
         <button
           type="button"
           className="ghost"
-          onClick={() => {
-            const next = !siNotation;
-            setSiNotation(next);
-            localStorage.setItem('webcalc.si', next ? 'on' : 'off');
-          }}
+          onClick={() => void persistSettings({ largeNumberNotation: !siNotation })}
           title={
             siNotation
               ? 'Large numbers shown as 300k — click to write them out'
@@ -277,7 +401,7 @@ export function App() {
         </div>
       )}
 
-      {!lock.granted && activeId && (
+      {!lock.granted && activeId && !viewingTrash && (
         <div className="banner">
           <span>
             Read-only — {lock.holder?.clientName ?? 'another browser'} is editing
@@ -295,10 +419,7 @@ export function App() {
             This sheet changed elsewhere while you were editing. Keep which
             version?
           </span>
-          <button
-            type="button"
-            onClick={() => void save({ content }, conflict.version)}
-          >
+          <button type="button" onClick={() => void save({ content }, conflict.version)}>
             Keep mine
           </button>
           <button
@@ -319,12 +440,70 @@ export function App() {
       <div className="main">
         <Sidebar
           sheets={sheets}
+          folders={folders}
           activeId={activeId}
+          activeFolder={activeFolder}
+          query={query}
+          viewingTrash={viewingTrash}
           open={sidebarOpen}
-          onSelect={setActiveId}
+          onSelect={(id) => {
+            setViewingTrash(false);
+            setActiveId(id);
+          }}
           onCreate={() => void createSheet()}
           onRename={(sheet) => void renameSheet(sheet)}
           onDelete={(sheet) => void deleteSheet(sheet)}
+          onRestore={(sheet) => {
+            void api.restoreSheet(sheet.id).then(() => refreshSheets());
+          }}
+          onMove={(sheet, folderId) => {
+            void api
+              .saveSheet(sheet.id, { folderId }, sheet.version)
+              .then(() => refreshSheets())
+              .catch((cause: unknown) => setError(describe(cause)));
+          }}
+          onQuery={setQuery}
+          onSelectFolder={(folderId) => {
+            setViewingTrash(false);
+            setActiveFolder(folderId);
+          }}
+          onCreateFolder={() => {
+            const name = window.prompt('Folder name');
+            if (!name?.trim()) return;
+            void api
+              .createFolder(name.trim())
+              .then(() => api.listFolders())
+              .then(setFolders)
+              .catch((cause: unknown) => setError(describe(cause)));
+          }}
+          onRenameFolder={(folder) => {
+            const name = window.prompt('Rename folder', folder.name);
+            if (!name?.trim()) return;
+            void api
+              .renameFolder(folder.id, name.trim())
+              .then(() => api.listFolders())
+              .then(setFolders)
+              .catch((cause: unknown) => setError(describe(cause)));
+          }}
+          onDeleteFolder={(folder) => {
+            if (!window.confirm(`Delete "${folder.name}"? Its sheets are kept.`)) return;
+            void api
+              .deleteFolder(folder.id)
+              .then(() => api.listFolders())
+              .then((list) => {
+                setFolders(list);
+                setActiveFolder(undefined);
+              })
+              .catch((cause: unknown) => setError(describe(cause)));
+          }}
+          onToggleTrash={() => {
+            setViewingTrash((viewing) => !viewing);
+            setActiveFolder(undefined);
+          }}
+          onEmptyTrash={() => {
+            if (!window.confirm('Permanently delete everything in the trash?')) return;
+            void api.emptyTrash().then(() => refreshSheets());
+          }}
         />
         <div className="sheet-pane">
           <div className="sheet-scroll">
@@ -335,16 +514,44 @@ export function App() {
               onChange={setContent}
             />
           </div>
-          {sheetTotal && (
-            <div className="total" title="Total of every value line in this sheet">
-              <span className="total-label">Total</span>
-              <span className="total-value">{sheetTotal}</span>
+          {showTotal && summary && (
+            <div className="total">
+              <button
+                type="button"
+                className="total-label"
+                onClick={cycleStatistic}
+                title="Click to change the statistic"
+              >
+                {statistic === 'total' ? 'Total' : capitalise(statistic)}
+              </button>
+              <span className="total-value">{summary}</span>
+              <button
+                type="button"
+                className="total-hide"
+                onClick={() => void persistSettings({ showTotal: false })}
+                title="Hide the total"
+              >
+                ×
+              </button>
             </div>
+          )}
+          {!showTotal && (
+            <button
+              type="button"
+              className="total total-restore"
+              onClick={() => void persistSettings({ showTotal: true })}
+            >
+              Show total
+            </button>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function statusLabel(

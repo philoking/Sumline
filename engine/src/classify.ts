@@ -7,7 +7,9 @@ export interface Classified {
   /** Assignment target, for `kind === 'assignment'`. */
   name?: string;
   /** Directive verb, for `kind === 'directive'`. */
-  directive?: 'sum' | 'average' | 'count';
+  directive?: 'sum' | 'average' | 'count' | 'median';
+  /** `+=` and `-=` modify the existing value rather than replacing it. */
+  assignOp?: '=' | '+=' | '-=';
   /** Tag a directive is scoped to, e.g. `sum #food`. */
   directiveTag?: string;
   /** Tags found on the line. */
@@ -17,18 +19,19 @@ export interface Classified {
 }
 
 const DIRECTIVE_RE =
-  /^(sum|total|subtotal|average|avg|mean|count)(?:\s+(?:of\s+)?#([\w-]+))?\s*$/i;
+  /^(sum|total|subtotal|average|avg|mean|median|count)(?:\s+(?:of\s+)?#([\w-]+))?\s*$/i;
 
 /**
- * A variable name: one or more words, optionally spaced, not starting with a
- * digit. Multi-word names are what make `monthly rent = 1500` read naturally.
+ * A variable name — one or more words, not starting with a digit — followed by
+ * an assignment operator. Multi-word names are what make `monthly rent = 1500`
+ * read naturally.
+ *
+ * A bare colon is deliberately absent: Soulver declares variables with `=` only
+ * and reads a trailing colon as a label, so `Cost of iPhone: $999` answers $999
+ * without quietly creating a variable.
  */
-/**
- * A colon is deliberately absent here. Soulver declares variables with `=`
- * only and reads a trailing colon as a label, so `Cost of iPhone: $999`
- * should answer $999 without quietly creating a variable.
- */
-const ASSIGNMENT_RE = /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(?::=|=)\s*(.+)$/;
+const ASSIGNMENT_RE =
+  /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(\+=|-=|:=|=)\s*(.+)$/;
 
 /** Words that must never be treated as a variable name on the left of `=`. */
 const RESERVED_NAMES = new Set([
@@ -94,7 +97,7 @@ export function classify(raw: string): Classified {
     return {
       kind: 'directive',
       body: trimmed,
-      directive: verb === 'count' ? 'count' : verb.startsWith('a') || verb === 'mean' ? 'average' : 'sum',
+      directive: directiveFor(verb),
       ...(scopeTag && { directiveTag: scopeTag }),
       tags,
       ...(comment !== undefined && { comment }),
@@ -104,7 +107,8 @@ export function classify(raw: string): Classified {
   const assignment = ASSIGNMENT_RE.exec(trimmed);
   if (assignment) {
     const name = assignment[1]!.trim();
-    const value = assignment[2]!.trim();
+    const operator = assignment[2]!;
+    const value = assignment[3]!.trim();
     const isReserved = name
       .split(/\s+/)
       .some((word) => RESERVED_NAMES.has(word.toLowerCase()));
@@ -114,6 +118,7 @@ export function classify(raw: string): Classified {
         kind: 'assignment',
         body: value,
         name,
+        assignOp: operator === '+=' ? '+=' : operator === '-=' ? '-=' : '=',
         tags,
         ...(comment !== undefined && { comment }),
       };
@@ -158,6 +163,12 @@ function extractLabel(text: string): { rest: string } | null {
   // `a + b: 3` is not silently swallowed.
   if (/[+\-*/^=<>]/.test(m[1]!)) return null;
   return { rest: m[2]! };
+}
+
+function directiveFor(verb: string): 'sum' | 'average' | 'count' | 'median' {
+  if (verb === 'count') return 'count';
+  if (verb === 'median') return 'median';
+  return verb === 'mean' || verb.startsWith('a') ? 'average' : 'sum';
 }
 
 /** Index of a `//` comment marker outside any quoted string, or -1. */

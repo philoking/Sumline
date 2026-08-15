@@ -16,6 +16,8 @@ export interface Preprocessed {
   hint?: 'percent';
   /** Fixed decimal places requested by the line, e.g. `1/3 to 2 dp`. */
   decimals?: number;
+  /** `in full` writes the number out rather than abbreviating it as 300k. */
+  notation?: 'full';
 }
 
 const NUM = String.raw`\d+(?:\.\d+)?`;
@@ -30,6 +32,19 @@ const OPERAND = String.raw`[^,]+?`;
  */
 export function preprocess(input: string, ctx: PreprocessContext): Preprocessed {
   let s = input.trim();
+
+  /*
+   * `in full` is stripped before anything else and returned as a formatting
+   * instruction. Keeping per-line formatting in the text is deliberate: a
+   * sheet is plain text, and hidden per-line state would not survive a copy,
+   * an export, or a line being moved.
+   */
+  let notation: 'full' | undefined;
+  const full = /^(.+?)\s+(?:in\s+full|as\s+plain|unabbreviated)\s*$/i.exec(s);
+  if (full) {
+    notation = 'full';
+    s = full[1]!.trim();
+  }
 
   s = stripConversationalPrefix(s);
   s = normalizeOperatorSymbols(s);
@@ -54,6 +69,7 @@ export function preprocess(input: string, ctx: PreprocessContext): Preprocessed 
 
   const result: Preprocessed = { expr: s.trim() };
   if (rounding.decimals !== undefined) result.decimals = rounding.decimals;
+  if (notation) result.notation = notation;
   return result;
 }
 

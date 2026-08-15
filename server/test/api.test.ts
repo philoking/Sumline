@@ -93,9 +93,10 @@ describe('sheet CRUD', () => {
     };
     expect(list.sheets).toHaveLength(1);
 
+    // Deleting trashes the sheet; `?purge=1` is what removes it for good.
     const removed = await app.server.inject({
       method: 'DELETE',
-      url: `/api/sheets/${created.id}`,
+      url: `/api/sheets/${created.id}?purge=1`,
     });
     expect(removed.statusCode).toBe(200);
     expect(

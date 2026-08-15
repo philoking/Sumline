@@ -10,7 +10,8 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, toggleComment } from '@codemirror/commands';
+import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
 import type { LineResult } from '@webcalc/engine';
 
 export interface EditorProps {
@@ -24,6 +25,12 @@ interface AnswerBox {
   line: number;
   top: number;
   height: number;
+}
+
+interface MenuState {
+  line: number;
+  x: number;
+  y: number;
 }
 
 /*
@@ -75,6 +82,78 @@ const editorTheme = EditorView.theme({
   '.cm-placeholder': { color: 'var(--muted)' },
 });
 
+/** ⌘\ — cite the nearest line above that produced an answer. */
+function insertPreviousReference(view: EditorView): boolean {
+  const { from } = view.state.selection.main;
+  const current = view.state.doc.lineAt(from).number;
+  if (current <= 1) return false;
+  const before = view.state.sliceDoc(Math.max(0, from - 1), from);
+  const text = `${before && !/\s/.test(before) ? ' ' : ''}line ${current - 1}`;
+  view.dispatch({
+    changes: { from, insert: text },
+    selection: { anchor: from + text.length },
+  });
+  return true;
+}
+
+/** ⌘T — turn the current line into a subtotal. */
+function makeSubtotal(view: EditorView): boolean {
+  const line = view.state.doc.lineAt(view.state.selection.main.from);
+  if (line.text.trim() !== '') return false;
+  view.dispatch({
+    changes: { from: line.from, to: line.to, insert: 'sum' },
+    selection: { anchor: line.from + 3 },
+  });
+  return true;
+}
+
+/**
+ * ⌘⇧U — freeze the references on this line at their current values.
+ *
+ * Soulver calls this unlinking: the number stays, the live link goes.
+ */
+function unlinkReferences(view: EditorView): boolean {
+  const line = view.state.doc.lineAt(view.state.selection.main.from);
+  const frozen = line.text.replace(
+    /\b(?:line\s*\d+|prev(?:ious)?)\b/gi,
+    (token) => resolveReference(view, line.number, token) ?? token,
+  );
+  if (frozen === line.text) return false;
+  view.dispatch({ changes: { from: line.from, to: line.to, insert: frozen } });
+  return true;
+}
+
+/** The rendered answer of the line a reference points at. */
+let answersForUnlink: LineResult[] = [];
+function resolveReference(
+  _view: EditorView,
+  currentLine: number,
+  token: string,
+): string | null {
+  const numbered = /line\s*(\d+)/i.exec(token);
+  const target = numbered ? Number(numbered[1]) : currentLine - 1;
+  const output = answersForUnlink[target - 1]?.output;
+  return output ? output.replace(/[,$€£¥]/g, '') : null;
+}
+
+/** Variable names already declared in the sheet, offered as completions. */
+function completeNames(context: CompletionContext) {
+  const word = context.matchBefore(/[A-Za-z][\w ]*/);
+  if (!word || (word.from === word.to && !context.explicit)) return null;
+
+  const declared = new Set<string>();
+  for (const line of context.state.doc.toString().split('\n')) {
+    const match = /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(?:\+=|-=|=)/.exec(line.trim());
+    if (match) declared.add(match[1]!.trim());
+  }
+  if (declared.size === 0) return null;
+
+  return {
+    from: word.from,
+    options: [...declared].map((name) => ({ label: name, type: 'variable' })),
+  };
+}
+
 const HEADING_LINE = Decoration.line({ class: 'cm-sheet-heading' });
 const COMMENT_LINE = Decoration.line({ class: 'cm-sheet-comment' });
 
@@ -119,6 +198,7 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
   const onChangeRef = useRef(onChange);
   const readOnlyCompartment = useRef(new Compartment());
   const [boxes, setBoxes] = useState<AnswerBox[]>([]);
+  const [menu, setMenu] = useState<MenuState | null>(null);
 
   onChangeRef.current = onChange;
 
@@ -160,7 +240,16 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
         doc: value,
         extensions: [
           history(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
+          keymap.of([
+            // Soulver's own shortcuts, kept familiar.
+            { key: 'Mod-\\', run: insertPreviousReference },
+            { key: 'Mod-t', run: makeSubtotal },
+            { key: 'Mod-/', run: toggleComment },
+            { key: 'Mod-Shift-u', run: unlinkReferences },
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
+          autocompletion({ override: [completeNames], icons: false }),
           lineNumbers(),
           sheetHighlighting,
           EditorView.lineWrapping,
@@ -232,7 +321,40 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
 
   useEffect(() => {
     requestAnimationFrame(() => measure.current());
+    answersForUnlink = results;
   }, [results]);
+
+  /** Rewrites a line in place, for the answer menu's formatting actions. */
+  const amendLine = (lineNumber: number, change: (text: string) => string) => {
+    const view = viewRef.current;
+    if (!view || readOnly) return;
+    const line = view.state.doc.line(lineNumber);
+    const next = change(line.text);
+    if (next === line.text) return;
+    view.dispatch({ changes: { from: line.from, to: line.to, insert: next } });
+    setMenu(null);
+    view.focus();
+  };
+
+  /*
+   * Formatting is applied by editing the line, not by storing hidden state
+   * against it. A sheet is plain text; per-line settings kept outside the text
+   * would not survive a copy, an export, or the line being moved.
+   */
+  const setDecimals = (lineNumber: number, places: number) =>
+    amendLine(lineNumber, (text) =>
+      `${stripFormatting(text)} to ${places} dp`.trim(),
+    );
+
+  const writeInFull = (lineNumber: number) =>
+    amendLine(lineNumber, (text) => `${stripFormatting(text)} in full`.trim());
+
+  const clearFormatting = (lineNumber: number) =>
+    amendLine(lineNumber, (text) => stripFormatting(text).trim());
+
+  /** Turns a blank line into a subtotal, matching the ⌘T shortcut. */
+  const subtotalAt = (lineNumber: number) =>
+    amendLine(lineNumber, (text) => (text.trim() === '' ? 'sum' : text));
 
   /** Clicking an answer cites that line, the way Soulver's answer column does. */
   const insertReference = (lineNumber: number) => {
@@ -248,6 +370,8 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
     view.focus();
   };
 
+  const menuResult = menu ? results[menu.line - 1] : undefined;
+
   return (
     <div className="sheet-body" ref={hostRef}>
       <div className="editor-host" ref={editorHostRef} />
@@ -256,7 +380,24 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
           const result = results[box.line - 1];
           if (!result) return null;
           const text = result.output;
-          if (!text && !result.error) return null;
+          const empty = !text && !result.error;
+
+          // An empty answer slot is still a target: double-clicking one is how
+          // Soulver makes a subtotal.
+          if (empty) {
+            return (
+              <button
+                key={box.line}
+                type="button"
+                className="answer answer-empty"
+                style={{ top: box.top, height: box.height }}
+                title="Double-click to make this a subtotal"
+                onDoubleClick={() => subtotalAt(box.line)}
+                tabIndex={-1}
+              />
+            );
+          }
+
           return (
             <button
               key={box.line}
@@ -266,9 +407,17 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
               title={
                 result.error
                   ? result.error
-                  : `Insert a reference to line ${box.line}`
+                  : `Insert a reference to line ${box.line} — right-click for more`
+              }
+              draggable={!result.error}
+              onDragStart={(event) =>
+                event.dataTransfer.setData('text/plain', `line ${box.line}`)
               }
               onClick={() => !result.error && insertReference(box.line)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ line: box.line, x: event.clientX, y: event.clientY });
+              }}
               tabIndex={-1}
             >
               {text || '?'}
@@ -276,6 +425,56 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
           );
         })}
       </div>
+
+      {menu && (
+        <>
+          <div className="menu-backdrop" onClick={() => setMenu(null)} />
+          <ul className="answer-menu" style={{ left: menu.x, top: menu.y }}>
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(menuResult?.output ?? '');
+                  setMenu(null);
+                }}
+              >
+                Copy answer
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={() => insertReference(menu.line)}>
+                Insert reference
+              </button>
+            </li>
+            <li className="menu-separator" />
+            {[0, 2, 4].map((places) => (
+              <li key={places}>
+                <button type="button" onClick={() => setDecimals(menu.line, places)}>
+                  {places === 0 ? 'No decimal places' : `${places} decimal places`}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button type="button" onClick={() => writeInFull(menu.line)}>
+                Write number in full
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={() => clearFormatting(menu.line)}>
+                Reset formatting
+              </button>
+            </li>
+          </ul>
+        </>
+      )}
     </div>
+  );
+}
+
+/** Removes any formatting suffix this menu previously added to a line. */
+function stripFormatting(text: string): string {
+  return text.replace(
+    /\s+(?:to\s+\d+\s*(?:dp|decimals?|decimal places?)|in\s+full|as\s+plain)\s*$/i,
+    '',
   );
 }

@@ -451,3 +451,256 @@ button.ghost:hover {
     padding-left: 12px;
   }
 }
+
+/* ---- search, folders and trash ---- */
+
+.sidebar-search {
+  padding: 0 10px 8px;
+}
+
+.sidebar-search input {
+  width: 100%;
+  padding: 5px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.sidebar-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sheet-list {
+  flex: 1;
+}
+
+.sidebar-foot {
+  border-top: 1px solid var(--border);
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.folder-row {
+  display: flex;
+  align-items: center;
+}
+
+.folder-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.folder-link:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.folder-link.active {
+  background: var(--active);
+  color: var(--text);
+}
+
+.folder-icon {
+  width: 15px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.folder-actions {
+  display: none;
+}
+
+.folder-row:hover .folder-actions {
+  display: flex;
+}
+
+.move-select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  max-width: 84px;
+}
+
+/* ---- menus ---- */
+
+.menu-anchor {
+  position: relative;
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.answer-menu {
+  position: fixed;
+  z-index: 21;
+  min-width: 190px;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
+}
+
+.export-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+}
+
+.answer-menu button {
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.answer-menu button:hover {
+  background: var(--hover);
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--border);
+}
+
+/* An empty answer slot is a target for making a subtotal. */
+.answer-empty {
+  cursor: default;
+  background: none;
+}
+
+.answer-empty:hover {
+  background: var(--hover);
+  opacity: 0.5;
+}
+
+/* ---- total controls ---- */
+
+.total-label {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0;
+}
+
+.total-label:hover {
+  color: var(--text);
+}
+
+.total-hide {
+  background: none;
+  border: none;
+  color: var(--line-number);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 0 0 4px;
+}
+
+.total-hide:hover {
+  color: var(--text);
+}
+
+.total-restore {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/*
+ * ---- print ----
+ *
+ * The answer column is absolutely positioned for the screen, which paper
+ * cannot reproduce. For printing the sheet becomes a plain two-column flow
+ * instead, and everything that is not the sheet is removed.
+ */
+@media print {
+  .sidebar,
+  .topbar,
+  .banner,
+  .total,
+  .answer-menu,
+  .menu-backdrop {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root,
+  .app,
+  .main,
+  .sheet-pane,
+  .sheet-scroll {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+
+  .sheet-body {
+    padding: 0;
+  }
+
+  .sheet-body::after {
+    display: none;
+  }
+
+  .editor-host {
+    margin-right: 200px;
+  }
+
+  .cm-editor,
+  .cm-scroller {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .cm-content {
+    color: #000 !important;
+  }
+
+  .answers {
+    position: absolute;
+    top: 0;
+  }
+
+  .answer {
+    color: #000;
+    page-break-inside: avoid;
+  }
+}

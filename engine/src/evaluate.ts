@@ -10,7 +10,7 @@ import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, type MathContext } from './mathInstance.js';
 import { preprocess } from './preprocess.js';
-import type { Engine, EngineOptions, LineResult } from './types.js';
+import type { Engine, EngineOptions, LineResult, Statistic } from './types.js';
 
 export function createEngine(options: EngineOptions = {}): Engine {
   const ctx = createMathContext(
@@ -31,18 +31,61 @@ export function createEngine(options: EngineOptions = {}): Engine {
     rateDate: options.rates?.date ?? null,
     evaluate(source) {
       const lines = Array.isArray(source) ? source : source.split('\n');
-      return evaluateLines(lines, ctx, options.now ?? new Date(), base);
+      return evaluateLines(
+        lines,
+        ctx,
+        options.now ?? new Date(),
+        base,
+        options.globals,
+      );
     },
     total(results) {
+      return this.summary(results, 'total');
+    },
+    summary(results, statistic) {
       const values = results
         .filter((r) => r.kind === 'expression' || r.kind === 'assignment')
         .map((r) => r.value)
         .filter(isAddable);
       if (values.length === 0) return '';
-      const sum = addAll(ctx, values);
-      return sum === undefined ? '' : formatValue(sum, base);
+      const figure = reduceValues(ctx, values, statistic);
+      return figure === undefined ? '' : formatValue(figure, base);
     },
   };
+}
+
+/** Applies a sheet-level statistic to a list of values. */
+function reduceValues(
+  ctx: MathContext,
+  values: unknown[],
+  statistic: Statistic,
+): unknown {
+  if (statistic === 'count') return values.length;
+
+  if (statistic === 'median') {
+    // Sorting needs a comparison that works on units as well as numbers.
+    try {
+      const sorted = [...values].sort((a, b) =>
+        Number(ctx.math.compare(a as never, b as never)),
+      );
+      const middle = Math.floor(sorted.length / 2);
+      if (sorted.length % 2 === 1) return sorted[middle];
+      return ctx.math.divide(
+        ctx.math.add(sorted[middle - 1] as never, sorted[middle] as never) as never,
+        2 as never,
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  const sum = addAll(ctx, values);
+  if (sum === undefined || statistic === 'total') return sum;
+  try {
+    return ctx.math.divide(sum as never, values.length as never);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Adds a list of values, returning undefined if their types cannot combine. */
@@ -72,6 +115,7 @@ function evaluateLines(
   ctx: MathContext,
   now: Date,
   fmt: FormatContext,
+  globals?: Readonly<Record<string, string>>,
 ): LineResult[] {
   const state: SheetState = {
     scope: {},
@@ -79,6 +123,7 @@ function evaluateLines(
     section: [],
     tagged: new Map(),
   };
+  seedGlobals(state, ctx, now, fmt, globals);
   const results: LineResult[] = [];
 
   for (const [index, raw] of lines.entries()) {
@@ -104,6 +149,29 @@ function evaluateLines(
   }
 
   return results;
+}
+
+/**
+ * Binds instance-wide variables before the sheet runs.
+ *
+ * They are ordinary scope entries, so a sheet can use them, and can shadow one
+ * by declaring the same name — which is what makes them a default rather than
+ * a constant.
+ */
+function seedGlobals(
+  state: SheetState,
+  ctx: MathContext,
+  now: Date,
+  fmt: FormatContext,
+  globals?: Readonly<Record<string, string>>,
+): void {
+  for (const [name, expression] of Object.entries(globals ?? {})) {
+    if (!name.trim() || !expression.trim()) continue;
+    const computed = compute(expression, state, ctx, now, fmt);
+    if (computed.value !== undefined) {
+      state.scope[aliasFor(name, state)] = computed.value;
+    }
+  }
 }
 
 function evaluateLine(
@@ -141,8 +209,21 @@ function evaluateLine(
       if (computed.value === undefined) return base;
 
       if (line.kind === 'assignment' && line.name) {
-        state.scope[aliasFor(line.name, state)] = computed.value;
+        const alias = aliasFor(line.name, state);
+        // `+=` and `-=` fold into whatever the name already holds.
+        const stored = applyAssignment(
+          ctx,
+          line.assignOp ?? '=',
+          state.scope[alias],
+          computed.value,
+        );
+        state.scope[alias] = stored;
         base.name = line.name;
+        return {
+          ...base,
+          value: stored,
+          output: formatValue(stored, fmt),
+        };
       }
       return { ...base, value: computed.value, output: computed.output };
     }
@@ -177,7 +258,7 @@ function compute(
     }
   }
 
-  const { expr, hint, decimals } = preprocess(body, {
+  const { expr, hint, decimals, notation } = preprocess(body, {
     currencies: ctx.currencies,
     isKnownUnit: (word) => isKnownUnit(ctx, word),
     scopeNames: new Set(state.aliases.keys()),
@@ -191,6 +272,7 @@ function compute(
       ...fmt,
       ...(hint && { hint }),
       ...(decimals !== undefined && { decimals }),
+      ...(notation === 'full' && { largeNumberNotation: false }),
     }),
   });
 
@@ -210,6 +292,23 @@ function compute(
       }
     }
     return { output: '', error: cleanError(error) };
+  }
+}
+
+/** Combines a new value with the variable's previous one, for `+=` and `-=`. */
+function applyAssignment(
+  ctx: MathContext,
+  operator: '=' | '+=' | '-=',
+  previous: unknown,
+  value: unknown,
+): unknown {
+  if (operator === '=' || previous === undefined) return value;
+  try {
+    return operator === '+='
+      ? ctx.math.add(previous as never, value as never)
+      : ctx.math.subtract(previous as never, value as never);
+  } catch {
+    return value;
   }
 }
 
@@ -272,16 +371,11 @@ function runDirective(
 
   if (values.length === 0) return { output: '' };
 
-  let total = addAll(ctx, values);
+  // The directive calls it `sum`; the statistic calls the same thing `total`.
+  const directive = line.directive ?? 'sum';
+  const total = reduceValues(ctx, values, directive === 'sum' ? 'total' : directive);
   if (total === undefined) {
-    return { error: 'These values cannot be added together' };
-  }
-  if (line.directive === 'average') {
-    try {
-      total = ctx.math.divide(total as never, values.length as never);
-    } catch (error) {
-      return { error: cleanError(error) };
-    }
+    return { error: 'These values cannot be combined' };
   }
 
   const output = formatValue(total, fmt);
