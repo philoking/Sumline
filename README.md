@@ -19,7 +19,7 @@ sum #home                          $180.50
 ## Quick start
 
 ```bash
-git clone <this repo> webcalc
+git clone https://gitea.pkprivate.net/philoking/WebCalc.git webcalc
 cd webcalc
 docker compose up -d --build
 ```
@@ -153,6 +153,9 @@ A bare number takes on the unit beside it, which Soulver calls unit assimilation
 | `20% of $250` | `$50.00` |
 | `$100 + €80` | `€160.00` |
 
+The figures above use the rates bundled with the image (14 August 2026); a running instance uses
+whatever it last fetched, so your answers will differ.
+
 Mixed currencies answer in the **last** one named, matching Soulver. Rates come from
 [Frankfurter](https://frankfurter.dev/) (European Central Bank data, no API key), refreshed on
 start and every 12 hours and cached to disk. A container with no internet access falls back to
@@ -236,7 +239,11 @@ the platform's own timezone database.
 | `1559740303 to date` | `5 Jun 2019 at 6:11 am` |
 | `1733823083000 to date` | milliseconds are detected by magnitude |
 | `current timestamp` | now, in seconds |
-| `April 1, 2019 3:30pm as iso8601` | `2019-04-01T15:30:00+11:00` |
+| `April 1, 2019 3:30pm as iso8601` | `2019-04-01T15:30:00-07:00` |
+
+Timestamps are absolute but the dates they render as are not: both the time shown and the offset
+written by `as iso8601` follow the container's `TZ`. The examples above assume
+`America/Los_Angeles`.
 
 ### Statistics
 
@@ -338,7 +345,9 @@ uses a print stylesheet that lays the answer column beside the text on paper.
 Variables available to every sheet, set through `PUT /api/settings`:
 
 ```bash
-curl -X PUT http://localhost:8422/api/settings   -H 'content-type: application/json'   -d '{"globals": {"day rate": "$550", "vat": "20%"}}'
+curl -X PUT http://localhost:8422/api/settings \
+  -H 'content-type: application/json' \
+  -d '{"globals": {"day rate": "$550", "vat": "20%"}}'
 ```
 
 A sheet can use them like any other variable, and can shadow one by declaring the same name.
@@ -356,6 +365,24 @@ rather than one of them being silently lost.
 There is no authentication. Run it on a trusted network, or behind a reverse proxy that handles
 auth.
 
+## What's deliberately not here
+
+Soulver does several things WebCalc does not, and their absence is a decision rather than an
+oversight:
+
+| Not included | Why |
+| --- | --- |
+| Sales tax, compound interest, loan repayments, inflation | Out of scope for how this instance is used. |
+| Conditionals, number bases, bitwise operators, degree-mode trigonometry | Same. Worth knowing if that changes: math.js already returns `hex(256)` as `0x100` and parses `0x9F31`, so most of it is formatting rather than new maths. |
+| Live stock prices, weather, knowledge lookups | Every usable provider needs an API key, which would compromise the guarantee that the container works with no internet access. |
+| Trip planning (time points) | Soulver marks these outside the text. Sheets here are plain text — the property that makes copy, export, search and conflict-diffing work — so it would have needed invented syntax. |
+
+Each has a closed milestone in the repository recording the reasoning.
+
+The same principle explains a design choice you'll notice in the app: per-line formatting is
+written **into** the line (`1/3 to 2 dp`, `100,000 in full`) rather than stored against it.
+Hidden per-line state would not survive a copy, an export, or a line being moved.
+
 ## Development
 
 Requires Node 22.5 or newer.
@@ -363,22 +390,37 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # engine golden tests + server API tests
+npm test        # 467 engine tests, 40 server tests
 npm run build   # build all three workspaces
 ```
 
 | Workspace | What it is |
 | --- | --- |
 | [engine/](engine/) | The calculation engine. Pure TypeScript, no DOM or Node APIs, covered by a golden table of `input → answer` cases in [engine/test/](engine/test/). |
-| [web/](web/) | React + CodeMirror 6 UI. Evaluation runs in the browser, so answers never wait on the network. |
-| [server/](server/) | Fastify. Sheet storage in SQLite (via Node's built-in `node:sqlite` — no native modules), exchange-rate fetching, and static hosting of the built UI. |
+| [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. |
+| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, and static hosting of the built UI. |
 
-The engine works by classifying each line, rewriting Soulver-style phrasing into an expression
-math.js can parse, evaluating it, and formatting the result. If you're adding syntax, the
-rewriters live in [engine/src/preprocess.ts](engine/src/preprocess.ts) and every phrasing gets a
-case in the golden table.
+### How the engine fits together
 
-Dates bypass math.js entirely — see [engine/src/dates.ts](engine/src/dates.ts).
+A line is classified, rewritten from natural phrasing into something math.js can parse,
+evaluated, and formatted. Three parts sit outside that pipeline because math.js cannot express
+what they need:
+
+| Module | Why it exists |
+| --- | --- |
+| [`values.ts`](engine/src/values.ts) | Percentages, multipliers and rates as real types. `15%` reduced to `0.15` forgets it was a percentage, so `10% + 20%` could not answer `30%`. Also holds the unit-precedence rules — a bare number adopting the unit beside it, and mixed currencies answering in the last one named. |
+| [`temporal/`](engine/src/temporal/) | Dates, clock times, durations, zones and timecode. math.js has no calendar type at all, so these are recognised and evaluated before the expression parser is reached. |
+| [`numberFormat.ts`](engine/src/numberFormat.ts) | Region conventions and large-number notation, on both input and output. |
+
+If you're adding syntax, the rewriters live in
+[`preprocess.ts`](engine/src/preprocess.ts) and every phrasing needs a case in the golden table.
+
+### Adding to the reference
+
+[`examples.ts`](engine/src/examples.ts) is the single source for both the in-app reference and
+[`examples.test.ts`](engine/test/examples.test.ts), which evaluates every entry against a pinned
+context and asserts the answer shown. An example cannot claim behaviour the engine lacks, because
+the same line is a passing test — so adding to the documentation means adding a test.
 
 ## Deployment
 
