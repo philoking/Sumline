@@ -44,7 +44,11 @@ export function App() {
   const [conflict, setConflict] = useState<Sheet | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Closed by default on a phone, where it would otherwise cover the sheet.
+  // The same breakpoint the stylesheet uses to turn it into an overlay.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => !window.matchMedia('(max-width: 760px)').matches,
+  );
   const [exportOpen, setExportOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
@@ -314,6 +318,11 @@ export function App() {
     }
   };
 
+  /** On a phone the sidebar is an overlay, so acting on it should dismiss it. */
+  const closeSidebarOnPhone = () => {
+    if (window.matchMedia('(max-width: 760px)').matches) setSidebarOpen(false);
+  };
+
   const cycleStatistic = () => {
     const next = STATISTICS[(STATISTICS.indexOf(statistic) + 1) % STATISTICS.length]!;
     void persistSettings({ statistic: next });
@@ -473,6 +482,13 @@ export function App() {
       )}
 
       <div className="main">
+        {sidebarOpen && (
+          <div
+            className="sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
         <Sidebar
           sheets={sheets}
           folders={folders}
@@ -484,8 +500,12 @@ export function App() {
           onSelect={(id) => {
             setViewingTrash(false);
             setActiveId(id);
+            closeSidebarOnPhone();
           }}
-          onCreate={() => void createSheet()}
+          onCreate={() => {
+            void createSheet();
+            closeSidebarOnPhone();
+          }}
           onRename={(sheet) => void renameSheet(sheet)}
           onDelete={(sheet) => void deleteSheet(sheet)}
           onRestore={(sheet) => {

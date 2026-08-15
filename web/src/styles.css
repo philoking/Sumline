@@ -222,10 +222,21 @@ button.ghost:hover {
 
 /* ---- layout ---- */
 
+/*
+ * Positioned, so the narrow-screen sidebar overlay anchors here rather than to
+ * the viewport. Without this it covered the top bar — including the button
+ * that closes it, which left a phone with no way out of it.
+ */
 .main {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
+}
+
+/* Only drawn on narrow screens, where the sidebar sits over the sheet. */
+.sidebar-backdrop {
+  display: none;
 }
 
 /* ---- sidebar ---- */
@@ -473,21 +484,65 @@ button.ghost:hover {
 
 @media (max-width: 760px) {
   :root {
-    --answers-width: 150px;
+    --answers-width: 132px;
     --sheet-font-size: 16px;
     --sheet-line-height: 30px;
   }
 
+  /* Anchored to .main, so the top bar stays reachable above it. */
   .sidebar {
     position: absolute;
-    z-index: 5;
+    z-index: 6;
     top: 0;
     bottom: 0;
-    box-shadow: 0 0 24px rgb(0 0 0 / 35%);
+    left: 0;
+    box-shadow: 0 0 24px rgb(0 0 0 / 45%);
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: absolute;
+    z-index: 5;
+    inset: 0;
+    background: rgb(0 0 0 / 45%);
   }
 
   .answer {
-    padding-left: 12px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  /* The bar has to hold its controls before it holds its commentary. */
+  .status,
+  .rates {
+    display: none;
+  }
+
+  .topbar {
+    gap: 4px;
+    padding: 6px 6px 6px 10px;
+  }
+
+  button.ghost {
+    padding: 4px 6px;
+  }
+
+  .editor-host {
+    padding-left: 0;
+  }
+
+  /* Full width, so a long sheet name is readable while it is being edited. */
+  .reference {
+    width: 100vw;
+  }
+
+  /*
+   * The total is capped to the answer column on a desktop so it never covers
+   * the text. On a phone that column is too narrow to hold the figure, and a
+   * total reading "3…" is worse than one that overhangs.
+   */
+  .total {
+    max-width: calc(100% - 32px);
   }
 }
 
