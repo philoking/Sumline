@@ -23,7 +23,12 @@ const DIRECTIVE_RE =
  * A variable name: one or more words, optionally spaced, not starting with a
  * digit. Multi-word names are what make `monthly rent = 1500` read naturally.
  */
-const ASSIGNMENT_RE = /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(?::=|=|:)\s*(.+)$/;
+/**
+ * A colon is deliberately absent here. Soulver declares variables with `=`
+ * only and reads a trailing colon as a label, so `Cost of iPhone: $999`
+ * should answer $999 without quietly creating a variable.
+ */
+const ASSIGNMENT_RE = /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(?::=|=)\s*(.+)$/;
 
 /** Words that must never be treated as a variable name on the left of `=`. */
 const RESERVED_NAMES = new Set([
@@ -61,6 +66,12 @@ export function classify(raw: string): Classified {
     tags.push(tag.toLowerCase());
     return lead;
   });
+
+  body = stripQuotedText(body);
+  body = stripParentheticalComments(body);
+
+  const label = extractLabel(body);
+  if (label) body = label.rest;
 
   const trimmed = body.trim();
 
@@ -110,6 +121,43 @@ export function classify(raw: string): Classified {
   }
 
   return { kind: 'expression', body: trimmed, tags, ...(comment !== undefined && { comment }) };
+}
+
+/**
+ * `Boeing "747" is $386.8M` — quoted text is commentary, so the number inside
+ * it must not reach the parser.
+ */
+function stripQuotedText(text: string): string {
+  return text.replace(/"[^"]*"/g, ' ');
+}
+
+/**
+ * `$999 (for iPhone 16)` — a parenthesised aside is a comment.
+ *
+ * Only groups that read as prose are removed: the content must contain a word
+ * and no operators, so `(2 km + 3 km)` and `(3 + 4) * 5` stay arithmetic. A
+ * group directly after an identifier is a function call and is left alone.
+ */
+function stripParentheticalComments(text: string): string {
+  return text.replace(/(^|[^\w)])\(([^()]*)\)/g, (match, lead: string, inner: string) => {
+    const isProse = /[A-Za-z]{2}/.test(inner) && !/[+\-*/^]/.test(inner);
+    return isProse ? lead : match;
+  });
+}
+
+/**
+ * `Cost of 128 GB iPhone 16: $999` — everything before the colon is a label.
+ *
+ * Requires whitespace after the colon, which is how Soulver keeps a label
+ * distinct from a clock time like `14:45`.
+ */
+function extractLabel(text: string): { rest: string } | null {
+  const m = /^([^:]*[A-Za-z][^:]*):\s+(\S.*)$/.exec(text.trim());
+  if (!m) return null;
+  // A label is prose, not an expression: reject anything operator-shaped so
+  // `a + b: 3` is not silently swallowed.
+  if (/[+\-*/^=<>]/.test(m[1]!)) return null;
+  return { rest: m[2]! };
 }
 
 /** Index of a `//` comment marker outside any quoted string, or -1. */

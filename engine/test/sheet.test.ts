@@ -14,8 +14,9 @@ describe('variables', () => {
     ]);
   });
 
-  it('accepts a colon as the assignment operator', () => {
-    expect(answers('deposit: 250\ndeposit * 4')).toEqual(['250', '1,000']);
+  // A colon marks a label, not an assignment — see the comment-forms tests.
+  it('does not treat a colon as an assignment operator', () => {
+    expect(answers('deposit: 250\ndeposit * 4')).toEqual(['250', '']);
   });
 
   it('carries units through a variable', () => {

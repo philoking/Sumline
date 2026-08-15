@@ -44,12 +44,45 @@ text with no answer, so a sheet can mix notes and sums freely.
 | --- | --- |
 | `12 * 34` | `408` |
 | `1,250 / 8` | `156.25` |
-| `2^16` | `65,536` |
-| `sqrt(144)` | `12` |
-| `5k + 500` | `5,500` |
-| `2 million / 4` | `500,000` |
+| `2^16` or `2 ** 16` | `65,536` |
+| `6 × 7`, `84 ÷ 2`, `50 − 8` | `42` |
+| `3 to the power of 2` | `9` |
+| `remainder of 21 divided by 5` | `1` |
+| `√16`, `sqrt(16)` | `4` |
 | `10 plus 5 times 2` | `20` |
 | `what is 6 * 7?` | `42` |
+
+### Numbers and notation
+
+| You type | You get |
+| --- | --- |
+| `5k + 500` | `5,500` |
+| `2 million / 4` | `500k` |
+| `$3k`, `$9bn`, `€6M`, `£12tn` | full currency amounts |
+| `100,000 + 200,000` | `300k` |
+| `1_000_000 + 2_000` | `1M` |
+| `1,700,000 as sci` | `1.7e6` |
+
+Large plain numbers are abbreviated with SI-style symbols (`k`, `M`, `G`, `T`) above 100,000,
+the way Soulver does. Currency is always written out in full. The toggle in the top bar turns
+abbreviation off if you'd rather see every digit.
+
+Number conventions follow a region setting — `1.234,56` is read correctly under Western Europe,
+and underscores group digits everywhere.
+
+### Rounding
+
+| You type | You get |
+| --- | --- |
+| `1/3 to 2 dp` | `0.33` |
+| `pi to 5 digits` | `3.14159` |
+| `5.5 rounded` / `rounded up` / `rounded down` | `6` / `6` / `5` |
+| `37 to nearest 10` | `40` |
+| `$490 rounded to nearest hundred` | `$500.00` |
+| `21 rounded up to nearest 5` | `25` |
+
+`to N dp` is cosmetic — totals and line references still use the unrounded value. `to nearest N`
+genuinely changes the number.
 
 ### Percentages
 
@@ -57,10 +90,30 @@ text with no answer, so a sheet can mix notes and sums freely.
 | --- | --- |
 | `20% of 250` | `50` |
 | `120 + 15%` | `138` |
-| `200 - 10%` | `180` |
-| `20% off 50` | `40` |
-| `20% on 50` | `60` |
-| `80 as a % of 200` | `40%` |
+| `20% off 50` / `20% on 50` | `40` / `60` |
+| `20 is 10% of what` | `200` |
+| `180 is 10% off what` | `200` |
+| `50 to 75 is what %` | `50%` |
+| `180 is what % off 200` | `10%` |
+| `20 as a % of 200` | `10%` |
+| `10% + 20%` | `30%` |
+| `30% + 0.4` | `70%` |
+| `50% × 30` | `15` |
+| `20% as dec` | `0.2` |
+
+A percentage is a real value, so it survives arithmetic. Order matters and is not an accident:
+`50 + 20%` grows fifty by a fifth, while `20% + 50` is percentage maths.
+
+### Fractions and multipliers
+
+| You type | You get |
+| --- | --- |
+| `2/10 as fraction` | `1/5` |
+| `50% as fraction` | `1/2` |
+| `2/3 of 600` | `400` |
+| `20/5 as multiplier` | `4x` |
+| `50 to 75 is what x` | `1.5x` |
+| `1 as x off 2` | `0.5x` |
 
 ### Units
 
@@ -68,11 +121,25 @@ text with no answer, so a sheet can mix notes and sums freely.
 | --- | --- |
 | `65 mph in km/h` | `104.60736 km/h` |
 | `180 lbs in kg` | `81.646627 kg` |
-| `2 hours + 45 minutes` | `2.75 hours` |
-| `32 degF to degC` | `0 degC` |
-| `1 GB in MB` | `1,000 MB` |
+| `meters in 10 km` | `10,000 meters` |
+| `seconds in a day` | `86,400 seconds` |
+| `5 hours 30 minutes to seconds` | `19,800 seconds` |
+| `km m` | `1,000 m` |
+| `300 + 20 km` | `320 km` |
+| `1km + 1,000m` | `2 km` |
 
-Any unit math.js knows works, plus everyday additions like `mph`, `kph`, `sqft` and `kcal`.
+A bare number takes on the unit beside it, which Soulver calls unit assimilation.
+
+### Rates
+
+| You type | You get |
+| --- | --- |
+| `3 hours / day` | `3 hours/day` |
+| `$99 per week` | `$99.00/week` |
+| `30 bottles / week` | `30/week` |
+| `90 km / 3 day` | `30 km/day` |
+| `$20/day + $300/week` | `$440.00/week` |
+| `$50/week * 12 weeks` | `$600.00` |
 
 ### Currency
 
@@ -80,12 +147,13 @@ Any unit math.js knows works, plus everyday additions like `mph`, `kph`, `sqft` 
 | --- | --- |
 | `$42.50 * 3` | `$127.50` |
 | `100 USD in EUR` | `€86.45` |
-| `£75 to USD` | `$101.53` |
 | `20% of $250` | `$50.00` |
+| `$100 + €80` | `€160.00` |
 
-Rates come from [Frankfurter](https://frankfurter.dev/) (European Central Bank data, no API key),
-refreshed on start and every 12 hours, and cached to disk. A container with no internet access
-falls back to the rates bundled in the image and marks them stale in the header.
+Mixed currencies answer in the **last** one named, matching Soulver. Rates come from
+[Frankfurter](https://frankfurter.dev/) (European Central Bank data, no API key), refreshed on
+start and every 12 hours and cached to disk. A container with no internet access falls back to
+the rates bundled in the image and marks them stale in the header.
 
 ### Dates
 
@@ -100,6 +168,29 @@ falls back to the rates bundled in the image and marks them stale in the header.
 
 Slash dates are read as month/day/year. ISO dates (`2026-08-15`) and written months
 (`3 March 2026`) are unambiguous and preferred.
+
+### Statistics
+
+| You type | You get |
+| --- | --- |
+| `total of 3, 4, 7 and 9` | `23` |
+| `average of 36, 42, 19 and 81` | `44.5` |
+| `median of 10, 20 and 30` | `20` |
+| `count of 1, 2, 3, 4, 5` | `5` |
+
+### Notes, labels and comments
+
+Four ways to keep text out of the maths:
+
+| Form | Example |
+| --- | --- |
+| Double slash | `1 + 2 // this is three` |
+| Label | `Cost of 128 GB iPhone 16: $999` |
+| Parentheses | `$999 (for iPhone 16)` |
+| Quotes | `Boeing "747" is $386.8M` |
+
+Loose prose around a sum is ignored too, so `I spent $128 + $45 on clothes` answers `$173.00`.
+A colon marks a **label**, not a variable — use `=` to declare one.
 
 ### Variables, references and totals
 
@@ -116,10 +207,10 @@ line 1 + 100               1,600
 - `sum` (or `total` / `subtotal`) adds every value line since the last heading, then closes that
   section so stacked totals don't double-count. `average` and `count` work the same way.
 - Tag a line with `#food` and use `sum #food` to total just those lines, anywhere in the sheet.
-- `# Heading` starts a new section, `// comment` is ignored, and a label before a number is fine:
-  `lunch $12` is twelve dollars.
+- `# Heading` starts a new section and `// comment` is ignored.
 - A running **Total** of every value line sits at the bottom of the answer column. It disappears
   when a sheet mixes things that can't be added, rather than showing a meaningless number.
+
 
 ## Sharing and concurrent editing
 

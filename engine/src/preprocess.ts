@@ -1,4 +1,5 @@
 import { SYMBOLS_BY_LENGTH, SYMBOL_TO_CODE } from './currencies.js';
+import { normalizeNumberLiterals, type NumberRegion } from './numberFormat.js';
 
 export interface PreprocessContext {
   currencies: Set<string>;
@@ -6,41 +7,54 @@ export interface PreprocessContext {
   isKnownUnit(word: string): boolean;
   /** Names currently bound in the evaluation scope. */
   scopeNames: Set<string>;
+  region: NumberRegion;
 }
 
 export interface Preprocessed {
   expr: string;
   /** Tells the formatter the bare number should be rendered as a percentage. */
   hint?: 'percent';
+  /** Fixed decimal places requested by the line, e.g. `1/3 to 2 dp`. */
+  decimals?: number;
 }
 
 const NUM = String.raw`\d+(?:\.\d+)?`;
+/** A sub-expression operand: anything that is not an operator boundary. */
+const OPERAND = String.raw`[^,]+?`;
 
 /**
  * Rewrites a line of Soulver-style prose into an expression math.js can parse.
  *
- * Each step is deliberately small and order-dependent; the ordering comments
- * matter more than the regexes do.
+ * Each step is small and order-dependent; the ordering comments matter far
+ * more than the individual regexes do.
  */
 export function preprocess(input: string, ctx: PreprocessContext): Preprocessed {
   let s = input.trim();
-  let hint: 'percent' | undefined;
 
   s = stripConversationalPrefix(s);
-  s = rewriteCurrencySymbols(s);
-  s = stripThousandsSeparators(s);
+  s = normalizeOperatorSymbols(s);
+  s = normalizeNumberLiterals(s, ctx.region);
+  s = rewriteCurrencyAmounts(s);
   s = rewriteMagnitudes(s);
   s = normalizeCurrencyCodes(s, ctx);
   s = rewriteReferences(s);
 
-  const percent = rewritePercentages(s);
-  s = percent.expr;
-  hint = percent.hint;
+  // Rounding is pulled out before conversions, because `to nearest hundred`
+  // and `to 2 dp` both look like unit conversions to the rules further down.
+  const rounding = extractRounding(s);
+  s = rounding.expr;
 
+  s = rewriteStatistics(s);
+  s = rewritePercentages(s);
+  s = rewriteMultipliersAndFractions(s);
+  s = rewriteRates(s, ctx);
+  s = rewriteConversions(s, ctx);
   s = rewriteWordOperators(s);
   s = rewriteConversionWords(s);
 
-  return hint ? { expr: s.trim(), hint } : { expr: s.trim() };
+  const result: Preprocessed = { expr: s.trim() };
+  if (rounding.decimals !== undefined) result.decimals = rounding.decimals;
+  return result;
 }
 
 /** Drops question phrasing and a trailing `=` or `?`. */
@@ -51,32 +65,52 @@ function stripConversationalPrefix(s: string): string {
     .trim();
 }
 
-/** `$1,000` and `100$` both become `1000 USD`. */
-function rewriteCurrencySymbols(s: string): string {
+/**
+ * Normalises the symbols people actually type — from a word processor, an iOS
+ * keyboard, or a paste out of a document.
+ */
+function normalizeOperatorSymbols(s: string): string {
+  return s
+    .replace(/[×⋅]/g, '*')
+    .replace(/[÷]/g, '/')
+    .replace(/[−–—]/g, '-')
+    .replace(/\*\*/g, '^')
+    .replace(/√\s*(\d+(?:\.\d+)?|\()/g, (_m, operand: string) =>
+      operand === '(' ? 'sqrt(' : `sqrt(${operand})`,
+    )
+    .replace(/π/g, 'pi');
+}
+
+/** Magnitude suffixes that are safe only next to a currency symbol. */
+const CURRENCY_MAGNITUDES: Record<string, number> = {
+  k: 1e3, K: 1e3,
+  m: 1e6, M: 1e6,
+  b: 1e9, B: 1e9, bn: 1e9, G: 1e9,
+  t: 1e12, T: 1e12, tn: 1e12,
+};
+
+/**
+ * `$1,000`, `100$` and `$9bn` all become a plain number with an ISO code.
+ *
+ * The magnitude suffix is consumed here rather than by `rewriteMagnitudes`
+ * because a currency symbol is what makes `m` and `b` unambiguous: bare `5m`
+ * is five metres.
+ */
+function rewriteCurrencyAmounts(s: string): string {
   for (const symbol of SYMBOLS_BY_LENGTH) {
     const code = SYMBOL_TO_CODE[symbol]!;
-    const esc = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const esc = escapeRegExp(symbol);
     s = s.replace(
-      new RegExp(`${esc}\\s*(${NUM}(?:,\\d{3})*(?:\\.\\d+)?)`, 'g'),
-      `$1 ${code}`,
+      new RegExp(`${esc}\\s*(${NUM})(bn|tn|[kKmMbBtTG])?\\b`, 'g'),
+      (_m, num: string, suffix?: string) =>
+        `${scaleBy(num, suffix ? CURRENCY_MAGNITUDES[suffix] : undefined)} ${code}`,
     );
-    s = s.replace(
-      new RegExp(`(${NUM})\\s*${esc}(?![\\w$])`, 'g'),
-      `$1 ${code}`,
-    );
+    s = s.replace(new RegExp(`(${NUM})\\s*${esc}(?![\\w$])`, 'g'), `$1 ${code}`);
   }
   return s;
 }
 
-/**
- * Removes digit-grouping commas only. The pattern requires full groups of
- * three, so function arguments like `max(1000, 2000)` are left alone.
- */
-function stripThousandsSeparators(s: string): string {
-  return s.replace(/\b\d{1,3}(?:,\d{3})+\b/g, (m) => m.replace(/,/g, ''));
-}
-
-const MAGNITUDES: Record<string, number> = {
+const WORD_MAGNITUDES: Record<string, number> = {
   thousand: 1e3,
   million: 1e6,
   billion: 1e9,
@@ -84,19 +118,21 @@ const MAGNITUDES: Record<string, number> = {
 };
 
 /**
- * `5k` and `2 million` become plain numbers.
+ * `5k`, `2M` and `2 million` become plain numbers.
  *
- * Only lowercase `k` is supported as a suffix: `5K` is 5 kelvin, and `5m`
- * is 5 metres. Anything ambiguous with a real unit stays a unit.
+ * Only suffixes that are not themselves math.js units are accepted bare:
+ * `5K` is 5 kelvin and `5m` is 5 metres, so those are left well alone.
  */
 function rewriteMagnitudes(s: string): string {
   s = s.replace(
     new RegExp(`\\b(${NUM})\\s*(thousand|million|billion|trillion)\\b`, 'gi'),
     (_m, num: string, word: string) =>
-      String(Number(num) * MAGNITUDES[word.toLowerCase()]!),
+      String(Number(num) * WORD_MAGNITUDES[word.toLowerCase()]!),
   );
-  return s.replace(new RegExp(`\\b(${NUM})k\\b`, 'g'), (_m, num: string) =>
-    String(Number(num) * 1000),
+  return s.replace(
+    new RegExp(`\\b(${NUM})(k|M|G|T)\\b`, 'g'),
+    (_m, num: string, suffix: string) =>
+      scaleBy(num, { k: 1e3, M: 1e6, G: 1e9, T: 1e12 }[suffix]),
   );
 }
 
@@ -124,71 +160,265 @@ function rewriteReferences(s: string): string {
     .replace(/\b(?:prev|previous|last)\b/gi, '__prev');
 }
 
+const ROUND_STEPS: Record<string, number> = {
+  ten: 10,
+  hundred: 100,
+  thousand: 1000,
+  million: 1e6,
+};
+
+/**
+ * Pulls rounding instructions off the end of a line.
+ *
+ * `to N dp` is display precision — Soulver keeps the unrounded value for
+ * subtotals and references — so it is returned as a formatting instruction
+ * rather than folded into the expression. `to nearest N` genuinely changes
+ * the value, so it becomes arithmetic.
+ */
+function extractRounding(s: string): { expr: string; decimals?: number } {
+  const dp = new RegExp(
+    String.raw`^(.+?)\s+(?:to|as)\s+(\d+)\s*(?:dp|d\.p\.|decimals?|decimal places?|digits?|sig(?:nificant)?\s*(?:figs?|figures?)?)\s*$`,
+    'i',
+  ).exec(s);
+  if (dp) return { expr: dp[1]!.trim(), decimals: Number(dp[2]) };
+
+  const nearest = new RegExp(
+    String.raw`^(.+?)\s+(?:rounded\s+)?(?:(up|down)\s+)?to\s+(?:the\s+)?nearest\s+(${NUM}|ten|hundred|thousand|million)\s*$`,
+    'i',
+  ).exec(s);
+  if (nearest) {
+    const mode = nearest[2]?.toLowerCase();
+    const raw = nearest[3]!.toLowerCase();
+    const step = ROUND_STEPS[raw] ?? Number(raw);
+    const fn = mode === 'up' ? '"up"' : mode === 'down' ? '"down"' : '"near"';
+    return { expr: `roundStep((${nearest[1]!}), ${step}, ${fn})` };
+  }
+
+  const plain = /^(.+?)\s+rounded(?:\s+(up|down))?\s*$/i.exec(s);
+  if (plain) {
+    const mode = plain[2]?.toLowerCase();
+    const fn = mode === 'up' ? '"up"' : mode === 'down' ? '"down"' : '"near"';
+    return { expr: `roundStep((${plain[1]!}), 1, ${fn})` };
+  }
+
+  return { expr: s };
+}
+
+/** `total of 3, 4, 7 and 9` — statistics over a list written inline. */
+function rewriteStatistics(s: string): string {
+  const stat = new RegExp(
+    String.raw`^(total|sum|average|mean|count|median)\s+of\s+(.+)$`,
+    'i',
+  ).exec(s);
+  if (!stat) return s;
+
+  const verb = stat[1]!.toLowerCase();
+  const list = stat[2]!.replace(/\s*,?\s+and\s+/gi, ', ');
+  if (!list.includes(',')) return s;
+
+  const fn =
+    verb === 'count'
+      ? 'count'
+      : verb === 'median'
+        ? 'median'
+        : verb === 'average' || verb === 'mean'
+          ? 'mean'
+          : 'sum';
+  return fn === 'count' ? `count([${list}])` : `${fn}(${list})`;
+}
+
 /**
  * The percentage rules, in the order they must run.
  *
- * `X as a % of Y` is matched before `X% of Y`, and the trailing `± X%` form is
- * matched before the bare `X%` fallback, otherwise earlier rules eat the input
- * the later ones need.
+ * Every form ultimately produces `pct(n)`, which evaluates to a real
+ * Percentage value, so `10% + 20%` can answer `30%` rather than `0.3`.
+ * The more specific phrasings are matched first; each would otherwise be
+ * swallowed by a more general rule below it.
  */
-function rewritePercentages(s: string): { expr: string; hint?: 'percent' } {
-  let hint: 'percent' | undefined;
+function rewritePercentages(s: string): string {
+  const P = String.raw`(?:%|percent(?:age)?)`;
 
-  // "30 as a % of 200" -> 15 %
-  const asPercentOf = new RegExp(
-    String.raw`^(.+?)\s+as\s+(?:an?\s+)?(?:%|percent(?:age)?)\s+of\s+(.+)$`,
-    'i',
-  );
-  const asMatch = asPercentOf.exec(s);
-  if (asMatch) {
-    hint = 'percent';
-    s = `((${asMatch[1]!}) / (${asMatch[2]!}) * 100)`;
-    return { expr: s, hint };
-  }
+  // "20 as a % of 200" / "20 is what % of 200" -> 10%
+  s = replaceFirst(s, [
+    [new RegExp(`^(${OPERAND})\\s+as\\s+(?:an?\\s+)?${P}\\s+of\\s+(.+)$`, 'i'),
+      (a, b) => `pct((${a}) / (${b}) * 100)`],
+    [new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+of\\s+(.+)$`, 'i'),
+      (a, b) => `pct((${a}) / (${b}) * 100)`],
+    // "180 is what % off 200" -> 10% ; "180 is what % on 150" -> 20%
+    [new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+off\\s+(.+)$`, 'i'),
+      (a, b) => `pct((1 - (${a}) / (${b})) * 100)`],
+    [new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+on\\s+(.+)$`, 'i'),
+      (a, b) => `pct(((${a}) / (${b}) - 1) * 100)`],
+    // "50 to 75 is what %" / "40 to 90 as %" -> the change between them
+    [new RegExp(`^(${OPERAND})\\s+to\\s+(${OPERAND})\\s+(?:is\\s+what|as)\\s+${P}\\s*$`, 'i'),
+      (a, b) => `pct(((${b}) / (${a}) - 1) * 100)`],
+    // Reverse: solve for the original number
+    [new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+of\\s+what\\s*$`, 'i'),
+      (a, p) => `((${a}) / (${p} / 100))`],
+    [new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+off\\s+what\\s*$`, 'i'),
+      (a, p) => `((${a}) / (1 - ${p} / 100))`],
+    [new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+on\\s+what\\s*$`, 'i'),
+      (a, p) => `((${a}) / (1 + ${p} / 100))`],
+  ]);
 
   // "20% off 50" -> 40 ; "20% on 50" -> 60
   s = s.replace(
     new RegExp(String.raw`(${NUM})\s*%\s+off\s+(.+)$`, 'i'),
-    (_m, pct: string, rest: string) => `((${rest}) * (1 - ${pct} / 100))`,
+    (_m, p: string, rest: string) => `((${rest}) * (1 - ${p} / 100))`,
   );
   s = s.replace(
     new RegExp(String.raw`(${NUM})\s*%\s+(?:on|added\s+to)\s+(.+)$`, 'i'),
-    (_m, pct: string, rest: string) => `((${rest}) * (1 + ${pct} / 100))`,
+    (_m, p: string, rest: string) => `((${rest}) * (1 + ${p} / 100))`,
   );
 
-  // "20% of 50" -> 10
+  // "20% of 50", and the fraction/multiplier forms of the same phrase
   s = s.replace(
     new RegExp(String.raw`(${NUM})\s*%\s+of\s+(.+)$`, 'i'),
-    (_m, pct: string, rest: string) => `((${rest}) * ${pct} / 100)`,
+    (_m, p: string, rest: string) => `((${rest}) * ${p} / 100)`,
+  );
+  s = s.replace(
+    new RegExp(String.raw`\b(${NUM}\s*/\s*${NUM})\s+of\s+(.+)$`, 'i'),
+    (_m, frac: string, rest: string) => `((${rest}) * (${frac}))`,
   );
 
-  // "50 + 20%" -> 60. Recursive rather than iterative: the left operand must be
-  // rewritten before it is wrapped, or "80 + 10% - 10%" leaves an inner "+ 10%"
-  // behind for the bare-percentage rule to misread as "+ 0.1".
-  s = rewriteTrailingPercent(s);
+  // "0.35 as %" and the trailing bare "20/200 %"
+  s = s.replace(
+    new RegExp(`^(${OPERAND})\\s+(?:as|in|to)\\s+(?:an?\\s+)?${P}\\s*$`, 'i'),
+    (_m, a: string) => `pct((${a}) * 100)`,
+  );
+  s = s.replace(
+    new RegExp(`^(.+[\\d)])\\s+%\\s*$`),
+    (_m, a: string) => `pct((${a}) * 100)`,
+  );
 
-  // Anything left is a plain proportion: "15%" -> 0.15
-  s = s.replace(new RegExp(String.raw`(${NUM})\s*%`, 'g'), '($1 / 100)');
-
-  return hint ? { expr: s, hint } : { expr: s };
+  // Anything still carrying a % is a plain percentage value.
+  return s.replace(new RegExp(String.raw`(${NUM})\s*%`, 'g'), 'pct($1)');
 }
 
-const TRAILING_PERCENT = new RegExp(String.raw`^(.+?)\s*([+\-])\s*(${NUM})\s*%\s*$`);
+/** Multipliers (`4x`) and fractions, which share the percentage grammar. */
+function rewriteMultipliersAndFractions(s: string): string {
+  const X = String.raw`(?:x|multiplier|multiple)`;
 
-function rewriteTrailingPercent(s: string, depth = 0): string {
-  if (depth > 8) return s;
-  const m = TRAILING_PERCENT.exec(s);
-  if (!m) return s;
-  const left = rewriteTrailingPercent(m[1]!, depth + 1);
-  const sign = m[2] === '-' ? '-' : '+';
-  return `((${left}) * (1 ${sign} ${m[3]!} / 100))`;
+  s = replaceFirst(s, [
+    [new RegExp(`^(${OPERAND})\\s+to\\s+(${OPERAND})\\s+(?:is\\s+what|as)\\s+${X}\\s*$`, 'i'),
+      (a, b) => `multiplierOf((${b}) / (${a}))`],
+    [new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+of\\s+(.+)$`, 'i'),
+      (a, b) => `multiplierOf((${a}) / (${b}))`],
+    [new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+on\\s+(.+)$`, 'i'),
+      (a, b) => `multiplierOf((${a}) / (${b}) - 1)`],
+    [new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+off\\s+(.+)$`, 'i'),
+      (a, b) => `multiplierOf(1 - (${a}) / (${b}))`],
+    [new RegExp(`^(${OPERAND})\\s+as\\s+(?:an?\\s+)?${X}\\s*$`, 'i'),
+      (a) => `multiplierOf(${a})`],
+  ]);
+
+  s = s.replace(
+    new RegExp(`^(${OPERAND})\\s+(?:as|to|in)\\s+(?:an?\\s+)?fraction\\s*$`, 'i'),
+    (_m, a: string) => `toFraction(${a})`,
+  );
+
+  s = s.replace(
+    new RegExp(`^(${OPERAND})\\s+(?:as|to|in)\\s+sci(?:entific)?(?:\\s+notation)?\\s*$`, 'i'),
+    (_m, a: string) => `sciOf(${a})`,
+  );
+
+  // "20% as dec" / "5 km as number" — strip the meaning, keep the number.
+  return s.replace(
+    new RegExp(`^(${OPERAND})\\s+(?:as|to|in)\\s+(?:a\\s+)?(?:number|decimal|dec)\\s*$`, 'i'),
+    (_m, a: string) => `asPlainNumber(${a})`,
+  );
 }
 
-/** Spelled-out arithmetic: `plus`, `times`, `divided by`. */
+/**
+ * Rate quantities: a value per unit of something.
+ *
+ * math.js models most of these as compound units already; what it cannot do
+ * is a unitless numerator (`30 bottles / week`), so the noise word is dropped
+ * and the formatter renders the resulting inverse unit as `30/week`.
+ */
+function rewriteRates(s: string, ctx: PreprocessContext): string {
+  s = s.replace(/\bper\s+(?=[A-Za-z])/gi, '/ ');
+
+  // "30 bottles / week" — the noun is a label, not a unit.
+  s = s.replace(
+    new RegExp(`\\b(${NUM})\\s+([A-Za-z]+)\\s*/`, 'g'),
+    (match, num: string, word: string) =>
+      ctx.isKnownUnit(word) || ctx.scopeNames.has(word) ? match : `${num} /`,
+  );
+
+  // "30/week as /month" — re-expressing a rate against another denominator.
+  const converted = /^(.+?)\s+(?:as|to|in)\s*\/\s*([A-Za-z]+)\s*$/i.exec(s);
+  if (converted) {
+    return `rateTo(${rewriteRates(converted[1]!, ctx)}, "${converted[2]}")`;
+  }
+
+  /*
+   * A bare unit in the denominator makes this a rate rather than a division.
+   * The numerator must carry a value, which is what keeps the `km/h` in
+   * `65 mph in km/h` from being mistaken for one.
+   */
+  return s.replace(
+    new RegExp(`(^|[\\s(])(${NUM})\\s*([A-Za-z]+)?\\s*/\\s*([A-Za-z]+)\\b(?!\\s*[\\d(])`, 'g'),
+    (match, lead: string, num: string, numerUnit: string | undefined, per: string) => {
+      if (!ctx.isKnownUnit(per) && !/^(week|month|year|day|hour|workday)s?$/i.test(per)) {
+        return match;
+      }
+      if (numerUnit && !ctx.isKnownUnit(numerUnit) && !ctx.currencies.has(numerUnit)) {
+        return match;
+      }
+      const amount = numerUnit ? `${num} ${numerUnit}` : num;
+      return `${lead}rateOf(${amount}, "${singular(per)}")`;
+    },
+  );
+}
+
+/** Rate denominators read better in the singular: `$99/week`, not `/weeks`. */
+function singular(unit: string): string {
+  return unit.replace(/s$/i, '');
+}
+
+/**
+ * Conversion phrasings beyond the plain `5 km in miles`.
+ *
+ * Each of these is gated on the tokens actually being units, so ordinary
+ * prose ("days in Berlin") is never rewritten into a broken expression.
+ */
+function rewriteConversions(s: string, ctx: PreprocessContext): string {
+  const unitish = (word: string) => ctx.isKnownUnit(word) || ctx.currencies.has(word.toUpperCase());
+
+  // "seconds in a day" / "days in 3 weeks" / "meters in 10 km"
+  const reversed = /^([A-Za-z]+)\s+(?:in|per)\s+(?:an?\s+)?(.+)$/i.exec(s);
+  if (reversed && unitish(reversed[1]!)) {
+    const rest = reversed[2]!.trim();
+    const quantity = /^[\d(]/.test(rest) ? rest : `1 ${rest}`;
+    if (/[A-Za-z]/.test(rest)) return `(${quantity}) to ${reversed[1]}`;
+  }
+
+  // Compound quantities: "5 hours 30 minutes" is a sum.
+  s = s.replace(
+    new RegExp(`\\b(${NUM})\\s*([A-Za-z]+)\\s+(${NUM})\\s*([A-Za-z]+)\\b`, 'g'),
+    (match, n1: string, u1: string, n2: string, u2: string) =>
+      unitish(u1) && unitish(u2) ? `(${n1} ${u1} + ${n2} ${u2})` : match,
+  );
+
+  // A bare pair of unit names converts one of the first into the second.
+  const pair = /^([A-Za-z]+)\s+([A-Za-z]+)$/.exec(s);
+  if (pair && unitish(pair[1]!) && unitish(pair[2]!)) {
+    return `1 ${pair[1]} to ${pair[2]}`;
+  }
+
+  return s;
+}
+
+/** Spelled-out arithmetic: `plus`, `times`, `divided by`, `to the power of`. */
 function rewriteWordOperators(s: string): string {
   return s
+    .replace(/\bremainder\s+of\s+(.+?)\s+divided\s+by\s+(.+)$/i, 'mod($1, $2)')
     .replace(/\bdivided\s+by\b/gi, '/')
     .replace(/\bmultiplied\s+by\b/gi, '*')
+    .replace(/\bto\s+the\s+power\s+of\b/gi, '^')
+    .replace(/\bsquare\s+root\s+of\b/gi, 'sqrt')
+    .replace(/\bcube\s+root\s+of\b/gi, 'cbrt')
     .replace(/\bplus\b/gi, '+')
     .replace(/\bminus\b/gi, '-')
     .replace(/\btimes\b/gi, '*');
@@ -196,5 +426,25 @@ function rewriteWordOperators(s: string): string {
 
 /** `as` and `into` are conversion keywords; math.js spells them `to`. */
 function rewriteConversionWords(s: string): string {
-  return s.replace(/\b(?:as|into)\b/gi, 'to');
+  return s.replace(/\b(?:as|into)\b/gi, 'to').replace(/\bsci\b/gi, 'sci');
+}
+
+/** Applies the first pattern that matches, and stops. */
+function replaceFirst(
+  s: string,
+  rules: Array<[RegExp, (...groups: string[]) => string]>,
+): string {
+  for (const [pattern, build] of rules) {
+    const m = pattern.exec(s);
+    if (m) return build(...m.slice(1).map((g) => g ?? ''));
+  }
+  return s;
+}
+
+function scaleBy(num: string, factor: number | undefined): string {
+  return factor ? String(Number(num) * factor) : num;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

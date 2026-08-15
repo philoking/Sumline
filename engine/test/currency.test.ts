@@ -21,8 +21,10 @@ describe('currency', () => {
     });
   }
 
-  it('adds mixed currencies in the units of the first term', () => {
-    expect(answer('$100 + €80')).toBe('$200.00');
+  // Soulver's rule: when units have no common base, the last one wins.
+  it('adds mixed currencies in the units of the last term', () => {
+    expect(answer('$100 + €80')).toBe('€160.00');
+    expect(answer('€80 + $100')).toBe('$200.00');
   });
 
   it('renders zero-decimal currencies without cents', () => {

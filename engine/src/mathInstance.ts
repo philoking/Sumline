@@ -5,6 +5,7 @@ import {
   type MathJsInstance,
 } from 'mathjs';
 import { RESERVED_CODES } from './currencies.js';
+import { registerValueTypes } from './values.js';
 import type { RateTable } from './types.js';
 
 export interface MathContext {
@@ -29,11 +30,23 @@ export function createMathContext(rates?: RateTable): MathContext {
   const currencies = new Set<string>();
 
   addEverydayUnits(math);
+  registerCurrencies(math, currencies, rates);
+  // Registered last: the value types read `currencies` to decide which unit a
+  // mixed-currency sum answers in, so the set must already be populated.
+  registerValueTypes(math, currencies);
 
-  if (!rates) return { math, currencies };
+  return { math, currencies };
+}
+
+function registerCurrencies(
+  math: MathJsInstance,
+  currencies: Set<string>,
+  rates?: RateTable,
+): void {
+  if (!rates) return;
 
   const base = rates.base.toUpperCase();
-  if (!register(math, base)) return { math, currencies };
+  if (!register(math, base)) return;
   currencies.add(base);
 
   for (const [rawCode, perBase] of Object.entries(rates.rates)) {
@@ -42,8 +55,6 @@ export function createMathContext(rates?: RateTable): MathContext {
     // rates are "X per one base", so one X is worth 1/rate of the base
     if (register(math, code, `${1 / perBase} ${base}`)) currencies.add(code);
   }
-
-  return { math, currencies };
 }
 
 /**

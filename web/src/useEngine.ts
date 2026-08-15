@@ -9,7 +9,7 @@ import { api } from './api';
  * delays an answer; the engine simply starts without currency support and
  * gains it when the rates arrive.
  */
-export function useEngine() {
+export function useEngine(options: { largeNumberNotation: boolean }) {
   const [rates, setRates] = useState<RateTable | null>(null);
 
   useEffect(() => {
@@ -28,8 +28,12 @@ export function useEngine() {
   }, []);
 
   const engine = useMemo(
-    () => createEngine(rates ? { rates } : {}),
-    [rates],
+    () =>
+      createEngine({
+        ...(rates && { rates }),
+        largeNumberNotation: options.largeNumberNotation,
+      }),
+    [rates, options.largeNumberNotation],
   );
 
   return { engine, rates };

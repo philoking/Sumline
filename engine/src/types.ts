@@ -1,3 +1,7 @@
+import type { NumberRegion } from './numberFormat.js';
+
+export type { NumberRegion };
+
 /** A snapshot of exchange rates, expressed as "how many X per one `base`". */
 export interface RateTable {
   base: string;
@@ -35,6 +39,13 @@ export interface EngineOptions {
   rates?: RateTable;
   /** Overrides "now" so date math is testable. */
   now?: Date;
+  /** Which convention number literals follow. Defaults to North America. */
+  region?: NumberRegion;
+  /**
+   * Abbreviate large plain numbers as 300k / 3.3M. On by default, matching
+   * Soulver. Never applied to currency amounts.
+   */
+  largeNumberNotation?: boolean;
 }
 
 export interface Engine {

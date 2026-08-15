@@ -17,7 +17,12 @@ const AUTOSAVE_DELAY_MS = 800;
 const LOCK_HEARTBEAT_MS = 15_000;
 
 export function App() {
-  const { engine, rates } = useEngine();
+  // Large-number notation is Soulver's default, but it is worth being able to
+  // switch off until per-line formatting exists.
+  const [siNotation, setSiNotation] = useState(
+    () => localStorage.getItem('webcalc.si') !== 'off',
+  );
+  const { engine, rates } = useEngine({ largeNumberNotation: siNotation });
   const identity = useMemo(clientIdentity, []);
 
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
@@ -237,6 +242,22 @@ export function App() {
             {rates.date}
           </span>
         )}
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => {
+            const next = !siNotation;
+            setSiNotation(next);
+            localStorage.setItem('webcalc.si', next ? 'on' : 'off');
+          }}
+          title={
+            siNotation
+              ? 'Large numbers shown as 300k — click to write them out'
+              : 'Large numbers written out — click to abbreviate'
+          }
+        >
+          {siNotation ? '300k' : '300,000'}
+        </button>
         <button
           type="button"
           className="ghost"

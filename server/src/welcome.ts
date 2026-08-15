@@ -15,13 +15,29 @@ Type on the left, answers appear on the right.
 20% of 250
 120 + 15%
 80 as a % of 200
+20 is 10% of what
+50 to 75 is what %
+10% + 20%
 
-# Units and currency
+# Units, rates and currency
 
 65 mph in km/h
 180 lbs in kg
+seconds in a day
+300 + 20 km
 100 USD in EUR
 $42.50 * 3
+$99 per week
+$20/day + $300/week
+
+# Rounding and notation
+
+1/3 to 2 dp
+37 to nearest 10
+100,000 + 200,000
+2/10 as fraction
+20/5 as multiplier
+total of 3, 4, 7 and 9
 
 # Variables and references
 

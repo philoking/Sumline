@@ -1,6 +1,6 @@
 import { classify, type Classified } from './classify.js';
 import { CalendarDate, Duration, evaluateDate, looksLikeDate } from './dates.js';
-import { formatValue } from './format.js';
+import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, type MathContext } from './mathInstance.js';
 import { preprocess } from './preprocess.js';
 import type { Engine, EngineOptions, LineResult } from './types.js';
@@ -8,13 +8,18 @@ import type { Engine, EngineOptions, LineResult } from './types.js';
 export function createEngine(options: EngineOptions = {}): Engine {
   const ctx = createMathContext(options.rates);
   const currencies = [...ctx.currencies].sort();
+  const base: FormatContext = {
+    currencies: ctx.currencies,
+    region: options.region ?? 'north-america',
+    largeNumberNotation: options.largeNumberNotation ?? true,
+  };
 
   return {
     currencies,
     rateDate: options.rates?.date ?? null,
     evaluate(source) {
       const lines = Array.isArray(source) ? source : source.split('\n');
-      return evaluateLines(lines, ctx, options.now ?? new Date());
+      return evaluateLines(lines, ctx, options.now ?? new Date(), base);
     },
     total(results) {
       const values = results
@@ -23,7 +28,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
         .filter(isAddable);
       if (values.length === 0) return '';
       const sum = addAll(ctx, values);
-      return sum === undefined ? '' : formatValue(sum, { currencies: ctx.currencies });
+      return sum === undefined ? '' : formatValue(sum, base);
     },
   };
 }
@@ -54,6 +59,7 @@ function evaluateLines(
   lines: string[],
   ctx: MathContext,
   now: Date,
+  fmt: FormatContext,
 ): LineResult[] {
   const state: SheetState = {
     scope: {},
@@ -65,7 +71,7 @@ function evaluateLines(
 
   for (const [index, raw] of lines.entries()) {
     const line = classify(raw ?? '');
-    const result = evaluateLine(line, index, state, ctx, now);
+    const result = evaluateLine(line, index, state, ctx, now, fmt);
     results.push(result);
 
     // Expose the answer to later lines as `line N` and `prev`.
@@ -94,6 +100,7 @@ function evaluateLine(
   state: SheetState,
   ctx: MathContext,
   now: Date,
+  fmt: FormatContext,
 ): LineResult {
   const base: LineResult = { index, kind: line.kind, output: '' };
   if (line.tags.length > 0) base.tags = line.tags;
@@ -109,11 +116,11 @@ function evaluateLine(
       return base;
 
     case 'directive':
-      return { ...base, ...runDirective(line, state, ctx) };
+      return { ...base, ...runDirective(line, state, ctx, fmt) };
 
     case 'assignment':
     case 'expression': {
-      const computed = compute(line.body, state, ctx, now);
+      const computed = compute(line.body, state, ctx, now, fmt);
       if (computed.error) {
         return looksComputational(line.body)
           ? { ...base, error: computed.error }
@@ -141,6 +148,7 @@ function compute(
   state: SheetState,
   ctx: MathContext,
   now: Date,
+  fmt: FormatContext,
 ): Computed {
   if (body.trim() === '') return { output: '' };
 
@@ -151,23 +159,25 @@ function compute(
     if (dateValue) {
       return {
         value: dateValue,
-        output: formatValue(dateValue, { currencies: ctx.currencies }),
+        output: formatValue(dateValue, fmt),
       };
     }
   }
 
-  const { expr, hint } = preprocess(body, {
+  const { expr, hint, decimals } = preprocess(body, {
     currencies: ctx.currencies,
     isKnownUnit: (word) => isKnownUnit(ctx, word),
     scopeNames: new Set(state.aliases.keys()),
+    region: fmt.region,
   });
 
   const resolved = applyAliases(expr, state.aliases);
   const format = (value: unknown): Computed => ({
     value,
     output: formatValue(value, {
-      currencies: ctx.currencies,
+      ...fmt,
       ...(hint && { hint }),
+      ...(decimals !== undefined && { decimals }),
     }),
   });
 
@@ -176,12 +186,12 @@ function compute(
     if (value === undefined || typeof value === 'function') return { output: '' };
     return format(value);
   } catch (error) {
-    // "lunch $12 #food" is a labelled amount, not a broken expression. If the
-    // only problem was an unknown leading word, drop the label and retry.
-    const withoutLabel = stripLabel(resolved);
-    if (withoutLabel) {
+    // "I spent $128 + $45 on clothes" is a note with a sum in it, not a broken
+    // expression. If the only problem was surrounding prose, drop it and retry.
+    const withoutProse = stripProse(resolved, (word) => isKnownWord(ctx, state, word));
+    if (withoutProse) {
       try {
-        return format(ctx.math.evaluate(withoutLabel, state.scope));
+        return format(ctx.math.evaluate(withoutProse, state.scope));
       } catch {
         // fall through to the original error, which is the more useful one
       }
@@ -190,25 +200,53 @@ function compute(
   }
 }
 
+/** Whether a bare word means something to the engine, rather than being prose. */
+function isKnownWord(ctx: MathContext, state: SheetState, word: string): boolean {
+  return (
+    isKnownUnit(ctx, word) ||
+    ctx.currencies.has(word.toUpperCase()) ||
+    state.aliases.has(word.toLowerCase()) ||
+    word.startsWith('__')
+  );
+}
+
 /**
- * Removes a leading run of plain words from an expression, so a line written
- * the way people actually keep notes still produces a number.
+ * Strips the words around an expression, so a line written the way people
+ * actually keep notes still produces a number.
  *
- * Returns null when there is no label to strip or nothing numeric behind it.
+ * Both ends are trimmed: a leading label (`lunch $12`) and a trailing aside
+ * (`... on clothes`). Only words the engine does not recognise are removed, so
+ * units and variables are never mistaken for commentary.
  */
-function stripLabel(expr: string): string | null {
-  const m = /^[A-Za-z_][\w']*(?:\s+[A-Za-z_][\w']*)*\s+(.+)$/.exec(expr.trim());
-  const rest = m?.[1]?.trim();
-  if (!rest || !/\d/.test(rest)) return null;
-  // A leading word followed by an operator is arithmetic on a variable that
-  // genuinely failed; only a bare "label value" shape is worth retrying.
-  return /^[+\-*/^)]/.test(rest) ? null : rest;
+function stripProse(expr: string, isKnown: (word: string) => boolean): string | null {
+  const words = /^([A-Za-z_][\w']*(?:\s+[A-Za-z_][\w']*)*)\s+(.+)$/.exec(expr.trim());
+  let rest = expr.trim();
+
+  if (words && !words[1]!.split(/\s+/).some(isKnown)) {
+    const tail = words[2]!.trim();
+    // A leading word followed by an operator is arithmetic on a variable that
+    // genuinely failed; only a "label value" shape is worth retrying.
+    if (/\d/.test(tail) && !/^[+\-*/^)]/.test(tail)) rest = tail;
+  }
+
+  // Drop trailing words one at a time, stopping at the first that means
+  // something — otherwise the `USD` in "$45 on clothes" ends the scan early.
+  const tokens = rest.split(/\s+/);
+  while (tokens.length > 1) {
+    const last = tokens[tokens.length - 1]!;
+    if (!/^[A-Za-z_][\w']*$/.test(last) || isKnown(last)) break;
+    tokens.pop();
+  }
+  rest = tokens.join(' ');
+
+  return rest !== expr.trim() && /\d/.test(rest) ? rest : null;
 }
 
 function runDirective(
   line: Classified,
   state: SheetState,
   ctx: MathContext,
+  fmt: FormatContext,
 ): Partial<LineResult> {
   const values = line.directiveTag
     ? (state.tagged.get(line.directiveTag) ?? [])
@@ -216,7 +254,7 @@ function runDirective(
 
   if (line.directive === 'count') {
     const count = values.length;
-    return { value: count, output: formatValue(count, { currencies: ctx.currencies }) };
+    return { value: count, output: formatValue(count, fmt) };
   }
 
   if (values.length === 0) return { output: '' };
@@ -233,7 +271,7 @@ function runDirective(
     }
   }
 
-  const output = formatValue(total, { currencies: ctx.currencies });
+  const output = formatValue(total, fmt);
 
   // An untagged subtotal closes its section, so stacked totals do not
   // double-count the lines above them.
