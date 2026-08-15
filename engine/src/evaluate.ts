@@ -1,15 +1,27 @@
 import { classify, type Classified } from './classify.js';
-import { CalendarDate, Duration, evaluateDate, looksLikeDate } from './dates.js';
+import {
+  CalendarDate,
+  FrameCount,
+  TemporalNumber,
+  Timecode,
+  Timespan,
+} from './temporal/types.js';
+import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, type MathContext } from './mathInstance.js';
 import { preprocess } from './preprocess.js';
 import type { Engine, EngineOptions, LineResult } from './types.js';
 
 export function createEngine(options: EngineOptions = {}): Engine {
-  const ctx = createMathContext(options.rates);
+  const ctx = createMathContext(
+    options.rates,
+    new Set(options.holidays ?? []),
+    options.fps ?? 24,
+  );
   const currencies = [...ctx.currencies].sort();
   const base: FormatContext = {
     currencies: ctx.currencies,
+    now: options.now ?? new Date(),
     region: options.region ?? 'north-america',
     largeNumberNotation: options.largeNumberNotation ?? true,
   };
@@ -152,15 +164,16 @@ function compute(
 ): Computed {
   if (body.trim() === '') return { output: '' };
 
-  // Date expressions never reach math.js; the gate keeps ordinary arithmetic
-  // out of this branch.
-  if (looksLikeDate(body)) {
-    const dateValue = evaluateDate(body, now);
-    if (dateValue) {
-      return {
-        value: dateValue,
-        output: formatValue(dateValue, fmt),
-      };
+  // Dates, times and durations never reach math.js; the gate keeps ordinary
+  // arithmetic out of this branch.
+  if (looksTemporal(body)) {
+    const temporal = evaluateTemporal(body, {
+      now,
+      holidays: ctx.holidays,
+      fps: ctx.fps,
+    });
+    if (temporal !== null && temporal !== undefined) {
+      return { value: temporal, output: formatValue(temporal, fmt) };
     }
   }
 
@@ -324,7 +337,15 @@ function isKnownUnit(ctx: MathContext, word: string): boolean {
 /** Only numbers and units take part in totals; dates and text do not. */
 function isAddable(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value);
-  if (value instanceof CalendarDate || value instanceof Duration) return false;
+  if (
+    value instanceof CalendarDate ||
+    value instanceof Timespan ||
+    value instanceof Timecode ||
+    value instanceof FrameCount ||
+    value instanceof TemporalNumber
+  ) {
+    return false;
+  }
   return (
     typeof value === 'object' &&
     value !== null &&

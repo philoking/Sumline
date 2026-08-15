@@ -12,6 +12,10 @@ export interface MathContext {
   math: MathJsInstance;
   /** ISO codes registered as units on this instance. */
   currencies: Set<string>;
+  /** Public holidays as `YYYY-MM-DD`, excluded from workday calculations. */
+  holidays: ReadonlySet<string>;
+  /** Default frame rate for timecodes that do not name one. */
+  fps: number;
 }
 
 /**
@@ -22,7 +26,11 @@ export interface MathContext {
  * free. The instance is disposable: refreshing rates means building a new one,
  * which keeps the engine free of mutable global state.
  */
-export function createMathContext(rates?: RateTable): MathContext {
+export function createMathContext(
+  rates?: RateTable,
+  holidays: ReadonlySet<string> = new Set(),
+  fps = 24,
+): MathContext {
   // `all` is typed as optionally undefined by mathjs, but is always populated.
   const math = create(all as FactoryFunctionMap, {
     number: 'number',
@@ -35,7 +43,7 @@ export function createMathContext(rates?: RateTable): MathContext {
   // mixed-currency sum answers in, so the set must already be populated.
   registerValueTypes(math, currencies);
 
-  return { math, currencies };
+  return { math, currencies, holidays, fps };
 }
 
 function registerCurrencies(

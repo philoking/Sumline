@@ -48,8 +48,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface HolidayTable {
+  country: string;
+  dates: string[];
+  years: number[];
+  stale?: boolean;
+}
+
 export const api = {
   rates: () => request<RateTable>('/api/rates'),
+
+  holidays: () => request<HolidayTable>('/api/holidays'),
 
   listSheets: () =>
     request<{ sheets: SheetSummary[] }>('/api/sheets').then((r) => r.sheets),

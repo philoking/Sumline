@@ -1,5 +1,17 @@
 import { CODE_TO_SYMBOL, ZERO_DECIMAL_CURRENCIES } from './currencies.js';
-import { CalendarDate, Duration } from './dates.js';
+import {
+  CalendarDate,
+  FrameCount,
+  TemporalNumber,
+  Timecode,
+  Timespan,
+} from './temporal/types.js';
+import {
+  formatFrameCount,
+  formatMoment,
+  formatTimecode,
+  formatTimespan,
+} from './temporal/format.js';
 import {
   REGION_SEPARATORS,
   group,
@@ -12,6 +24,8 @@ import { Multiplier, Percentage, Rate } from './values.js';
 
 export interface FormatContext {
   currencies: Set<string>;
+  /** Reference point for relative wording like "Tomorrow at 9:00 am". */
+  now: Date;
   region: NumberRegion;
   largeNumberNotation: boolean;
   /** Fixed number of decimal places requested by the line itself. */
@@ -20,22 +34,31 @@ export interface FormatContext {
   hint?: 'percent';
 }
 
-const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTH_NAMES = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
 export function defaultContext(currencies: Set<string>): FormatContext {
-  return { currencies, region: 'north-america', largeNumberNotation: true };
+  return {
+    currencies,
+    now: new Date(),
+    region: 'north-america',
+    largeNumberNotation: true,
+  };
 }
 
 /** Renders an evaluated value for the answer column. */
 export function formatValue(value: unknown, ctx: FormatContext): string {
   if (value === null || value === undefined) return '';
 
-  if (value instanceof CalendarDate) return formatDate(value);
-  if (value instanceof Duration) return formatDuration(value, ctx);
+  if (value instanceof CalendarDate) return formatMoment(value, ctx.now);
+  if (value instanceof Timespan) {
+    return formatTimespan(value, (n) => formatNumber(n, { ...ctx, largeNumberNotation: false }));
+  }
+  if (value instanceof Timecode) return formatTimecode(value);
+  if (value instanceof TemporalNumber) {
+    // Never abbreviated: `1.79G` is not a readable timestamp.
+    return formatNumber(value.value, { ...ctx, largeNumberNotation: false });
+  }
+  if (value instanceof FrameCount) {
+    return formatFrameCount(value, (n) => formatNumber(n, ctx));
+  }
   if (value instanceof Percentage) return `${formatNumber(value.ratio * 100, ctx)}%`;
   if (value instanceof Multiplier) return `${formatNumber(value.factor, ctx)}x`;
   if (value instanceof Rate) return `${formatValue(value.amount, ctx)}/${value.per}`;
@@ -196,20 +219,6 @@ export function formatNumber(value: number, ctx: FormatContext): string {
   const sign = whole.startsWith('-') ? '-' : '';
   const grouped = group(whole.replace('-', ''), separators);
   return `${sign}${join(grouped, fraction, separators)}`;
-}
-
-function formatDate(value: CalendarDate): string {
-  const d = value.date;
-  return `${WEEKDAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-function formatDuration(value: Duration, ctx: FormatContext): string {
-  const amount = formatNumber(round(value.amount, 2), {
-    ...ctx,
-    largeNumberNotation: false,
-  });
-  const plural = Math.abs(value.amount) === 1 ? value.unit : `${value.unit}s`;
-  return `${amount} ${plural}`;
 }
 
 function round(value: number, decimals: number): number {

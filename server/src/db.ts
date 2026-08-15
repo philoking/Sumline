@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS rates (
   fetched_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS holidays (
+  country    TEXT PRIMARY KEY,
+  payload    TEXT NOT NULL,
+  fetched_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS sheets_updated_at ON sheets (updated_at DESC);
 `;
 
@@ -238,6 +244,23 @@ export class Store {
       .get(base) as unknown as { payload: string; fetched_at: string } | undefined;
     if (!row) return null;
     return { payload: JSON.parse(row.payload), fetchedAt: row.fetched_at };
+  }
+
+  getHolidays(country: string): { payload: unknown; fetchedAt: string } | null {
+    const row = this.db
+      .prepare('SELECT payload, fetched_at FROM holidays WHERE country = ?')
+      .get(country) as unknown as { payload: string; fetched_at: string } | undefined;
+    if (!row) return null;
+    return { payload: JSON.parse(row.payload), fetchedAt: row.fetched_at };
+  }
+
+  saveHolidays(country: string, payload: unknown): void {
+    this.db
+      .prepare(
+        `INSERT INTO holidays (country, payload, fetched_at) VALUES (?, ?, ?)
+         ON CONFLICT(country) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
+      )
+      .run(country, JSON.stringify(payload), new Date().toISOString());
   }
 
   saveRates(base: string, payload: unknown): void {

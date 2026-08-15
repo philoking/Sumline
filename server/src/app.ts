@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { Store, VersionConflictError } from './db.js';
 import { RatesService, type RateFetcher } from './rates.js';
+import { HolidayService, type HolidayFetcher } from './holidays.js';
 import { WELCOME_SHEET } from './welcome.js';
 
 export interface AppOptions {
@@ -10,6 +11,9 @@ export interface AppOptions {
   /** Absolute path to the built web assets, or null to serve API only. */
   staticRoot?: string | null;
   rateFetcher?: RateFetcher;
+  holidayFetcher?: HolidayFetcher;
+  /** ISO country code whose public holidays apply to workday maths. */
+  holidayCountry?: string;
   /** Skip the background refresh timer; tests drive refreshes by hand. */
   autoRefreshRates?: boolean;
   rateRefreshIntervalMs?: number;
@@ -22,6 +26,7 @@ export interface App {
   server: FastifyInstance;
   store: Store;
   rates: RatesService;
+  holidays: HolidayService;
 }
 
 const DEFAULT_LOCK_TTL_MS = 45_000;
@@ -43,6 +48,16 @@ export function buildApp(options: AppOptions): App {
     },
   });
 
+  const holidays = new HolidayService({
+    store,
+    ...(options.holidayCountry && { country: options.holidayCountry }),
+    ...(options.holidayFetcher && { fetcher: options.holidayFetcher }),
+    log: {
+      info: (msg) => server.log.info(msg),
+      warn: (msg) => server.log.warn(msg),
+    },
+  });
+
   if (options.seedWelcomeSheet !== false && store.listSheets().length === 0) {
     store.createSheet('Welcome', WELCOME_SHEET);
   }
@@ -53,6 +68,8 @@ export function buildApp(options: AppOptions): App {
   }));
 
   server.get('/api/rates', async () => rates.current());
+
+  server.get('/api/holidays', async () => holidays.current());
 
   server.get('/api/sheets', async () => ({ sheets: store.listSheets() }));
 
@@ -151,12 +168,16 @@ export function buildApp(options: AppOptions): App {
     });
   }
 
-  if (options.autoRefreshRates !== false) rates.start();
+  if (options.autoRefreshRates !== false) {
+    rates.start();
+    holidays.start();
+  }
 
   server.addHook('onClose', async () => {
     rates.stop();
+    holidays.stop();
     store.close();
   });
 
-  return { server, store, rates };
+  return { server, store, rates, holidays };
 }

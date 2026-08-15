@@ -46,6 +46,10 @@ export interface EngineOptions {
    * Soulver. Never applied to currency amounts.
    */
   largeNumberNotation?: boolean;
+  /** Public holidays as `YYYY-MM-DD`, excluded from workday calculations. */
+  holidays?: readonly string[];
+  /** Default frame rate for timecodes that do not name one. */
+  fps?: number;
 }
 
 export interface Engine {

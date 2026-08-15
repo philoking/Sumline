@@ -10,6 +10,7 @@ const staticRoot =
 const { server } = buildApp({
   dbPath: resolve(dataDir, 'webcalc.db'),
   staticRoot,
+  holidayCountry: process.env['HOLIDAY_COUNTRY'] ?? 'US',
   logger: true,
 });
 

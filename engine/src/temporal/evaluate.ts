@@ -1,0 +1,601 @@
+import {
+  CalendarDate,
+  FrameCount,
+  Timecode,
+  TemporalNumber,
+  Timespan,
+  decomposeSeconds,
+  type SpanUnit,
+} from './types.js';
+import {
+  WEEKDAY_NAMES,
+  addDays,
+  addMonths,
+  addWorkdays,
+  countWorkdays,
+  daysInMonth,
+  daysInQuarter,
+  diffInDays,
+  diffInSeconds,
+  hoursAndMinutes,
+  isoDate,
+  midpoint,
+  spanBetween,
+  startOfDay,
+  weekNumber,
+  type HolidaySet,
+} from './calendar.js';
+import {
+  MONTH_PATTERN,
+  SPAN_UNIT_PATTERN,
+  WEEKDAY_PATTERN,
+  parseClockTime,
+  parseDate,
+  parseLaptime,
+  parseMoment,
+  parseSpan,
+  parseTimecode,
+  toSpanUnit,
+} from './parse.js';
+import { resolveZone, wallClockIn, zoneOffsetMinutes } from './zones.js';
+
+export interface TemporalOptions {
+  now: Date;
+  holidays: HolidaySet;
+  /** Default frame rate for timecodes with none given. */
+  fps: number;
+}
+
+export type TemporalValue =
+  | CalendarDate
+  | Timespan
+  | Timecode
+  | FrameCount
+  | TemporalNumber
+  /** Weekday names and ISO8601 strings are answers in their own right. */
+  | string;
+
+const DATE_TOKEN = new RegExp(
+  String.raw`\b(?:today|tomorrow|yesterday|now|timestamp|iso8601|iso|timespan|laptime|time|date\b|workdays?|weekdays?|business\s+days?|week\s+(?:of|number)|fps|frames?|` +
+    String.raw`\d{4}-\d{1,2}-\d{1,2}|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm)|` +
+    String.raw`${MONTH_PATTERN}|${WEEKDAY_PATTERN}|` +
+    String.raw`(?:next|last|this)\s+(?:week|month|year)|days?\s+(?:until|till|since|from|between|in|ago)|` +
+    String.raw`\d+\s*(?:${SPAN_UNIT_PATTERN})\b|\d+\s*[hms]\b\s*\d+\s*[hms]\b)`,
+  'i',
+);
+
+/** Cheap gate so ordinary arithmetic never reaches the temporal evaluator. */
+export function looksTemporal(input: string): boolean {
+  return DATE_TOKEN.test(input);
+}
+
+/**
+ * Evaluates a line as a date, time or duration, or returns null to let the
+ * expression parser have it.
+ *
+ * The order of the rules is the specification: each is more specific than the
+ * one below it, and moving any of them changes what a line means.
+ */
+export function evaluateTemporal(
+  input: string,
+  options: TemporalOptions,
+): TemporalValue | null {
+  const s = input.trim();
+  if (!s) return null;
+
+  return (
+    timecodeExpression(s, options) ??
+    laptimeExpression(s) ??
+    conversion(s, options) ??
+    zoneQuery(s, options) ??
+    countdown(s, options) ??
+    calendarFacts(s, options) ??
+    interval(s, options) ??
+    offsetExpression(s, options) ??
+    bareMoment(s, options)
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Timecodes and laptimes
+ * ------------------------------------------------------------------ */
+
+function timecodeExpression(s: string, o: TemporalOptions): TemporalValue | null {
+  const rate = /(?:at|@)\s*(\d+(?:\.\d+)?)\s*fps/i.exec(s);
+  const fps = rate ? Number(rate[1]) : o.fps;
+  const body = rate ? s.replace(rate[0], ' ') : s;
+
+  if (!/\d+:\d+:\d+:\d+/.test(body) && !/\bframes?\b/i.test(body)) return null;
+
+  // "43,440 frames @ 24 fps" — a count of frames becomes a position.
+  const fromFrames = /^\s*([\d,]+(?:\.\d+)?)\s*frames?\s*$/i.exec(body);
+  if (fromFrames && rate) {
+    return new Timecode(Number(fromFrames[1]!.replace(/,/g, '')), fps);
+  }
+
+  const terms = body.split(/\s*([+-])\s*/).filter((part) => part.trim() !== '');
+  const first = readTimecodeTerm(terms[0] ?? '', fps);
+  if (!first) return null;
+
+  let frames = first;
+  for (let i = 1; i < terms.length; i += 2) {
+    const sign = terms[i] === '-' ? -1 : 1;
+    const operand = readTimecodeTerm(terms[i + 1] ?? '', fps);
+    if (operand === null) return null;
+    frames += sign * operand;
+  }
+
+  if (/\bin\s+frames\s*$/i.test(s)) return new FrameCount(Math.round(frames));
+  return new Timecode(Math.round(frames), fps);
+}
+
+/** A timecode, a frame count, or a written span, all measured in frames. */
+function readTimecodeTerm(text: string, fps: number): number | null {
+  const trimmed = text.replace(/\bin\s+frames\b/i, '').trim();
+  if (!trimmed) return null;
+
+  const code = parseTimecode(trimmed, fps);
+  if (code) return code.frames;
+
+  const frames = /^([\d,]+)\s*frames?$/i.exec(trimmed);
+  if (frames) return Number(frames[1]!.replace(/,/g, ''));
+
+  const span = parseSpan(trimmed);
+  if (span) {
+    const extra = span.parts
+      .filter((part) => part.unit === 'frame')
+      .reduce((total, part) => total + part.value, 0);
+    const seconds = span.parts
+      .filter((part) => part.unit !== 'frame')
+      .reduce((total, part) => total + part.value * secondsIn(part.unit), 0);
+    return seconds * fps + extra;
+  }
+  return null;
+}
+
+function secondsIn(unit: SpanUnit): number {
+  return { year: 31_556_952, month: 2_629_746, week: 604_800, day: 86_400, workday: 86_400, hour: 3600, minute: 60, second: 1, frame: 0 }[unit];
+}
+
+function laptimeExpression(s: string): TemporalValue | null {
+  if (!/\d+:\d+:\d+/.test(s) || /\d+:\d+:\d+:\d+/.test(s)) return null;
+
+  const terms = s.split(/\s*([+-])\s*/).filter((part) => part.trim() !== '');
+  const first = parseLaptime(terms[0] ?? '');
+  if (!first) return null;
+
+  let seconds = first.seconds;
+  for (let i = 1; i < terms.length; i += 2) {
+    const sign = terms[i] === '-' ? -1 : 1;
+    const operand = parseLaptime(terms[i + 1] ?? '') ?? parseSpan(terms[i + 1] ?? '');
+    if (!operand) return null;
+    seconds += sign * operand.seconds;
+  }
+  return decomposeSeconds(seconds).as('lap');
+}
+
+/* ------------------------------------------------------------------ *
+ * Conversions
+ * ------------------------------------------------------------------ */
+
+function conversion(s: string, o: TemporalOptions): TemporalValue | null {
+  // Greedy on the left so the *last* keyword splits the line:
+  // "10 March to 17 March in workdays" is a range converted to workdays.
+  const as = /^(.+)\s+(?:as|to|in)\s+(.+?)\s*$/i.exec(s);
+  if (!as) return null;
+  const [, left, right] = as as unknown as [string, string, string];
+  const target = right.trim().toLowerCase();
+
+  if (target === 'timespan') {
+    const span = readSpan(left, o);
+    return span ? decomposeSeconds(span.seconds) : null;
+  }
+
+  if (target === 'laptime') {
+    const span = readSpan(left, o);
+    return span ? decomposeSeconds(span.seconds).as('lap') : null;
+  }
+
+  if (target === 'timestamp' || target === 'unix' || target === 'epoch') {
+    const moment = readMoment(left, o);
+    return moment ? new TemporalNumber(Math.round(moment.date.getTime() / 1000)) : null;
+  }
+
+  if (target === 'iso8601' || target === 'iso') {
+    const moment = readMoment(left, o);
+    return moment ? isoString(moment) : null;
+  }
+
+  if (target === 'date' || target === 'a date') {
+    const stamp = /^[\d.]+$/.exec(left.trim().replace(/,/g, ''));
+    if (stamp) {
+      const value = Number(stamp[0]);
+      // 13 digits is milliseconds, 10 is seconds.
+      const ms = value > 1e11 ? value : value * 1000;
+      return new CalendarDate(new Date(ms), 'second', undefined, 'datetime');
+    }
+    const moment = readMoment(left, o);
+    return moment ? moment.displayedAs('datetime') : null;
+  }
+
+  // "12.5 minutes in minutes and seconds"
+  const pair = /^(\w+)\s+and\s+(\w+)$/.exec(target);
+  if (pair) {
+    const span = readSpan(left, o);
+    const big = toSpanUnit(pair[1]!);
+    const small = toSpanUnit(pair[2]!);
+    if (span && big && small) return splitInto(span.seconds, big, small);
+  }
+
+  // "10 March to 17 March in workdays"
+  if (/^(?:workdays?|weekdays?|business\s+days?)$/.test(target)) {
+    const between = readRange(left, o);
+    if (between) {
+      return Timespan.of(
+        countWorkdays(between[0].date, between[1].date, o.holidays),
+        'workday',
+      );
+    }
+  }
+
+  const unit = toSpanUnit(target);
+  if (unit) {
+    const between = readRange(left, o);
+    if (between) return inUnit(between[0], between[1], unit, o);
+    const span = readSpan(left, o);
+    if (span) return Timespan.of(round(span.seconds / secondsIn(unit), 6), unit);
+  }
+
+  return null;
+}
+
+function splitInto(seconds: number, big: SpanUnit, small: SpanUnit): Timespan {
+  const bigWhole = Math.floor(seconds / secondsIn(big));
+  const rest = seconds - bigWhole * secondsIn(big);
+  return new Timespan([
+    { value: bigWhole, unit: big },
+    { value: round(rest / secondsIn(small), 3), unit: small },
+  ]);
+}
+
+/* ------------------------------------------------------------------ *
+ * Time zones
+ * ------------------------------------------------------------------ */
+
+function zoneQuery(s: string, o: TemporalOptions): TemporalValue | null {
+  const difference =
+    /^(?:time\s+)?difference\s+between\s+(.+?)\s+(?:and|&)\s+(.+?)\s*$/i.exec(s);
+  if (difference) {
+    const a = resolveZone(difference[1]!);
+    const b = resolveZone(difference[2]!);
+    if (a && b) {
+      const minutes = zoneOffsetMinutes(o.now, b) - zoneOffsetMinutes(o.now, a);
+      return hoursAndMinutes(minutes * 60);
+    }
+  }
+
+  // "6pm Sydney in Chicago" / "2am PST to GMT" — the same instant, elsewhere.
+  const moved = /^(.+?)\s+(?:to|in)\s+([A-Za-z][A-Za-z\s+\-0-9]*)$/i.exec(s);
+  if (moved) {
+    const zone = resolveZone(moved[2]!);
+    const moment = parseMoment(moved[1]!, o.now);
+    if (zone && moment) {
+      return new CalendarDate(moment.date, 'minute', zone, 'time');
+    }
+  }
+
+  const timeIn = /^(?:the\s+)?(time|date)\s+in\s+(.+?)\s*$/i.exec(s);
+  if (timeIn) {
+    const zone = resolveZone(timeIn[2]!);
+    if (zone) return zonedNow(zone, o, timeIn[1]!.toLowerCase() === 'date' ? 'date' : 'time');
+  }
+
+  const placeTime = /^(.+?)\s+(time|date)\s*$/i.exec(s);
+  if (placeTime) {
+    const zone = resolveZone(placeTime[1]!);
+    if (zone) return zonedNow(zone, o, placeTime[2]!.toLowerCase() === 'date' ? 'date' : 'time');
+  }
+
+  return null;
+}
+
+/** The wall clock in a zone right now, as a moment that renders in that zone. */
+function zonedNow(zone: string, o: TemporalOptions, showAs: 'time' | 'date'): CalendarDate {
+  return new CalendarDate(o.now, 'minute', zone, showAs);
+}
+
+/* ------------------------------------------------------------------ *
+ * Countdowns, facts and intervals
+ * ------------------------------------------------------------------ */
+
+function countdown(s: string, o: TemporalOptions): TemporalValue | null {
+  const m = new RegExp(
+    String.raw`^(${SPAN_UNIT_PATTERN})\s+(until|till|to|since|from)\s+(.+)$`,
+    'i',
+  ).exec(s);
+  if (!m) return null;
+
+  const unit = toSpanUnit(m[1]!);
+  const target = readMoment(m[3]!, o);
+  if (!unit || !target) return null;
+
+  const backwards = /since|from/i.test(m[2]!);
+  const [from, to] = backwards
+    ? [target, new CalendarDate(o.now)]
+    : [new CalendarDate(o.now), target];
+  return inUnit(from, to, unit, o);
+}
+
+function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
+  if (/^current\s+timestamp$/i.test(s)) {
+    return new TemporalNumber(Math.round(o.now.getTime() / 1000));
+  }
+
+  if (/^week\s+(?:of\s+(?:the\s+)?year|number)$/i.test(s)) {
+    return new TemporalNumber(weekNumber(o.now));
+  }
+
+  const weekOn = /^week\s+number\s+(?:on|of|for)\s+(.+)$/i.exec(s);
+  if (weekOn) {
+    const date = parseDate(weekOn[1]!, o.now);
+    if (date) return new TemporalNumber(weekNumber(date.date));
+  }
+
+  const dow = new RegExp(
+    String.raw`^(?:day\s+of\s+the\s+week|weekday|day)\s+(?:on|of|for)\s+(.+)$`,
+    'i',
+  ).exec(s);
+  if (dow) {
+    const date = parseDate(dow[1]!, o.now);
+    if (date) return WEEKDAY_NAMES[date.date.getDay()] ?? null;
+  }
+
+  const quarter = /^days\s+in\s+q([1-4])(?:\s+(\d{4}))?$/i.exec(s);
+  if (quarter) {
+    const year = quarter[2] ? Number(quarter[2]) : o.now.getFullYear();
+    return Timespan.of(daysInQuarter(year, Number(quarter[1])), 'day');
+  }
+
+  const inMonth = new RegExp(`^days\\s+in\\s+(${MONTH_PATTERN})(?:\\s+(\\d{4}))?$`, 'i').exec(s);
+  if (inMonth) {
+    const anchor = parseDate(`${inMonth[1]} 1${inMonth[2] ? ` ${inMonth[2]}` : ''}`, o.now);
+    if (anchor) {
+      return Timespan.of(
+        daysInMonth(anchor.date.getFullYear(), anchor.date.getMonth()),
+        'day',
+      );
+    }
+  }
+
+  const workdaysIn = new RegExp(
+    String.raw`^(?:workdays?|weekdays?|business\s+days?)\s+in\s+(.+)$`,
+    'i',
+  ).exec(s);
+  if (workdaysIn) {
+    const span = parseSpan(workdaysIn[1]!);
+    if (span) {
+      const end = addDays(startOfDay(o.now), Math.round(span.seconds / 86_400));
+      return Timespan.of(countWorkdays(startOfDay(o.now), end, o.holidays), 'workday');
+    }
+  }
+
+  const workdaysFrom = new RegExp(
+    String.raw`^(?:workdays?|weekdays?|business\s+days?)\s+(?:from|between)\s+(.+?)\s+(?:to|and|until)\s+(.+)$`,
+    'i',
+  ).exec(s);
+  if (workdaysFrom) {
+    const from = parseDate(workdaysFrom[1]!, o.now);
+    const to = parseDate(workdaysFrom[2]!, o.now);
+    if (from && to) {
+      return Timespan.of(countWorkdays(from.date, to.date, o.holidays), 'workday');
+    }
+  }
+
+  const mid = /^(?:mid ?point|halfway)\s+between\s+(.+?)\s+and\s+(.+)$/i.exec(s);
+  if (mid) {
+    const a = readMoment(mid[1]!, o);
+    const b = readMoment(mid[2]!, o);
+    if (a && b) return midpoint(a, b);
+  }
+
+  return null;
+}
+
+function interval(s: string, o: TemporalOptions): TemporalValue | null {
+  const days = /^days\s+between\s+(.+?)\s+and\s+(.+)$/i.exec(s);
+  if (days) {
+    const a = parseDate(days[1]!, o.now);
+    const b = parseDate(days[2]!, o.now);
+    if (a && b) return Timespan.of(Math.abs(diffInDays(a.date, b.date)), 'day');
+  }
+
+  const through = /^(.+?)\s+through\s+(.+?)(?:\s+in\s+days)?\s*$/i.exec(s);
+  if (through) {
+    const a = parseDate(through[1]!, o.now);
+    const b = parseDate(through[2]!, o.now);
+    // "through" includes both endpoints, so April 1 through April 30 is 30 days.
+    if (a && b) return Timespan.of(Math.abs(diffInDays(a.date, b.date)) + 1, 'day');
+  }
+
+  const range = readRange(s, o);
+  if (range) return between(range[0], range[1]);
+
+  return null;
+}
+
+/** `A to B`, for dates, moments or zones. */
+function readRange(s: string, o: TemporalOptions): [CalendarDate, CalendarDate] | null {
+  const to = /^(.+?)\s+(?:to|until|till)\s+(.+?)\s*$/i.exec(s);
+  if (to) {
+    const a = readMoment(to[1]!, o);
+    const bZone = resolveZone(to[2]!);
+    // "6pm Sydney in Chicago" — the right side names a zone, not a moment.
+    if (a && bZone) {
+      return [a, new CalendarDate(a.date, 'minute', bZone, 'time')];
+    }
+    const b = readMoment(to[2]!, o);
+    if (a && b) return [a, b];
+  }
+  return null;
+}
+
+/**
+ * `A - B` between two moments.
+ *
+ * The minus sign is genuinely ambiguous between a range and a subtraction, as
+ * Soulver's documentation acknowledges. Both readings produce a duration, so
+ * the absolute difference is the honest answer either way.
+ */
+function between(a: CalendarDate, b: CalendarDate): TemporalValue {
+  if (b.zone && !a.zone) return b;
+  // An interval is a magnitude: which endpoint was typed first does not
+  // change how long it is.
+  if (!a.hasTime && !b.hasTime && b.date < a.date) [a, b] = [b, a];
+  if (a.hasTime && b.hasTime) {
+    let seconds = diffInSeconds(a.date, b.date);
+    // Clock times with no date wrap to the next day rather than going negative.
+    if (seconds < 0) seconds += 86_400;
+    return hoursAndMinutes(seconds);
+  }
+  return spanBetween(a.date, b.date);
+}
+
+/* ------------------------------------------------------------------ *
+ * Offsets
+ * ------------------------------------------------------------------ */
+
+function offsetExpression(s: string, o: TemporalOptions): TemporalValue | null {
+  // "3 weeks after March 14" / "28 days before March 12"
+  const relative = new RegExp(`^(.+?)\\s+(after|before|from|ago)\\b\\s*(.*)$`, 'i').exec(s);
+  if (relative) {
+    const span = parseSpan(relative[1]!);
+    const word = relative[2]!.toLowerCase();
+    const anchorText = relative[3]!.trim();
+    if (span) {
+      const sign = word === 'before' || word === 'ago' ? -1 : 1;
+      const anchor =
+        anchorText === '' || /^now$/i.test(anchorText)
+          ? new CalendarDate(word === 'ago' || word === 'from' ? startOfDay(o.now) : o.now)
+          : readMoment(anchorText, o);
+      if (anchor) return applySpan(anchor, span, sign, o);
+    }
+  }
+
+  // "today + 3 weeks", "April 1, 2019 − 3 months 5 days"
+  // Whitespace on both sides is required, otherwise the dashes inside
+  // `2026-01-31` would be read as subtraction.
+  const signed = /^(.+?)\s+([+-])\s+(.+)$/.exec(s);
+  if (signed) {
+    const anchor = readMoment(signed[1]!, o);
+    const span = parseSpan(signed[3]!);
+    if (anchor && span) {
+      return applySpan(anchor, span, signed[2] === '-' ? -1 : 1, o);
+    }
+    // Two moments with a minus between them is an interval.
+    if (anchor && signed[2] === '-') {
+      const other = readMoment(signed[3]!, o);
+      if (other) return between(anchor, other);
+    }
+  }
+
+  return null;
+}
+
+function applySpan(
+  anchor: CalendarDate,
+  span: Timespan,
+  sign: number,
+  o: TemporalOptions,
+): CalendarDate {
+  let date = new Date(anchor.date.getTime());
+  let precision = anchor.precision;
+
+  for (const part of span.parts) {
+    const amount = part.value * sign;
+    switch (part.unit) {
+      case 'year': date = addMonths(date, amount * 12); break;
+      case 'month': date = addMonths(date, amount); break;
+      case 'week': date = addDays(date, amount * 7); break;
+      case 'day': date = addDays(date, amount); break;
+      case 'workday': date = addWorkdays(date, amount, o.holidays); break;
+      case 'hour':
+        date = new Date(date.getTime() + amount * 3_600_000);
+        precision = 'minute';
+        break;
+      case 'minute':
+        date = new Date(date.getTime() + amount * 60_000);
+        precision = 'minute';
+        break;
+      case 'second':
+        date = new Date(date.getTime() + amount * 1000);
+        precision = 'second';
+        break;
+      default: break;
+    }
+  }
+
+  return new CalendarDate(date, precision, anchor.zone, anchor.showAs);
+}
+
+function bareMoment(s: string, o: TemporalOptions): TemporalValue | null {
+  const moment = readMoment(s, o);
+  if (moment) return moment;
+  const span = parseSpan(s);
+  return span && /^\s*\d/.test(s) ? span : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared helpers
+ * ------------------------------------------------------------------ */
+
+function readMoment(text: string, o: TemporalOptions): CalendarDate | null {
+  return parseDate(text, o.now) ?? parseMoment(text, o.now);
+}
+
+/** A written span, or the duration implied by a range. */
+function readSpan(text: string, o: TemporalOptions): Timespan | null {
+  const lap = parseLaptime(text.trim());
+  if (lap) return lap;
+  const span = parseSpan(text);
+  if (span) return span;
+  const range = readRange(text, o);
+  if (range) {
+    return Timespan.of(diffInSeconds(range[0].date, range[1].date), 'second');
+  }
+  return null;
+}
+
+function inUnit(
+  from: CalendarDate,
+  to: CalendarDate,
+  unit: SpanUnit,
+  o: TemporalOptions,
+): Timespan {
+  if (unit === 'workday') {
+    return Timespan.of(countWorkdays(from.date, to.date, o.holidays), 'workday');
+  }
+  if (unit === 'day') {
+    return Timespan.of(diffInDays(from.date, to.date), 'day');
+  }
+  const seconds = diffInSeconds(startOfDay(from.date), startOfDay(to.date));
+  return Timespan.of(round(seconds / secondsIn(unit), 2), unit);
+}
+
+function isoString(moment: CalendarDate): string {
+  const d = moment.date;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const offset = -d.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const abs = Math.abs(offset);
+  return (
+    `${isoDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+  );
+}
+
+function round(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+export { wallClockIn };

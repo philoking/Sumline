@@ -160,14 +160,80 @@ the rates bundled in the image and marks them stale in the header.
 | You type | You get |
 | --- | --- |
 | `today + 3 weeks` | `Sat 5 Sep 2026` |
-| `2026-01-31 + 1 month` | `Sat 28 Feb 2026` |
-| `next friday` | `Fri 21 Aug 2026` |
-| `2026-01-01 to 2026-12-25` | `358 days` |
-| `days until 2026-12-25` | `132 days` |
+| `April 1, 2019 - 3 months 5 days` | `Thu 27 Dec 2018` |
+| `3 weeks after March 14, 2019` | `Thu 4 Apr 2019` |
+| `28 days before March 12` | `Thu 12 Feb 2026` |
+| `4 days from now` / `3 days ago` | a date |
+| `next friday` / `last monday` | a date |
+| `3 March to 30 May` | `2 months 3 weeks 6 days` |
+| `days between 3 March and 30 May` | `88 days` |
+| `April 1 through April 30 in days` | `30 days` |
+| `midpoint between March 12 and April 5` | `Tue 24 Mar 2026` |
+| `week of year` / `week number on march 12, 2021` | `33` / `10` |
+| `days in Q3` / `days in February 2020` | `92 days` / `29 days` |
+| `day of the week on January 24, 1984` | `Tuesday` |
+
+A range answers in calendar components; `days between` answers in whole days. A date written
+without a year picks whichever year puts it nearest today, so in December `January 12` is next
+January. ISO dates (`2026-08-15`) are unambiguous; slashes read as month/day/year and dots as the
+European day.month.year.
+
+### Workdays
+
+| You type | You get |
+| --- | --- |
+| `workdays in 3 weeks` | `15 workdays` |
+| `10 March to 17 March in workdays` | `5 workdays` |
+| `workdays from April 12 to June 15` | `45 workdays` |
 | `today + 5 business days` | `Fri 21 Aug 2026` |
 
-Slash dates are read as month/day/year. ISO dates (`2026-08-15`) and written months
-(`3 March 2026`) are unambiguous and preferred.
+Public holidays are excluded. The list comes from [Nager.Date](https://date.nager.at/), refreshed
+weekly and cached, with `HOLIDAY_COUNTRY` selecting the country. With no network it falls back to
+a small bundled set of fixed-date holidays.
+
+### Clock times, timespans and timecode
+
+| You type | You get |
+| --- | --- |
+| `16:00 + 3 hours 12 minutes` | `Sat 15 Aug 2026 at 7:12 pm` |
+| `7:30 to 20:45` | `13 hours 15 minutes` |
+| `4pm to 3am` | `11 hours` |
+| `4.54 hours as timespan` | `4 hours 32 minutes 24 seconds` |
+| `72 days as timespan` | `10 weeks 2 days` |
+| `3h 5m 10s in seconds` | `11,110 seconds` |
+| `5.5 minutes as laptime` | `00:05:30` |
+| `03:04:05 + 01:02:03` | `04:06:08` |
+| `12.5 minutes in minutes and seconds` | `12 minutes 30 seconds` |
+| `03:10:20:05 at 30 fps + 50 frames` | `03:10:21:25` |
+| `00:30:10:00 @ 24 fps in frames` | `43,440 frames` |
+
+A laptime needs two colons and a timecode three, which is how they are told apart from a clock
+time. The compact `3h 5m 10s` form needs at least two components, so a lone `5m` stays five metres.
+
+### Time zones
+
+| You type | You get |
+| --- | --- |
+| `6pm Sydney in Chicago` | a clock time |
+| `2am PST to GMT` | a clock time |
+| `7:30am LAX to Japan` | a clock time |
+| `time in Paris` / `Tokyo time` | the current time there |
+| `date in Vancouver` | the current date there |
+| `time difference between Seattle and Moscow` | `10 hours` |
+
+Cities, countries, IATA airport codes, US abbreviations (`PST`, `eastern time`) and GMT offsets
+all work. The place-name table is bundled so this keeps working offline; conversion itself uses
+the platform's own timezone database.
+
+### Timestamps
+
+| You type | You get |
+| --- | --- |
+| `April 1, 2019 to timestamp` | a Unix timestamp |
+| `1559740303 to date` | `5 Jun 2019 at 6:11 am` |
+| `1733823083000 to date` | milliseconds are detected by magnitude |
+| `current timestamp` | now, in seconds |
+| `April 1, 2019 3:30pm as iso8601` | `2019-04-01T15:30:00+11:00` |
 
 ### Statistics
 
@@ -279,6 +345,7 @@ app on an empty database.**
 | `DATA_DIR` | `/data` | Directory holding `webcalc.db` |
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
 | `TZ` | `UTC` | Timezone for date calculations |
+| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
 
 ## License
 

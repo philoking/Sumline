@@ -15,7 +15,9 @@ describe('dates', () => {
     ['3 March 2026', 'Tue 3 Mar 2026'],
     ['next friday', 'Fri 21 Aug 2026'],
     ['last monday', 'Mon 10 Aug 2026'],
-    ['2026-01-01 to 2026-08-15', '226 days'],
+    // A range answers in calendar components; `days between` answers in days.
+    ['2026-01-01 to 2026-08-15', '7 months 2 weeks'],
+    ['days between 2026-01-01 and 2026-08-15', '226 days'],
     ['days until 2026-12-25', '132 days'],
     ['weeks until 2026-12-25', '18.86 weeks'],
     ['today + 5 business days', 'Fri 21 Aug 2026'],

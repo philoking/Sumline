@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createEngine, type LineResult, type RateTable } from '@webcalc/engine';
-import { api } from './api';
+import { api, type HolidayTable } from './api';
 
 /**
  * Loads exchange rates once, then builds an engine around them.
@@ -11,17 +11,20 @@ import { api } from './api';
  */
 export function useEngine(options: { largeNumberNotation: boolean }) {
   const [rates, setRates] = useState<RateTable | null>(null);
+  const [holidays, setHolidays] = useState<HolidayTable | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    // Both are optional enrichments: without rates there is no currency
+    // conversion, and without holidays workday maths counts weekends only.
     api
       .rates()
-      .then((table) => {
-        if (!cancelled) setRates(table);
-      })
-      .catch(() => {
-        // Currency conversion is unavailable; everything else still works.
-      });
+      .then((table) => !cancelled && setRates(table))
+      .catch(() => undefined);
+    api
+      .holidays()
+      .then((table) => !cancelled && setHolidays(table))
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -31,12 +34,13 @@ export function useEngine(options: { largeNumberNotation: boolean }) {
     () =>
       createEngine({
         ...(rates && { rates }),
+        ...(holidays && { holidays: holidays.dates }),
         largeNumberNotation: options.largeNumberNotation,
       }),
-    [rates, options.largeNumberNotation],
+    [rates, holidays, options.largeNumberNotation],
   );
 
-  return { engine, rates };
+  return { engine, rates, holidays };
 }
 
 /** Re-evaluates the sheet on a short debounce as the user types. */

@@ -46,11 +46,23 @@ monthly rent * 12
 prev / 2
 line 5 + 100
 
-# Dates
+# Dates and time
 
 today + 3 weeks
+3 weeks after March 14
 2026-01-01 to 2026-12-25
 days until 2026-12-25
+workdays in 3 weeks
+today + 5 business days
+day of the week on January 24, 1984
+week of year
+
+7:30 to 20:45
+16:00 + 3 hours 12 minutes
+4.54 hours as timespan
+5.5 minutes as laptime
+time in Paris
+time difference between Seattle and Moscow
 
 # Totals
 
