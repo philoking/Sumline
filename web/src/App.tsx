@@ -11,6 +11,7 @@ import {
   type Statistic,
 } from './api';
 import { Editor } from './Editor';
+import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
 import { useEngine, useResults } from './useEngine';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
@@ -43,12 +44,16 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
+  // `?help` opens the reference on load, so it can be linked to directly.
+  const [referenceOpen, setReferenceOpen] = useState(
+    () => new URLSearchParams(window.location.search).has('help'),
+  );
 
   const siNotation = settings.largeNumberNotation !== false;
   const statistic = settings.statistic ?? 'total';
   const showTotal = settings.showTotal !== false;
 
-  const { engine, rates } = useEngine({
+  const { engine, rates, holidays } = useEngine({
     largeNumberNotation: siNotation,
     ...(settings.globals && { globals: settings.globals }),
   });
@@ -233,7 +238,18 @@ export function App() {
           search.focus();
         }
       }
-      if (event.key === 'Escape') setExportOpen(false);
+      if (event.key === 'Escape') {
+        setExportOpen(false);
+        setReferenceOpen(false);
+      }
+      // `?` opens the reference, but not while a field or the sheet has focus.
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.closest('input, textarea, .cm-editor, [contenteditable]') !== null;
+      if (event.key === '?' && !typing) {
+        event.preventDefault();
+        setReferenceOpen((open) => !open);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -370,6 +386,14 @@ export function App() {
             </>
           )}
         </div>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => setReferenceOpen((open) => !open)}
+          title="What can I type? (?)"
+        >
+          ?
+        </button>
         <button
           type="button"
           className="ghost"
@@ -546,6 +570,22 @@ export function App() {
           )}
         </div>
       </div>
+
+      <Reference
+        open={referenceOpen}
+        currencies={engine.currencies}
+        rateDate={engine.rateDate}
+        holidayCount={holidays?.dates.length ?? 0}
+        onClose={() => setReferenceOpen(false)}
+        onInsert={(line) => {
+          // Appended rather than inserted at the cursor: the panel has focus,
+          // so there is no meaningful caret position in the sheet to use.
+          setContent((current) => {
+            const needsBreak = current !== '' && !current.endsWith('\n');
+            return `${current}${needsBreak ? '\n' : ''}${line}\n`;
+          });
+        }}
+      />
     </div>
   );
 }

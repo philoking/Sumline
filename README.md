@@ -38,6 +38,9 @@ TZ=America/New_York docker compose up -d
 Everything below is a line you can type. Anything the engine doesn't recognise is left as plain
 text with no answer, so a sheet can mix notes and sums freely.
 
+The same reference is **built into the app** — press `?`, click the `?` button, or open
+`/?help`. Clicking any example there drops it into your sheet.
+
 ### Arithmetic
 
 | You type | You get |
@@ -314,6 +317,16 @@ Sheets can be grouped into folders, searched by title or content, and are moved 
 when deleted rather than destroyed — restore them, or empty the trash to remove them for good.
 Deleting a folder keeps its sheets and returns them to the top level. An untitled sheet names
 itself from its first line.
+
+### The reference panel
+
+Press `?` for a searchable list of everything the calculator understands, grouped, with each
+example's answer beside it. Clicking one inserts it into the sheet.
+
+Its contents are **generated from the golden tests** — [`engine/src/examples.ts`](engine/src/examples.ts)
+is imported both by [`engine/test/examples.test.ts`](engine/test/examples.test.ts), which asserts
+every answer shown, and by the UI that renders them. An example cannot claim something the engine
+doesn't do, because the same line is a passing test. Adding one to the docs means adding a test.
 
 ### Export
 

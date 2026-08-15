@@ -14,3 +14,11 @@ export type {
   LineResult,
   RateTable,
 } from './types.js';
+export {
+  ALL_EXAMPLES,
+  EXAMPLE_GROUPS,
+  REFERENCE_HOLIDAYS,
+  REFERENCE_NOW,
+  REFERENCE_RATES,
+} from './examples.js';
+export type { Example, ExampleGroup } from './examples.js';

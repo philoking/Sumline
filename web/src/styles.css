@@ -704,3 +704,164 @@ button.ghost:hover {
     page-break-inside: avoid;
   }
 }
+
+/* ---- the reference panel ---- */
+
+.reference {
+  position: fixed;
+  z-index: 21;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 34px rgb(0 0 0 / 30%);
+}
+
+.reference-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reference-head strong {
+  font-size: 14px;
+}
+
+.reference-head input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.reference-head input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.reference-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 12px 28px;
+}
+
+.reference-group {
+  padding: 14px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reference-group:last-child {
+  border-bottom: none;
+}
+
+.reference-group h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.reference-blurb {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.55;
+  opacity: 0.85;
+}
+
+.reference-note {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.reference-blurb code {
+  padding: 1px 4px;
+  background: var(--hover);
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+}
+
+.example-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.example-list button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.example-list button:hover {
+  background: var(--hover);
+}
+
+.example-input {
+  color: var(--input-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.example-answer {
+  color: var(--answer-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.shortcut-list {
+  margin: 0;
+}
+
+.shortcut-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 3px 8px;
+}
+
+.shortcut-list dt {
+  color: var(--accent);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.shortcut-list dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+@media print {
+  .reference {
+    display: none !important;
+  }
+}
