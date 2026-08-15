@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.gitignore
+data
+*.db
+coverage
+.claude
+*.md
+!README.md
+Dockerfile
+docker-compose.yml
+.dockerignore

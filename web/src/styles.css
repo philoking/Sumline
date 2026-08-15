@@ -1,0 +1,453 @@
+/*
+ * The palette and typography here follow Soulver's own: a near-black sheet, a
+ * cool blue for what you type, plain white for what it works out, and the
+ * system sans-serif set large with generous leading.
+ */
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sheet: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --sheet-font-size: 18px;
+  /* An absolute line height, not a ratio: the gutter, the text and the answer
+     column all set type at different sizes and must share one row height, or
+     the numbers stop lining up with the lines they belong to. */
+  --sheet-line-height: 33px;
+  --answers-width: 232px;
+
+  /* dark is the app's own appearance and the default here */
+  --bg: #1e1e1e;
+  --panel: #262626;
+  --surface: #1e1e1e;
+  --border: #383838;
+  --text: #ededed;
+  --muted: #8b8b8b;
+  --line-number: #5c5c5c;
+  --input-text: #8ed5ea;
+  --answer-text: #ededed;
+  --accent: #8ed5ea;
+  --hover: #2f2f2f;
+  --active: #3a3a3a;
+  --danger: #f0857b;
+  --warn: #e5b567;
+  --warn-soft: #33291a;
+  --selection: #2f4a55;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --panel: #f2f2f0;
+    --surface: #ffffff;
+    --border: #e0dfdc;
+    --text: #1d1d1f;
+    --muted: #86868b;
+    --line-number: #b9b9b9;
+    --input-text: #1a6f8c;
+    --answer-text: #1d1d1f;
+    --accent: #1a6f8c;
+    --hover: #e8e8e6;
+    --active: #dedddb;
+    --danger: #b3271e;
+    --warn: #8a5a00;
+    --warn-soft: #fdf3dc;
+    --selection: #cfe6ee;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- top bar ---- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  background: var(--bg);
+  flex: none;
+}
+
+.title-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.title-input:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.title-input:focus {
+  outline: none;
+  background: var(--hover);
+  border-color: var(--border);
+}
+
+.status,
+.rates {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status-error {
+  color: var(--danger);
+}
+
+button.ghost {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+}
+
+button.ghost:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* ---- banners ---- */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  flex: none;
+}
+
+.banner-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.banner-error {
+  background: var(--warn-soft);
+  color: var(--danger);
+}
+
+.banner span {
+  flex: 1;
+}
+
+.banner button {
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 10px;
+}
+
+.banner button:hover {
+  background: var(--active);
+}
+
+/* ---- layout ---- */
+
+.main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- sidebar ---- */
+
+.sidebar {
+  width: 236px;
+  flex: none;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-collapsed {
+  display: none;
+}
+
+.new-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 10px 12px 12px;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.new-sheet:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.new-sheet .plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sheet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 12px;
+  overflow-y: auto;
+}
+
+.sheet-list li {
+  position: relative;
+  border-radius: 8px;
+  margin-bottom: 3px;
+}
+
+.sheet-list li:hover {
+  background: var(--hover);
+}
+
+.sheet-list li.active {
+  background: var(--active);
+}
+
+/* A sheet card: name on top, then when it changed and how long it is. */
+.sheet-link {
+  width: 100%;
+  display: block;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.sheet-name {
+  display: block;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.sheet-actions {
+  display: none;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  gap: 1px;
+}
+
+.sheet-list li:hover .sheet-actions {
+  display: flex;
+}
+
+.sheet-actions .ghost {
+  font-size: 12px;
+  padding: 2px 5px;
+}
+
+.sheet-list .empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 11px;
+}
+
+/* ---- the sheet ---- */
+
+/* The pane is the positioned ancestor for the total, so the total stays put
+   at the bottom of the answer column while the sheet scrolls underneath. */
+.sheet-pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  border-left: 1px solid var(--border);
+}
+
+.sheet-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--surface);
+}
+
+.sheet-body {
+  position: relative;
+  min-height: 100%;
+  padding: 14px 0 40vh;
+}
+
+.editor-host {
+  margin-right: var(--answers-width);
+}
+
+/*
+ * Answers sit in their own column, left-aligned against a hairline divider,
+ * and are absolutely positioned against the measured top of each line so they
+ * stay level with the text through soft wrapping.
+ */
+.answers {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--answers-width);
+  pointer-events: none;
+}
+
+/* The rule between text and answers hangs off the sheet body rather than the
+   answer container, which has no height of its own to stretch. */
+.sheet-body::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--answers-width);
+  border-left: 1px solid var(--border);
+}
+
+.answer {
+  position: absolute;
+  left: 0;
+  width: var(--answers-width);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0 14px 0 18px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--answer-text);
+  cursor: pointer;
+  font-family: var(--font-sheet);
+  font-size: var(--sheet-font-size);
+  line-height: var(--sheet-line-height);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  pointer-events: auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.answer:hover {
+  background: var(--hover);
+}
+
+.answer-error {
+  color: var(--line-number);
+  cursor: default;
+}
+
+.answer-error:hover {
+  background: none;
+}
+
+/* ---- the sheet total ---- */
+
+.total {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 7px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-variant-numeric: tabular-nums;
+  max-width: calc(var(--answers-width) - 24px);
+}
+
+.total-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.total-value {
+  color: var(--text);
+  font-family: var(--font-sheet);
+  font-size: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --answers-width: 150px;
+    --sheet-font-size: 16px;
+    --sheet-line-height: 30px;
+  }
+
+  .sidebar {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    bottom: 0;
+    box-shadow: 0 0 24px rgb(0 0 0 / 35%);
+  }
+
+  .answer {
+    padding-left: 12px;
+  }
+}
