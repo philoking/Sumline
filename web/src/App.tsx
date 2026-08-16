@@ -58,6 +58,7 @@ export function App() {
   );
   const [exportOpen, setExportOpen] = useState(false);
   const [share, setShare] = useState<{ url: string; copied: boolean } | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
     () => new URLSearchParams(window.location.search).has('help'),
@@ -72,6 +73,8 @@ export function App() {
    * this sheet" is the message worth showing, and it is the whole reason the
    * lock banner exists.
    */
+  const currentUserName = users.find((user) => user.id === space)?.name ?? '';
+
   const identity = useMemo(
     () => ({
       id: space ? `${browser.id}:${space}` : browser.id,
@@ -554,6 +557,52 @@ export function App() {
         >
           ▤
         </button>
+        {/* Only worth showing when there is a choice to make, so a one-person
+            instance is not asked to pick itself. */}
+        {users.length > 1 && (
+          <div className="menu-anchor">
+            <button
+              type="button"
+              className="user-chip"
+              onClick={() => setUserMenuOpen((open) => !open)}
+              title={`Working as ${currentUserName} — click to change`}
+              aria-label={`Working as ${currentUserName}. Change who is using the app.`}
+              aria-haspopup="menu"
+              aria-expanded={userMenuOpen}
+            >
+              {currentUserName.charAt(0)}
+            </button>
+            {userMenuOpen && (
+              <>
+                <div className="menu-backdrop" onClick={() => setUserMenuOpen(false)} />
+                <ul className="answer-menu user-menu" role="menu">
+                  {users.map((user) => (
+                    <li key={user.id}>
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={user.id === space}
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          if (user.id === space) return;
+                          switchUser(user.id);
+                          // A reload rather than a re-fetch: the space changes
+                          // the sheets, the folders, the settings and the lock
+                          // identity at once, and starting clean is more
+                          // trustworthy than unwinding all of it.
+                          window.location.reload();
+                        }}
+                      >
+                        <span className="tick">{user.id === space ? '✓' : ''}</span>
+                        {user.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
       </header>
 
       {error && (
@@ -610,16 +659,6 @@ export function App() {
           />
         )}
         <Sidebar
-          users={users}
-          space={space}
-          onSwitchUser={(id) => {
-            if (id === space) return;
-            switchUser(id);
-            // A reload rather than a re-fetch: the space changes the sheets,
-            // the folders, the settings and the lock identity at once, and
-            // starting clean is more trustworthy than unwinding all of it.
-            window.location.reload();
-          }}
           sheets={sheets}
           folders={folders}
           activeId={activeId}

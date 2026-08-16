@@ -637,34 +637,29 @@ button.ghost:hover {
 
 /* ---- spaces ---- */
 
-.space-switcher {
-  display: flex;
-  gap: 4px;
-  padding: 8px 8px 0;
-}
-
-.space {
-  flex: 1;
-  padding: 5px 8px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: var(--muted);
+/* Reads as an identity chip rather than another toolbar action: filled and
+   round, where the controls beside it are bare glyphs. */
+.user-chip {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
-}
-
-.space:hover {
-  background: var(--hover);
-}
-
-.space-current {
-  background: var(--hover);
-  border-color: var(--border);
-  color: var(--text);
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1;
 }
+
+.user-chip:hover {
+  border-color: var(--muted);
+}
+
 
 /* Marks a sheet reached from the other space, so "why is this not in my
    list?" answers itself. */
@@ -706,6 +701,22 @@ button.ghost:hover {
   position: absolute;
   top: 28px;
   right: 0;
+}
+
+/* Must stay after `.answer-menu`: same specificity, so source order is what
+   overrides its `position: fixed` and anchors the menu to the chip. */
+.user-menu {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  min-width: 150px;
+}
+
+/* A fixed-width gutter so the names line up whether ticked or not. */
+.user-menu .tick {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
 }
 
 /* Wider than the export menu: a share link has to be readable to be trusted,

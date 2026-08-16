@@ -1,12 +1,8 @@
-import type { Folder, SheetSummary, User } from './api';
+import type { Folder, SheetSummary } from './api';
 
 export interface SidebarProps {
   sheets: SheetSummary[];
   folders: Folder[];
-  users: User[];
-  /** Whose space is being shown, or null before the first load settles. */
-  space: string | null;
-  onSwitchUser(id: string): void;
   activeId: string | null;
   /** undefined = all sheets, null = top level, string = that folder. */
   activeFolder: string | null | undefined;
@@ -30,31 +26,14 @@ export interface SidebarProps {
 
 export function Sidebar(props: SidebarProps) {
   const {
-    sheets, folders, users, space, activeId, activeFolder, query, viewingTrash, open,
-    onSwitchUser, onSelect, onCreate, onRename, onDelete, onRestore, onMove, onQuery,
+    sheets, folders, activeId, activeFolder, query, viewingTrash, open,
+    onSelect, onCreate, onRename, onDelete, onRestore, onMove, onQuery,
     onSelectFolder, onCreateFolder, onRenameFolder, onDeleteFolder,
     onToggleTrash, onEmptyTrash,
   } = props;
 
   return (
     <aside className={`sidebar${open ? '' : ' sidebar-collapsed'}`}>
-      {/* Rendered only when there is a choice to make, so a single-person
-          instance is not asked to pick itself on every visit. */}
-      {users.length > 1 && (
-        <div className="space-switcher" role="group" aria-label="Whose sheets to show">
-          {users.map((user) => (
-            <button
-              key={user.id}
-              type="button"
-              className={`space${user.id === space ? ' space-current' : ''}`}
-              aria-pressed={user.id === space}
-              onClick={() => onSwitchUser(user.id)}
-            >
-              {user.name}
-            </button>
-          ))}
-        </div>
-      )}
       <button type="button" className="new-sheet" onClick={onCreate}>
         <span className="plus">+</span>
         New Sheet

@@ -362,9 +362,9 @@ A sheet can use them like any other variable, and can shadow one by declaring th
 ## Spaces
 
 Each person has their own space: their own sheets, folders, trash, settings and global
-variables. The switcher at the top of the sidebar changes which one you are in, and the choice
-is kept in a cookie, so a machine stays on whoever used it last. Every space gets its own
-Welcome sheet the first time the server starts.
+variables. The initial at the right-hand end of the top bar shows whose space you are in;
+clicking it offers the others. The choice is kept in a cookie, so a machine stays on whoever
+used it last. Every space gets its own Welcome sheet the first time the server starts.
 
 **This is not a login.** There are no passwords, and anyone who can reach the app can switch to
 any space — the same footing as an instance with no authentication at all. It exists to keep two
