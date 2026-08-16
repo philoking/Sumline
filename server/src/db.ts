@@ -3,11 +3,39 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+/**
+ * Who can be using the app.
+ *
+ * There are no passwords: this is a space to work in, not a security boundary,
+ * and anyone who can reach the app can be anyone. That matches an instance
+ * with no authentication at all on a trusted network. Adding a third person is
+ * one entry here.
+ */
+export const USERS = [
+  { id: 'jason', name: 'Jason' },
+  { id: 'kim', name: 'Kim' },
+] as const;
+
+export type UserId = (typeof USERS)[number]['id'];
+
+/** The space sheets predating the user model belong to. */
+export const DEFAULT_USER: UserId = 'jason';
+
+export function isUser(value: unknown): value is UserId {
+  return USERS.some((user) => user.id === value);
+}
+
+/** Resolves any untrusted value to a real user, falling back to the default. */
+export function toUser(value: unknown): UserId {
+  return isUser(value) ? value : DEFAULT_USER;
+}
+
 export interface Sheet {
   id: string;
   title: string;
   content: string;
   version: number;
+  owner: UserId;
   folderId: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -92,6 +120,7 @@ interface SheetRow {
   title: string;
   content: string;
   version: number;
+  owner: string;
   folder_id: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -145,6 +174,17 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+-- Settings are per person, not per instance: display preferences are personal,
+-- and the global variables change what a sheet computes, so one space's values
+-- must never leak into the other's answers. The pre-user settings table above
+-- is migrated into here once and then left alone.
+CREATE TABLE IF NOT EXISTS user_settings (
+  owner TEXT NOT NULL,
+  key   TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (owner, key)
+);
+
 -- Every slug a sheet has ever been shared under, not just its current one, so
 -- renaming a shared sheet does not break a link already sent to someone.
 CREATE TABLE IF NOT EXISTS sheet_slugs (
@@ -189,6 +229,32 @@ export class Store {
     // The slug a sheet is currently shared under. Null until it is first
     // shared, so the many sheets that are never sent to anyone mint nothing.
     this.addColumn('sheets', 'slug', 'TEXT');
+    // Everything that existed before there were spaces belongs to the default
+    // one, so nobody opens the app to find their sheets gone.
+    this.addColumn('sheets', 'owner', `TEXT NOT NULL DEFAULT '${DEFAULT_USER}'`);
+    this.addColumn('folders', 'owner', `TEXT NOT NULL DEFAULT '${DEFAULT_USER}'`);
+    this.adoptPreUserSettings();
+  }
+
+  /**
+   * Moves instance-wide settings into the default user's space, once.
+   *
+   * Guarded on the destination being empty rather than on the source, so a
+   * second run cannot overwrite preferences changed since the first. The old
+   * rows are left in place: they cost nothing and make a rollback to the
+   * previous release land on the settings it expects.
+   */
+  private adoptPreUserSettings(): void {
+    const already = this.db
+      .prepare('SELECT 1 FROM user_settings WHERE owner = ? LIMIT 1')
+      .get(DEFAULT_USER);
+    if (already) return;
+    this.db
+      .prepare(
+        `INSERT INTO user_settings (owner, key, value)
+         SELECT ?, key, value FROM settings`,
+      )
+      .run(DEFAULT_USER);
   }
 
   private addColumn(table: string, column: string, definition: string): void {
@@ -211,12 +277,14 @@ export class Store {
    * is unmeasurable and the schema cost of FTS is not worth paying.
    */
   listSheets(
+    owner: UserId,
     filter: { folderId?: string | null; query?: string; trashed?: boolean } = {},
   ): SheetSummary[] {
     const where: string[] = [
+      'owner = ?',
       filter.trashed ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL',
     ];
-    const params: unknown[] = [];
+    const params: unknown[] = [owner];
 
     if (filter.folderId !== undefined) {
       if (filter.folderId === null) {
@@ -236,7 +304,7 @@ export class Store {
     // sheet bodies just to say how long they are.
     const rows = this.db
       .prepare(
-        `SELECT id, title, version, folder_id, deleted_at, created_at, updated_at,
+        `SELECT id, title, version, owner, folder_id, deleted_at, created_at, updated_at,
                 CASE WHEN content = '' THEN 0
                      ELSE length(content) - length(replace(content, char(10), '')) + 1
                 END AS lines
@@ -313,22 +381,28 @@ export class Store {
     return `${desired}-${randomUUID().slice(0, 8)}`;
   }
 
-  createSheet(rawTitle: string, rawContent = '', folderId: string | null = null): Sheet {
+  createSheet(
+    owner: UserId,
+    rawTitle: string,
+    rawContent = '',
+    folderId: string | null = null,
+  ): Sheet {
     const title = sanitiseText(rawTitle);
     const content = sanitiseText(rawContent);
     const now = new Date().toISOString();
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO sheets (id, title, content, version, folder_id, created_at, updated_at)
-         VALUES (?, ?, ?, 1, ?, ?, ?)`,
+        `INSERT INTO sheets (id, title, content, version, owner, folder_id, created_at, updated_at)
+         VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
       )
-      .run(id, title, content, folderId, now, now);
+      .run(id, title, content, owner, folderId, now, now);
     return {
       id,
       title,
       content,
       version: 1,
+      owner,
       folderId,
       deletedAt: null,
       createdAt: now,
@@ -376,74 +450,109 @@ export class Store {
     return next;
   }
 
-  /** Moves a sheet to the trash, where it can still be restored. */
-  trashSheet(id: string): boolean {
+  /**
+   * Moves a sheet to the trash, where it can still be restored.
+   *
+   * Destructive operations are the one place a space is a real boundary.
+   * Reading and editing another person's sheet through a share link is fine —
+   * that is what the link is for, and the lock still serialises the editing —
+   * but following a link must never put you one mis-click from deleting work
+   * that is not yours.
+   */
+  trashSheet(id: string, owner: UserId): boolean {
     const result = this.db
-      .prepare('UPDATE sheets SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
-      .run(new Date().toISOString(), id);
-    this.db.prepare('DELETE FROM locks WHERE sheet_id = ?').run(id);
+      .prepare(
+        'UPDATE sheets SET deleted_at = ? WHERE id = ? AND owner = ? AND deleted_at IS NULL',
+      )
+      .run(new Date().toISOString(), id, owner);
+    if (result.changes > 0) {
+      this.db.prepare('DELETE FROM locks WHERE sheet_id = ?').run(id);
+    }
     return result.changes > 0;
   }
 
-  restoreSheet(id: string): boolean {
+  restoreSheet(id: string, owner: UserId): boolean {
     const result = this.db
-      .prepare('UPDATE sheets SET deleted_at = NULL WHERE id = ?')
-      .run(id);
+      .prepare('UPDATE sheets SET deleted_at = NULL WHERE id = ? AND owner = ?')
+      .run(id, owner);
     return result.changes > 0;
   }
 
-  /** Permanently removes everything in the trash. */
-  emptyTrash(): number {
-    const result = this.db.prepare('DELETE FROM sheets WHERE deleted_at IS NOT NULL').run();
+  /** Permanently removes everything in this space's trash. */
+  emptyTrash(owner: UserId): number {
+    const result = this.db
+      .prepare('DELETE FROM sheets WHERE deleted_at IS NOT NULL AND owner = ?')
+      .run(owner);
     return Number(result.changes);
   }
 
-  listFolders(): Folder[] {
+  listFolders(owner: UserId): Folder[] {
     return this.db
-      .prepare('SELECT id, name, position FROM folders ORDER BY position, name')
-      .all() as unknown as Folder[];
+      .prepare(
+        'SELECT id, name, position FROM folders WHERE owner = ? ORDER BY position, name',
+      )
+      .all(owner) as unknown as Folder[];
   }
 
-  createFolder(name: string): Folder {
+  createFolder(owner: UserId, name: string): Folder {
     const id = randomUUID();
-    const position = this.listFolders().length;
+    const position = this.listFolders(owner).length;
     this.db
-      .prepare('INSERT INTO folders (id, name, position) VALUES (?, ?, ?)')
-      .run(id, name, position);
+      .prepare('INSERT INTO folders (id, name, position, owner) VALUES (?, ?, ?, ?)')
+      .run(id, name, position, owner);
     return { id, name, position };
   }
 
-  renameFolder(id: string, name: string): boolean {
-    return this.db.prepare('UPDATE folders SET name = ? WHERE id = ?').run(name, id).changes > 0;
+  renameFolder(id: string, name: string, owner: UserId): boolean {
+    return (
+      this.db
+        .prepare('UPDATE folders SET name = ? WHERE id = ? AND owner = ?')
+        .run(name, id, owner).changes > 0
+    );
   }
 
   /** Deletes a folder; its sheets return to the top level rather than vanishing. */
-  deleteFolder(id: string): boolean {
-    this.db.prepare('UPDATE sheets SET folder_id = NULL WHERE folder_id = ?').run(id);
-    return this.db.prepare('DELETE FROM folders WHERE id = ?').run(id).changes > 0;
+  deleteFolder(id: string, owner: UserId): boolean {
+    const removed =
+      this.db
+        .prepare('DELETE FROM folders WHERE id = ? AND owner = ?')
+        .run(id, owner).changes > 0;
+    // Only orphan the sheets once the folder was really this person's, or a
+    // mistaken id would empty a folder in the other space.
+    if (removed) {
+      this.db.prepare('UPDATE sheets SET folder_id = NULL WHERE folder_id = ?').run(id);
+    }
+    return removed;
   }
 
-  getSettings(): Record<string, unknown> {
+  getSettings(owner: UserId): Record<string, unknown> {
     const rows = this.db
-      .prepare('SELECT key, value FROM settings')
-      .all() as unknown as Array<{ key: string; value: string }>;
+      .prepare('SELECT key, value FROM user_settings WHERE owner = ?')
+      .all(owner) as unknown as Array<{ key: string; value: string }>;
     return Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value)]));
   }
 
-  saveSettings(values: Record<string, unknown>): Record<string, unknown> {
+  saveSettings(
+    owner: UserId,
+    values: Record<string, unknown>,
+  ): Record<string, unknown> {
     const statement = this.db.prepare(
-      `INSERT INTO settings (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      `INSERT INTO user_settings (owner, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(owner, key) DO UPDATE SET value = excluded.value`,
     );
     for (const [key, value] of Object.entries(values)) {
-      statement.run(key, JSON.stringify(value));
+      statement.run(owner, key, JSON.stringify(value));
     }
-    return this.getSettings();
+    return this.getSettings(owner);
   }
 
-  deleteSheet(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM sheets WHERE id = ?').run(id);
-    this.db.prepare('DELETE FROM locks WHERE sheet_id = ?').run(id);
+  deleteSheet(id: string, owner: UserId): boolean {
+    const result = this.db
+      .prepare('DELETE FROM sheets WHERE id = ? AND owner = ?')
+      .run(id, owner);
+    if (result.changes > 0) {
+      this.db.prepare('DELETE FROM locks WHERE sheet_id = ?').run(id);
+    }
     return result.changes > 0;
   }
 
@@ -546,6 +655,7 @@ function toSheet(row: SheetRow): Sheet {
     title: row.title,
     content: row.content,
     version: row.version,
+    owner: toUser(row.owner),
     folderId: row.folder_id ?? null,
     deletedAt: row.deleted_at ?? null,
     createdAt: row.created_at,
@@ -559,6 +669,7 @@ function toSummary(row: Omit<SheetRow, 'content'> & { lines: number }): SheetSum
     title: row.title,
     version: row.version,
     lines: row.lines,
+    owner: toUser(row.owner),
     folderId: row.folder_id ?? null,
     deletedAt: row.deleted_at ?? null,
     createdAt: row.created_at,

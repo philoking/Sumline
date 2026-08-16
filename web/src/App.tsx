@@ -3,12 +3,14 @@ import {
   api,
   clientIdentity,
   ConflictError,
+  switchUser,
   type Folder,
   type Lock,
   type Settings,
   type Sheet,
   type SheetSummary,
   type Statistic,
+  type User,
 } from './api';
 import { Editor } from './Editor';
 import { Reference } from './Reference';
@@ -24,9 +26,14 @@ const LOCK_HEARTBEAT_MS = 15_000;
 const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
 
 export function App() {
-  const identity = useMemo(clientIdentity, []);
+  const browser = useMemo(clientIdentity, []);
   const theme = useTheme();
 
+  const [users, setUsers] = useState<User[]>([]);
+  /** Whose space we are in. Null until the first load settles. */
+  const [space, setSpace] = useState<string | null>(null);
+  /** Whose space the open sheet is in — differs when a share link was followed. */
+  const [sheetOwner, setSheetOwner] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>({});
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -54,6 +61,23 @@ export function App() {
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
     () => new URLSearchParams(window.location.search).has('help'),
+  );
+
+  /**
+   * Who the lock reports as holding a sheet.
+   *
+   * The id carries the space as well as the browser, so switching person on a
+   * shared machine hands the lock over properly instead of the new arrival
+   * inheriting it. The name is the person, not the browser — "Kim is editing
+   * this sheet" is the message worth showing, and it is the whole reason the
+   * lock banner exists.
+   */
+  const identity = useMemo(
+    () => ({
+      id: space ? `${browser.id}:${space}` : browser.id,
+      name: users.find((user) => user.id === space)?.name ?? browser.name,
+    }),
+    [browser.id, browser.name, space, users],
   );
 
   const siNotation = settings.largeNumberNotation !== false;
@@ -93,6 +117,7 @@ export function App() {
     setTitle(sheet.title);
     setContent(sheet.content);
     setVersion(sheet.version);
+    setSheetOwner(sheet.owner);
     savedContent.current = sheet.content;
     setConflict(null);
     setStatus('idle');
@@ -103,12 +128,15 @@ export function App() {
   // for, falling back to the one this tab had open.
   useEffect(() => {
     void (async () => {
-      const [loaded, folderList] = await Promise.all([
+      const [loaded, folderList, people] = await Promise.all([
         api.settings().catch(() => ({}) as Settings),
         api.listFolders().catch(() => [] as Folder[]),
+        api.users().catch(() => ({ users: [] as User[], current: '' })),
       ]);
       setSettings(loaded);
       setFolders(folderList);
+      setUsers(people.users);
+      setSpace(people.current);
 
       try {
         const list = await api.listSheets();
@@ -131,7 +159,8 @@ export function App() {
           setError(`That link does not point at a sheet any more (/s/${slug}).`);
         }
 
-        const target = list.find((s) => s.id === rememberedSheet()) ?? list[0];
+        const target =
+          list.find((s) => s.id === rememberedSheet(people.current)) ?? list[0];
         if (target) {
           setActiveId(target.id);
           return;
@@ -149,12 +178,22 @@ export function App() {
     void refreshSheets().catch(() => undefined);
   }, [refreshSheets]);
 
+  // Remembered per space, so switching to Kim does not try to reopen Jason's
+  // last sheet — which is not in her list and would silently fall back to
+  // whatever happened to be first.
+  useEffect(() => {
+    if (activeId && space) rememberSheet(space, activeId);
+  }, [activeId, space]);
+
   // Load the sheet and try to claim the editing lock whenever the selection
   // changes. The previous sheet's lock is released on the way out.
+  //
+  // Held until the space is known: taking the lock under the browser's name
+  // and then retaking it under the person's would leave a stale holder for a
+  // moment, and the other tab would name the wrong editor.
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || !space) return;
     let cancelled = false;
-    rememberSheet(activeId);
 
     void (async () => {
       try {
@@ -173,7 +212,7 @@ export function App() {
       cancelled = true;
       void api.releaseLock(releasing, identity.id).catch(() => undefined);
     };
-  }, [activeId, identity.id, identity.name, openSheet]);
+  }, [activeId, space, identity.id, identity.name, openSheet]);
 
   // Hold the lock while this tab is the editor.
   useEffect(() => {
@@ -388,6 +427,14 @@ export function App() {
           disabled={!lock.granted}
           aria-label="Sheet title"
         />
+        {/* A sheet reached by share link is not in this sidebar, so say whose
+            it is rather than leaving it looking like a sheet that went
+            missing from the list. */}
+        {sheetOwner && space && sheetOwner !== space && (
+          <span className="owner-badge">
+            {users.find((user) => user.id === sheetOwner)?.name ?? sheetOwner}’s sheet
+          </span>
+        )}
         <span className={`status status-${status}`}>{statusLabel(status, lock)}</span>
         {rates && (
           <span className="rates" title={`Exchange rates from ${rates.date}`}>
@@ -563,6 +610,16 @@ export function App() {
           />
         )}
         <Sidebar
+          users={users}
+          space={space}
+          onSwitchUser={(id) => {
+            if (id === space) return;
+            switchUser(id);
+            // A reload rather than a re-fetch: the space changes the sheets,
+            // the folders, the settings and the lock identity at once, and
+            // starting clean is more trustworthy than unwinding all of it.
+            window.location.reload();
+          }}
           sheets={sheets}
           folders={folders}
           activeId={activeId}
@@ -694,7 +751,7 @@ export function App() {
   );
 }
 
-const LAST_SHEET_KEY = 'webcalc.lastSheet';
+const lastSheetKey = (space: string) => `webcalc.lastSheet.${space}`;
 
 /**
  * Remembers the open sheet without putting it in the address bar.
@@ -703,23 +760,23 @@ const LAST_SHEET_KEY = 'webcalc.lastSheet';
  * sessionStorage is per-tab, so two tabs left on different sheets each return
  * to their own after a refresh — something a single URL could not express.
  * localStorage covers the case sessionStorage cannot: a brand-new tab, or the
- * browser reopened from cold.
+ * browser reopened from cold. The key carries the space, so the two people
+ * sharing a machine do not overwrite each other's place.
  */
-function rememberSheet(id: string): void {
+function rememberSheet(space: string, id: string): void {
   try {
-    sessionStorage.setItem(LAST_SHEET_KEY, id);
-    localStorage.setItem(LAST_SHEET_KEY, id);
+    sessionStorage.setItem(lastSheetKey(space), id);
+    localStorage.setItem(lastSheetKey(space), id);
   } catch {
     // Storage can be refused outright in private mode. Losing the restore is
     // not worth failing the sheet switch over.
   }
 }
 
-function rememberedSheet(): string | null {
+function rememberedSheet(space: string): string | null {
   try {
-    return (
-      sessionStorage.getItem(LAST_SHEET_KEY) ?? localStorage.getItem(LAST_SHEET_KEY)
-    );
+    const key = lastSheetKey(space);
+    return sessionStorage.getItem(key) ?? localStorage.getItem(key);
   } catch {
     return null;
   }

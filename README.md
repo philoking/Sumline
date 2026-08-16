@@ -359,11 +359,32 @@ curl -X PUT http://localhost:8422/api/settings \
 
 A sheet can use them like any other variable, and can shadow one by declaring the same name.
 
+## Spaces
+
+Each person has their own space: their own sheets, folders, trash, settings and global
+variables. The switcher at the top of the sidebar changes which one you are in, and the choice
+is kept in a cookie, so a machine stays on whoever used it last. Every space gets its own
+Welcome sheet the first time the server starts.
+
+**This is not a login.** There are no passwords, and anyone who can reach the app can switch to
+any space — the same footing as an instance with no authentication at all. It exists to keep two
+people's sheets from piling up in one list, not to keep anyone out.
+
+The people are defined in `USERS` in [server/src/db.ts](server/src/db.ts); adding a third is one
+entry. Sheets that existed before spaces belong to the first user listed.
+
+A share link crosses spaces — that is the point of it. Opening someone else's link shows their
+sheet, marked with a badge saying whose it is, and you can edit it under the usual lock. What
+you cannot do from the other side is destroy it: trashing, purging, restoring, and renaming or
+deleting a folder are refused unless the thing is yours, so following a link never puts you one
+mis-click from deleting work that is not.
+
 ## Sharing and concurrent editing
 
-Sheets live on the server, so any browser on your network sees the same set. When you open a
-sheet your browser takes a short-lived editing lock; anyone else who opens it gets a read-only
-view naming who has it, plus a **Take over editing** button.
+Sheets live on the server, so any browser on your network sees the same set of *your* sheets.
+When you open a sheet your browser takes a short-lived editing lock; anyone else who opens it
+gets a read-only view naming who has it, plus a **Take over editing** button. With spaces in
+play that banner names the person — "Kim is editing this sheet" — rather than their browser.
 
 ### Links to a sheet
 

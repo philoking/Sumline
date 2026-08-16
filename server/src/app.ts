@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { Store, VersionConflictError } from './db.js';
+import { Store, USERS, VersionConflictError, toUser, type UserId } from './db.js';
 import { RatesService, type RateFetcher } from './rates.js';
 import { HolidayService, type HolidayFetcher } from './holidays.js';
 import { WELCOME_SHEET } from './welcome.js';
@@ -31,6 +31,28 @@ export interface App {
 
 const DEFAULT_LOCK_TTL_MS = 45_000;
 
+/** The cookie naming whose space this browser is working in. */
+export const USER_COOKIE = 'webcalc_user';
+
+/**
+ * Reads the current space from the request.
+ *
+ * The cookie is set by the client and carries no signature, which is the point
+ * — switching space is a preference, not a login, on an app that has no
+ * authentication at all. Anything unrecognised falls back to the default user
+ * rather than erroring, so a stale or hand-edited cookie cannot lock anyone
+ * out of their sheets.
+ */
+function currentUser(request: FastifyRequest): UserId {
+  const header = request.headers.cookie;
+  if (!header) return toUser(undefined);
+  for (const part of header.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === USER_COOKIE) return toUser(decodeURIComponent(rest.join('=')));
+  }
+  return toUser(undefined);
+}
+
 export function buildApp(options: AppOptions): App {
   const server = Fastify({ logger: options.logger ?? false });
   const store = new Store(options.dbPath);
@@ -58,9 +80,20 @@ export function buildApp(options: AppOptions): App {
     },
   });
 
-  if (options.seedWelcomeSheet !== false && store.listSheets().length === 0) {
-    store.createSheet('Welcome', WELCOME_SHEET);
+  // Seeded per space rather than per instance, so whoever opens the app second
+  // still meets the sheet that explains the syntax instead of a blank page.
+  if (options.seedWelcomeSheet !== false) {
+    for (const user of USERS) {
+      if (store.listSheets(user.id).length === 0) {
+        store.createSheet(user.id, 'Welcome', WELCOME_SHEET);
+      }
+    }
   }
+
+  server.get('/api/users', async (request) => ({
+    users: USERS.map((user) => ({ ...user })),
+    current: currentUser(request),
+  }));
 
   server.get('/api/health', async () => ({
     status: 'ok',
@@ -71,20 +104,22 @@ export function buildApp(options: AppOptions): App {
 
   server.get('/api/holidays', async () => holidays.current());
 
-  server.get('/api/settings', async () => store.getSettings());
+  server.get('/api/settings', async (request) => store.getSettings(currentUser(request)));
 
   server.put<{ Body: Record<string, unknown> }>(
     '/api/settings',
-    async (request) => store.saveSettings(request.body ?? {}),
+    async (request) => store.saveSettings(currentUser(request), request.body ?? {}),
   );
 
-  server.get('/api/folders', async () => ({ folders: store.listFolders() }));
+  server.get('/api/folders', async (request) => ({
+    folders: store.listFolders(currentUser(request)),
+  }));
 
   server.post<{ Body: { name?: string } }>('/api/folders', async (request, reply) => {
     const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
     if (!name) return reply.code(400).send({ error: 'name is required' });
     reply.code(201);
-    return store.createFolder(name);
+    return store.createFolder(currentUser(request), name);
   });
 
   server.put<{ Params: { id: string }; Body: { name?: string } }>(
@@ -92,7 +127,7 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
       if (!name) return reply.code(400).send({ error: 'name is required' });
-      if (!store.renameFolder(request.params.id, name)) {
+      if (!store.renameFolder(request.params.id, name, currentUser(request))) {
         return reply.code(404).send({ error: 'Folder not found' });
       }
       return { id: request.params.id, name };
@@ -102,7 +137,7 @@ export function buildApp(options: AppOptions): App {
   server.delete<{ Params: { id: string } }>(
     '/api/folders/:id',
     async (request, reply) => {
-      if (!store.deleteFolder(request.params.id)) {
+      if (!store.deleteFolder(request.params.id, currentUser(request))) {
         return reply.code(404).send({ error: 'Folder not found' });
       }
       // The folder's sheets are not deleted with it — they return to the top
@@ -116,7 +151,7 @@ export function buildApp(options: AppOptions): App {
     async (request) => {
       const { folder, q, trash } = request.query ?? {};
       return {
-        sheets: store.listSheets({
+        sheets: store.listSheets(currentUser(request), {
           ...(folder !== undefined && { folderId: folder === '' ? null : folder }),
           ...(q !== undefined && { query: q }),
           ...(trash === '1' && { trashed: true }),
@@ -128,14 +163,16 @@ export function buildApp(options: AppOptions): App {
   server.post<{ Params: { id: string } }>(
     '/api/sheets/:id/restore',
     async (request, reply) => {
-      if (!store.restoreSheet(request.params.id)) {
+      if (!store.restoreSheet(request.params.id, currentUser(request))) {
         return reply.code(404).send({ error: 'Sheet not found' });
       }
       return { restored: true };
     },
   );
 
-  server.delete('/api/trash', async () => ({ purged: store.emptyTrash() }));
+  server.delete('/api/trash', async (request) => ({
+    purged: store.emptyTrash(currentUser(request)),
+  }));
 
   server.post<{ Body: { title?: string; content?: string; folderId?: string | null } }>(
     '/api/sheets',
@@ -147,6 +184,7 @@ export function buildApp(options: AppOptions): App {
       const rawContent = request.body?.content;
       const title = (typeof rawTitle === 'string' ? rawTitle : '').trim() || 'Untitled';
       const sheet = store.createSheet(
+        currentUser(request),
         title,
         typeof rawContent === 'string' ? rawContent : '',
         typeof request.body?.folderId === 'string' ? request.body.folderId : null,
@@ -223,10 +261,15 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       // Deleting moves a sheet to the trash. Permanent removal is opt-in,
       // because a working note is not worth losing to a mis-click.
+      //
+      // Both are scoped to the caller's space, so a sheet reached through a
+      // share link reports 404 here rather than being deleted out from under
+      // the person it belongs to.
+      const owner = currentUser(request);
       const removed =
         request.query?.purge === '1'
-          ? store.deleteSheet(request.params.id)
-          : store.trashSheet(request.params.id);
+          ? store.deleteSheet(request.params.id, owner)
+          : store.trashSheet(request.params.id, owner);
       if (!removed) return reply.code(404).send({ error: 'Sheet not found' });
       return { deleted: true };
     },

@@ -1,11 +1,18 @@
 import type { RateTable } from '@webcalc/engine';
 
+export interface User {
+  id: string;
+  name: string;
+}
+
 export interface SheetSummary {
   id: string;
   title: string;
   version: number;
   /** Number of lines in the sheet, counted server-side for the sheet list. */
   lines: number;
+  /** Whose space this sheet lives in. */
+  owner: string;
   folderId: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -148,6 +155,9 @@ export const api = {
       { method: 'DELETE' },
     ),
 
+  /** The people who can use this instance, and whose space we are in now. */
+  users: () => request<{ users: User[]; current: string }>('/api/users'),
+
   /** Mints (or returns) the slug this sheet is shared under. */
   shareSheet: (id: string) =>
     request<{ slug: string }>(`/api/sheets/${id}/share`, { method: 'POST' }),
@@ -171,6 +181,19 @@ export const api = {
       method: 'DELETE',
     }),
 };
+
+/**
+ * Switches which space this browser works in, and remembers it.
+ *
+ * A plain cookie because the server needs it on every request to filter the
+ * sheet list; a year because the answer only changes when someone else sits
+ * down at this machine. Not `secure`, since a self-hosted instance is often
+ * reached over plain HTTP — and there is nothing here to protect anyway.
+ */
+export function switchUser(id: string): void {
+  const year = 60 * 60 * 24 * 365;
+  document.cookie = `webcalc_user=${encodeURIComponent(id)}; path=/; max-age=${year}; samesite=lax`;
+}
 
 /**
  * A stable per-browser identity, used for lock ownership. Not authentication:
