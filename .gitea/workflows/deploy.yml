@@ -21,6 +21,14 @@ on:
       - "LICENSE"
   workflow_dispatch:
 
+# Two pushes landing within a run of each other would otherwise put two
+# deploys on Shuri at once, both running `compose up -d` against the same
+# container and the same sheets volume. `cancel-in-progress: false` protects
+# the deploy that is already running rather than interrupting it part-way.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: shuri
