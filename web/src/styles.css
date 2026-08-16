@@ -666,6 +666,34 @@ button.ghost:hover {
   right: 0;
 }
 
+/* Wider than the export menu: a share link has to be readable to be trusted,
+   and on plain HTTP it is also what gets copied by hand. */
+.share-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 10px;
+}
+
+.share-link {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.share-hint {
+  margin: 7px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .answer-menu button {
   width: 100%;
   padding: 6px 10px;

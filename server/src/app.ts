@@ -165,6 +165,29 @@ export function buildApp(options: AppOptions): App {
     },
   );
 
+  // Minting is a POST because it can create a slug, and it is deliberately
+  // separate from opening a sheet: the URL only ever carries an identifier
+  // when someone has explicitly asked for a link to send.
+  server.post<{ Params: { id: string } }>(
+    '/api/sheets/:id/share',
+    async (request, reply) => {
+      const slug = store.shareSheet(request.params.id);
+      if (!slug) return reply.code(404).send({ error: 'Sheet not found' });
+      return { slug };
+    },
+  );
+
+  // Static `by-slug` sits ahead of the `:id` parameter in the router, so a
+  // slug can never be mistaken for a sheet id.
+  server.get<{ Params: { slug: string } }>(
+    '/api/sheets/by-slug/:slug',
+    async (request, reply) => {
+      const id = store.resolveSlug(request.params.slug);
+      if (!id) return reply.code(404).send({ error: 'Sheet not found' });
+      return { id };
+    },
+  );
+
   server.put<{
     Params: { id: string };
     Body: {

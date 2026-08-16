@@ -148,6 +148,15 @@ export const api = {
       { method: 'DELETE' },
     ),
 
+  /** Mints (or returns) the slug this sheet is shared under. */
+  shareSheet: (id: string) =>
+    request<{ slug: string }>(`/api/sheets/${id}/share`, { method: 'POST' }),
+
+  resolveSlug: (slug: string) =>
+    request<{ id: string }>(`/api/sheets/by-slug/${encodeURIComponent(slug)}`).then(
+      (r) => r.id,
+    ),
+
   acquireLock: (id: string, clientId: string, clientName: string, force = false) =>
     request<{ granted: boolean; lock: Lock; ttlMs: number }>(
       `/api/sheets/${id}/lock`,

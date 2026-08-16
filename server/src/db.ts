@@ -43,6 +43,43 @@ export function deriveTitle(current: string, content: string): string {
   return first ? first.slice(0, 60) : 'Untitled';
 }
 
+/**
+ * Turns a sheet title into the readable half of a share link.
+ *
+ * Accents are decomposed and their marks dropped so "Café budget" becomes
+ * "cafe-budget" rather than losing the word. A title with nothing ASCII in it
+ * at all yields an empty string, so callers get "sheet" and the uniqueness
+ * pass numbers it from there.
+ */
+export function slugify(title: string): string {
+  const slug = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 60)
+    // The slice can land mid-separator, and both ends are trimmed after it so
+    // a truncated slug never ends in a dash.
+    .replace(/-+$/, '');
+  return slug || 'sheet';
+}
+
+/**
+ * Whether an existing slug still describes this title.
+ *
+ * A slug matches either exactly or with the numeric suffix uniqueness added,
+ * which is what keeps re-sharing an unrenamed sheet stable. Comparing whole
+ * candidates rather than stripping a trailing `-2` matters for a title that
+ * genuinely ends in a number: "Trip 2026" must not be read as "Trip" plus a
+ * collision suffix, or every share would mint a new link.
+ */
+function slugMatchesTitle(slug: string, desired: string): boolean {
+  if (slug === desired) return true;
+  if (!slug.startsWith(`${desired}-`)) return false;
+  return /^\d+$/.test(slug.slice(desired.length + 1));
+}
+
 export interface Lock {
   sheetId: string;
   clientId: string;
@@ -108,6 +145,13 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+-- Every slug a sheet has ever been shared under, not just its current one, so
+-- renaming a shared sheet does not break a link already sent to someone.
+CREATE TABLE IF NOT EXISTS sheet_slugs (
+  slug     TEXT PRIMARY KEY,
+  sheet_id TEXT NOT NULL REFERENCES sheets (id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS sheets_updated_at ON sheets (updated_at DESC);
 `;
 
@@ -142,6 +186,9 @@ export class Store {
   private migrate(): void {
     this.addColumn('sheets', 'folder_id', 'TEXT');
     this.addColumn('sheets', 'deleted_at', 'TEXT');
+    // The slug a sheet is currently shared under. Null until it is first
+    // shared, so the many sheets that are never sent to anyone mint nothing.
+    this.addColumn('sheets', 'slug', 'TEXT');
   }
 
   private addColumn(table: string, column: string, definition: string): void {
@@ -206,6 +253,64 @@ export class Store {
       .prepare('SELECT * FROM sheets WHERE id = ?')
       .get(id) as unknown as SheetRow | undefined;
     return row ? toSheet(row) : null;
+  }
+
+  /**
+   * Returns the slug this sheet should be shared under, minting one if needed.
+   *
+   * Slugs are created here rather than at sheet creation so the sheets that
+   * are never shared — most of them, and all the ones still called "Untitled"
+   * — never take a name. Re-sharing an unrenamed sheet returns the same slug;
+   * renaming and sharing again mints a fresh one and leaves the old pointing
+   * here, so a link already sent to someone keeps working.
+   */
+  shareSheet(id: string): string | null {
+    const sheet = this.getSheet(id);
+    if (!sheet) return null;
+
+    const desired = slugify(sheet.title);
+    const current = this.currentSlug(id);
+    if (current && slugMatchesTitle(current, desired)) return current;
+
+    const slug = this.uniqueSlug(desired);
+    this.db
+      .prepare('INSERT INTO sheet_slugs (slug, sheet_id) VALUES (?, ?)')
+      .run(slug, id);
+    this.db.prepare('UPDATE sheets SET slug = ? WHERE id = ?').run(slug, id);
+    return slug;
+  }
+
+  /** Resolves any slug a sheet has ever held, current or superseded. */
+  resolveSlug(slug: string): string | null {
+    const row = this.db
+      .prepare('SELECT sheet_id FROM sheet_slugs WHERE slug = ?')
+      .get(slug) as unknown as { sheet_id: string } | undefined;
+    return row?.sheet_id ?? null;
+  }
+
+  private currentSlug(id: string): string | null {
+    const row = this.db
+      .prepare('SELECT slug FROM sheets WHERE id = ?')
+      .get(id) as unknown as { slug: string | null } | undefined;
+    return row?.slug ?? null;
+  }
+
+  /**
+   * Numbers a slug until it is unused: `budget`, `budget-2`, `budget-3`.
+   *
+   * Uniqueness is checked against every slug ever issued, not just the ones
+   * currently in use, so a new sheet can never take a name that would hijack
+   * an old link. The bound is a backstop against a pathological run of
+   * same-titled sheets; past it, uniqueness matters more than readability.
+   */
+  private uniqueSlug(desired: string): string {
+    const taken = this.db.prepare('SELECT 1 FROM sheet_slugs WHERE slug = ?');
+    if (!taken.get(desired)) return desired;
+    for (let n = 2; n < 1000; n++) {
+      const candidate = `${desired}-${n}`;
+      if (!taken.get(candidate)) return candidate;
+    }
+    return `${desired}-${randomUUID().slice(0, 8)}`;
   }
 
   createSheet(rawTitle: string, rawContent = '', folderId: string | null = null): Sheet {

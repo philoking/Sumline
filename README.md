@@ -365,6 +365,27 @@ Sheets live on the server, so any browser on your network sees the same set. Whe
 sheet your browser takes a short-lived editing lock; anyone else who opens it gets a read-only
 view naming who has it, plus a **Take over editing** button.
 
+### Links to a sheet
+
+The address bar stays at `/` while you work. Which sheet is open is remembered per tab, so two
+tabs left on different sheets each come back to their own after a refresh — something a single
+URL cannot express.
+
+The 🔗 button mints a link to the sheet you are on and copies it: `/s/kitchen-remodel`, named
+from the title. Slugs are created the first time a sheet is shared rather than when it is
+created, so the sheets you never send anyone — and every sheet still called "Untitled" — never
+take a name. Two sheets with the same title get `budget` and `budget-2`.
+
+Renaming a shared sheet mints a fresh link and **keeps the old one working**: every slug a sheet
+has ever held stays pointed at it, so a link already sent to someone does not rot. A new sheet
+can never be issued a retired slug, which would otherwise hijack that link.
+
+Opening a share link loads that sheet and returns the address bar to `/`. The link is an input,
+not a mirror of state — left up, it would start lying the moment the reader opened another sheet.
+
+Copying needs a secure context. On an instance reached over plain HTTP the link is shown selected
+for you to copy by hand instead.
+
 The lock is advisory — the real protection is a version check on every save. If a sheet changed
 while you were editing, the save is refused and you're shown both versions to choose between,
 rather than one of them being silently lost.

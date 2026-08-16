@@ -50,6 +50,7 @@ export function App() {
     () => !window.matchMedia('(max-width: 760px)').matches,
   );
   const [exportOpen, setExportOpen] = useState(false);
+  const [share, setShare] = useState<{ url: string; copied: boolean } | null>(null);
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
     () => new URLSearchParams(window.location.search).has('help'),
@@ -98,7 +99,8 @@ export function App() {
     return sheet;
   }, []);
 
-  // First load: settings, folders, then the sheet named in the URL.
+  // First load: settings, folders, then whichever sheet a share link asked
+  // for, falling back to the one this tab had open.
   useEffect(() => {
     void (async () => {
       const [loaded, folderList] = await Promise.all([
@@ -111,8 +113,25 @@ export function App() {
       try {
         const list = await api.listSheets();
         setSheets(list);
-        const fromUrl = window.location.hash.replace(/^#\/?/, '');
-        const target = list.find((s) => s.id === fromUrl) ?? list[0];
+
+        const slug = shareLinkSlug();
+        if (slug) {
+          // The link is consumed as soon as it is read. The address bar is an
+          // input here, never a mirror of state: leaving /s/kitchen-remodel up
+          // would start lying the moment the reader opened another sheet.
+          window.history.replaceState(null, '', '/');
+          const shared = await api.resolveSlug(slug).catch(() => null);
+          if (shared) {
+            // Opened directly rather than looked up in the list, so a link to
+            // a sheet that has since been trashed still lands on that sheet
+            // instead of silently opening an unrelated one.
+            setActiveId(shared);
+            return;
+          }
+          setError(`That link does not point at a sheet any more (/s/${slug}).`);
+        }
+
+        const target = list.find((s) => s.id === rememberedSheet()) ?? list[0];
         if (target) {
           setActiveId(target.id);
           return;
@@ -135,7 +154,7 @@ export function App() {
   useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
-    window.location.hash = `/${activeId}`;
+    rememberSheet(activeId);
 
     void (async () => {
       try {
@@ -318,6 +337,28 @@ export function App() {
     }
   };
 
+  /**
+   * Mints a link to this sheet and offers it for copying.
+   *
+   * This is the only place a sheet identifier reaches the address bar, and
+   * only ever the recipient's. A pending rename is flushed first so the link
+   * is named from the title on screen rather than the one the server last saw.
+   */
+  const shareSheet = async () => {
+    if (!activeId) return;
+    try {
+      const trimmed = title.trim();
+      if (trimmed && trimmed !== sheets.find((s) => s.id === activeId)?.title) {
+        await save({ title: trimmed });
+      }
+      const { slug } = await api.shareSheet(activeId);
+      const url = `${window.location.origin}/s/${slug}`;
+      setShare({ url, copied: await copyToClipboard(url) });
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  };
+
   /** On a phone the sidebar is an overlay, so acting on it should dismiss it. */
   const closeSidebarOnPhone = () => {
     if (window.matchMedia('(max-width: 760px)').matches) setSidebarOpen(false);
@@ -394,6 +435,38 @@ export function App() {
                   </button>
                 </li>
               </ul>
+            </>
+          )}
+        </div>
+        <div className="menu-anchor">
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => (share ? setShare(null) : void shareSheet())}
+            title="Copy a link to this sheet"
+            aria-label="Copy a link to this sheet"
+            disabled={!activeId}
+          >
+            🔗
+          </button>
+          {share && (
+            <>
+              <div className="menu-backdrop" onClick={() => setShare(null)} />
+              <div className="answer-menu share-menu">
+                <input
+                  className="share-link"
+                  value={share.url}
+                  readOnly
+                  autoFocus
+                  onFocus={(event) => event.currentTarget.select()}
+                  aria-label="Link to this sheet"
+                />
+                <p className="share-hint">
+                  {share.copied
+                    ? 'Copied. The link keeps working if you rename the sheet.'
+                    : 'Press ⌘C to copy. The link keeps working if you rename the sheet.'}
+                </p>
+              </div>
             </>
           )}
         </div>
@@ -619,6 +692,61 @@ export function App() {
       />
     </div>
   );
+}
+
+const LAST_SHEET_KEY = 'webcalc.lastSheet';
+
+/**
+ * Remembers the open sheet without putting it in the address bar.
+ *
+ * Both stores are written because they answer different questions.
+ * sessionStorage is per-tab, so two tabs left on different sheets each return
+ * to their own after a refresh — something a single URL could not express.
+ * localStorage covers the case sessionStorage cannot: a brand-new tab, or the
+ * browser reopened from cold.
+ */
+function rememberSheet(id: string): void {
+  try {
+    sessionStorage.setItem(LAST_SHEET_KEY, id);
+    localStorage.setItem(LAST_SHEET_KEY, id);
+  } catch {
+    // Storage can be refused outright in private mode. Losing the restore is
+    // not worth failing the sheet switch over.
+  }
+}
+
+function rememberedSheet(): string | null {
+  try {
+    return (
+      sessionStorage.getItem(LAST_SHEET_KEY) ?? localStorage.getItem(LAST_SHEET_KEY)
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** The slug from a `/s/<slug>` share link, when the app was opened by one. */
+function shareLinkSlug(): string | null {
+  const match = /^\/s\/([^/]+)\/?$/.exec(window.location.pathname);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Copies text, reporting whether it worked.
+ *
+ * `navigator.clipboard` exists only in a secure context, so on an instance
+ * reached as http://host:port it is undefined — the same restriction that
+ * shapes the client id in api.ts. The caller shows the link either way, so a
+ * failed copy costs a keystroke rather than the whole feature.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function capitalise(text: string): string {
