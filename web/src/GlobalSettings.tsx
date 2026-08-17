@@ -1,5 +1,6 @@
 import { GlobalsEditor, useRows } from './GlobalsEditor';
 import { REGIONS, SettingField, regionLabel } from './SettingField';
+import { useDialog } from './useDialog';
 import type { Computed } from './api';
 
 export interface GlobalSettingsProps {
@@ -29,13 +30,20 @@ export interface GlobalSettingsProps {
 export function GlobalSettings(props: GlobalSettingsProps) {
   const { open, computed, globals, preview, onSaveComputed, onSaveGlobals, onClose } = props;
   const [rows, setRows] = useRows(globals, open);
+  const panelRef = useDialog<HTMLElement>(open, onClose);
 
   if (!open) return null;
 
   return (
     <>
       <div className="menu-backdrop" onClick={onClose} />
-      <aside className="reference space-settings" aria-label="Global settings">
+      <aside
+        className="reference space-settings"
+        role="dialog"
+        aria-label="Global settings"
+        ref={panelRef}
+        tabIndex={-1}
+      >
         <header className="reference-head">
           <strong>Global settings</strong>
           <button type="button" className="ghost" onClick={onClose} title="Close">
@@ -50,6 +58,7 @@ export function GlobalSettings(props: GlobalSettingsProps) {
           </p>
 
           <SettingField
+            autoFocus
             label="Number region"
             blurb={
               <>

@@ -19,6 +19,7 @@ export function SettingField({
   inheritLabel,
   options,
   onSave,
+  autoFocus = false,
 }: {
   label: string;
   blurb: ReactNode;
@@ -27,7 +28,14 @@ export function SettingField({
   /** Fixed choices, or undefined for a free-text setting. */
   options?: Array<{ id: string; label: string }>;
   onSave(value: string | null): void;
+  /**
+   * Marks this as where a panel should put focus when it opens. Not React's
+   * `autoFocus`: the panel decides, once, on open — see useDialog.
+   */
+  autoFocus?: boolean;
 }) {
+  const focusMarker = autoFocus ? { 'data-autofocus': true } : {};
+
   return (
     <section className="reference-group">
       <h3>{label}</h3>
@@ -35,6 +43,7 @@ export function SettingField({
       {options ? (
         <select
           className="setting-select"
+          {...focusMarker}
           value={value ?? ''}
           aria-label={label}
           onChange={(event) =>
@@ -51,6 +60,7 @@ export function SettingField({
       ) : (
         <input
           className="setting-select"
+          {...focusMarker}
           defaultValue={value ?? ''}
           key={value ?? ''}
           aria-label={label}

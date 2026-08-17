@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { EXAMPLE_GROUPS, type ExampleGroup } from '@webcalc/engine';
 import { formatShortcut } from './shortcuts';
+import { useDialog } from './useDialog';
 
 export interface ReferenceProps {
   open: boolean;
@@ -42,6 +43,7 @@ export function Reference({
   onInsert,
 }: ReferenceProps) {
   const [query, setQuery] = useState('');
+  const panelRef = useDialog<HTMLElement>(open, onClose);
 
   const groups = useMemo(() => filterGroups(EXAMPLE_GROUPS, query), [query]);
   const total = useMemo(
@@ -54,7 +56,13 @@ export function Reference({
   return (
     <>
       <div className="menu-backdrop" onClick={onClose} />
-      <aside className="reference" aria-label="Syntax reference">
+      <aside
+        className="reference"
+        role="dialog"
+        aria-label="Syntax reference"
+        ref={panelRef}
+        tabIndex={-1}
+      >
         <header className="reference-head">
           <strong>Reference</strong>
           <input

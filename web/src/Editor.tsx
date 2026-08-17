@@ -4,6 +4,8 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type Ref,
 } from 'react';
 import { Compartment, EditorState, RangeSetBuilder } from '@codemirror/state';
@@ -60,6 +62,62 @@ interface MenuState {
   line: number;
   x: number;
   y: number;
+}
+
+/** Where a popover was asked for, so it can be placed against its answer. */
+interface PopoverAt {
+  line: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * Where to put a popover raised from an answer.
+ *
+ * `x` is the edge it is anchored *to the right of* — see `placePopover`.
+ *
+ * `Shift+F10` and the Menu key raise a `contextmenu` event like a right-click
+ * does, but with no pointer behind it: the coordinates are 0,0, which would pin
+ * the menu to the corner of the window. Falling back to the button's own box
+ * puts it where a right-click on that answer would have.
+ */
+function popoverFrom(event: {
+  clientX: number;
+  clientY: number;
+  currentTarget: HTMLElement;
+}): { x: number; y: number } {
+  if (event.clientX !== 0 || event.clientY !== 0) {
+    return { x: event.clientX, y: event.clientY };
+  }
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { x: rect.right, y: rect.bottom };
+}
+
+/** Roughly how tall the answer menu is, for deciding which way it opens. */
+const MENU_HEIGHT = 230;
+/** The error note is one short paragraph, so it needs far less room. */
+const NOTE_HEIGHT = 90;
+
+/**
+ * Places a popover against the answer that raised it.
+ *
+ * Anchored by its *right* edge rather than its left, because the answer column
+ * sits at the right of the window: a menu growing rightwards from an answer
+ * runs straight off the screen, which is what both of these did. Growing
+ * leftwards puts them over the sheet, which is the roomy direction.
+ *
+ * Flipped upwards when there is no space below, for the same reason and by the
+ * same reckoning as the sidebar's flyout — guessing the height high only opens
+ * a popover upwards a little sooner than it had to, while guessing low leaves
+ * one clipped at the bottom of the window.
+ */
+function placePopover(at: PopoverAt, height: number): CSSProperties {
+  return {
+    right: Math.max(8, window.innerWidth - at.x),
+    ...(at.y + height > window.innerHeight
+      ? { bottom: Math.max(8, window.innerHeight - at.y) }
+      : { top: at.y }),
+  };
 }
 
 /*
@@ -341,8 +399,18 @@ export function Editor({
   const onChangeRef = useRef(onChange);
   const onRevealedRef = useRef(onRevealed);
   const readOnlyCompartment = useRef(new Compartment());
+  const answersRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLUListElement | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
   const [boxes, setBoxes] = useState<AnswerBox[]>([]);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  /** The failed line whose message is being shown, and where to show it. */
+  const [errorAt, setErrorAt] = useState<PopoverAt | null>(null);
+  /**
+   * The line the caret is on, which is the one answer the column offers to the
+   * Tab key — see `tabStop`.
+   */
+  const [activeLine, setActiveLine] = useState(1);
 
   onChangeRef.current = onChange;
   onRevealedRef.current = onRevealed;
@@ -410,6 +478,12 @@ export function Editor({
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
+            }
+            if (update.selectionSet || update.docChanged) {
+              // React drops the update when the number has not changed, so
+              // this costs a render per line moved between, not per keystroke.
+              const { head } = update.state.selection.main;
+              setActiveLine(update.state.doc.lineAt(head).number);
             }
             // The find panel opening or closing takes a strip of height off
             // the top of the sheet, which moves every line down the screen
@@ -565,10 +639,94 @@ export function Editor({
 
   const menuResult = menu ? results[menu.line - 1] : undefined;
 
+  /*
+   * One tab stop for the whole column, on the line the caret is sitting on.
+   *
+   * The alternative — every answer in the tab order — would put seventy stops
+   * between the sheet and the total on a sheet of any length. This way Tab out
+   * of the text lands on the answer beside where you were already working, and
+   * the arrow keys walk the column from there. If that line has no box yet the
+   * first one takes the stop, so the column is never unreachable.
+   */
+  const tabStop = boxes.some((box) => box.line === activeLine)
+    ? activeLine
+    : (boxes[0]?.line ?? 0);
+
+  const focusAnswer = (line: number) => {
+    answersRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-line="${line}"]`)
+      ?.focus();
+  };
+
+  /** Arrow keys walk the column; Escape hands the keyboard back to the sheet. */
+  const onAnswerKey = (event: ReactKeyboardEvent<HTMLButtonElement>, line: number) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const index = boxes.findIndex((box) => box.line === line);
+      const next = boxes[index + (event.key === 'ArrowDown' ? 1 : -1)];
+      if (next) focusAnswer(next.line);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      viewRef.current?.focus();
+    }
+  };
+
+  /*
+   * Both popovers hand focus back to the answer that raised them.
+   *
+   * The answer stays mounted while its menu is open, so it is still there to
+   * receive focus — and landing back on it is what makes a menu opened with
+   * Shift+F10 escapable without reaching for the mouse.
+   */
+  const closeMenu = () => {
+    const line = menu?.line;
+    setMenu(null);
+    if (line !== undefined) focusAnswer(line);
+  };
+
+  const closeError = () => {
+    const line = errorAt?.line;
+    setErrorAt(null);
+    if (line !== undefined) focusAnswer(line);
+  };
+
+  const onMenuKey = (event: ReactKeyboardEvent<HTMLUListElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMenu();
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const items = [
+      ...(menuRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []),
+    ];
+    if (items.length === 0) return;
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    items[(at + step + items.length) % items.length]?.focus();
+  };
+
+  // A menu is no use to the keyboard that raised it if focus stays behind.
+  useEffect(() => {
+    if (menu) menuRef.current?.querySelector('button')?.focus();
+  }, [menu]);
+
+  useEffect(() => {
+    if (errorAt) errorRef.current?.focus();
+  }, [errorAt]);
+
   return (
     <div className="sheet-body" ref={hostRef}>
       <div className="editor-host" ref={editorHostRef} />
-      <div className="answers">
+      <div
+        className="answers"
+        ref={answersRef}
+        role="group"
+        aria-label="Answers"
+      >
         {boxes.map((box) => {
           const result = results[box.line - 1];
           if (!result) return null;
@@ -576,7 +734,9 @@ export function Editor({
           const empty = !text && !result.error;
 
           // An empty answer slot is still a target: double-clicking one is how
-          // Soulver makes a subtotal.
+          // Soulver makes a subtotal. Enter does it from the keyboard, since a
+          // single click here has never meant anything and making it mean this
+          // would turn a stray click into an edit.
           if (empty) {
             return (
               <button
@@ -585,8 +745,18 @@ export function Editor({
                 className="answer answer-empty"
                 style={{ top: box.top, height: box.height }}
                 title="Double-click to make this a subtotal"
+                aria-label={`Line ${box.line}, no answer. Make it a subtotal.`}
+                data-line={box.line}
                 onDoubleClick={() => subtotalAt(box.line)}
-                tabIndex={-1}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    subtotalAt(box.line);
+                    return;
+                  }
+                  onAnswerKey(event, box.line);
+                }}
+                tabIndex={box.line === tabStop ? 0 : -1}
               />
             );
           }
@@ -602,16 +772,35 @@ export function Editor({
                   ? result.error
                   : `Insert a reference to line ${box.line} — right-click for more`
               }
+              // The `?` is the whole accessible name otherwise, and the message
+              // lives in `title`, which a touch device never shows and a screen
+              // reader is not obliged to read.
+              aria-label={
+                result.error
+                  ? `Line ${box.line} could not be worked out: ${result.error}`
+                  : `Line ${box.line}: ${text}`
+              }
+              data-line={box.line}
               draggable={!result.error}
               onDragStart={(event) =>
                 event.dataTransfer.setData('text/plain', `line ${box.line}`)
               }
-              onClick={() => !result.error && insertReference(box.line)}
+              onClick={(event) => {
+                // A failed line has no reference worth citing, so the click is
+                // free to do the thing there was previously no way to do on a
+                // phone: say what went wrong.
+                if (result.error) {
+                  setErrorAt({ line: box.line, ...popoverFrom(event) });
+                  return;
+                }
+                insertReference(box.line);
+              }}
               onContextMenu={(event) => {
                 event.preventDefault();
-                setMenu({ line: box.line, x: event.clientX, y: event.clientY });
+                setMenu({ line: box.line, ...popoverFrom(event) });
               }}
-              tabIndex={-1}
+              onKeyDown={(event) => onAnswerKey(event, box.line)}
+              tabIndex={box.line === tabStop ? 0 : -1}
             >
               {text || '?'}
             </button>
@@ -619,41 +808,91 @@ export function Editor({
         })}
       </div>
 
+      {errorAt && (
+        <>
+          <div className="menu-backdrop" onClick={() => setErrorAt(null)} />
+          <div
+            className="answer-menu error-note"
+            role="dialog"
+            aria-label={`Why line ${errorAt.line} has no answer`}
+            style={placePopover(errorAt, NOTE_HEIGHT)}
+            ref={errorRef}
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return;
+              event.preventDefault();
+              closeError();
+            }}
+          >
+            <p>{results[errorAt.line - 1]?.error}</p>
+          </div>
+        </>
+      )}
+
       {menu && (
         <>
-          <div className="menu-backdrop" onClick={() => setMenu(null)} />
-          <ul className="answer-menu" style={{ left: menu.x, top: menu.y }}>
+          <div className="menu-backdrop" onClick={() => closeMenu()} />
+          <ul
+            className="answer-menu"
+            role="menu"
+            aria-label={`Line ${menu.line}`}
+            style={placePopover(menu, MENU_HEIGHT)}
+            ref={menuRef}
+            onKeyDown={onMenuKey}
+          >
             <li>
               <button
                 type="button"
+                role="menuitem"
                 onClick={() => {
                   void navigator.clipboard?.writeText(menuResult?.output ?? '');
-                  setMenu(null);
+                  closeMenu();
                 }}
               >
                 Copy answer
               </button>
             </li>
             <li>
-              <button type="button" onClick={() => insertReference(menu.line)}>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  // Closed here rather than in `insertReference`, which the
+                  // answer column also calls with no menu open.
+                  setMenu(null);
+                  insertReference(menu.line);
+                }}
+              >
                 Insert reference
               </button>
             </li>
             <li className="menu-separator" />
             {[0, 2, 4].map((places) => (
               <li key={places}>
-                <button type="button" onClick={() => setDecimals(menu.line, places)}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => setDecimals(menu.line, places)}
+                >
                   {places === 0 ? 'No decimal places' : `${places} decimal places`}
                 </button>
               </li>
             ))}
             <li>
-              <button type="button" onClick={() => writeInFull(menu.line)}>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => writeInFull(menu.line)}
+              >
                 Write number in full
               </button>
             </li>
             <li>
-              <button type="button" onClick={() => clearFormatting(menu.line)}>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => clearFormatting(menu.line)}
+              >
                 Reset formatting
               </button>
             </li>

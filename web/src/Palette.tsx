@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { api, type SheetMatch, type SheetSummary } from './api';
 import { Snippet } from './Snippet';
 import { formatShortcut } from './shortcuts';
+import { useDialog } from './useDialog';
 
 /** How long a keystroke sits before the server is asked about it. */
 const SEARCH_DELAY_MS = 130;
@@ -74,6 +75,9 @@ export function Palette({ open, recent, onOpen, onClose }: PaletteProps) {
   const [searching, setSearching] = useState(false);
   const [active, setActive] = useState(0);
   const activeRef = useRef<HTMLLIElement | null>(null);
+  // Escape is handled on the input, which owns the keyboard here; this is for
+  // putting focus back where it was when the palette closes.
+  const panelRef = useDialog<HTMLDivElement>(open, onClose);
 
   /**
    * Every sheet on the list before a search, so the palette opens on something
@@ -188,6 +192,7 @@ export function Palette({ open, recent, onOpen, onClose }: PaletteProps) {
         role="dialog"
         aria-modal="true"
         aria-label="Go to a sheet, or find text in any sheet"
+        ref={panelRef}
       >
         <input
           className="palette-input"

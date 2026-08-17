@@ -1074,13 +1074,45 @@ button.danger-button:disabled {
   background: var(--hover);
 }
 
+/* A failed line is the one answer worth clicking, so it says so. The message
+   used to live in `title` alone, which a phone never shows. */
 .answer-error {
   color: var(--line-number);
-  cursor: default;
+  cursor: pointer;
 }
 
 .answer-error:hover {
-  background: none;
+  background: var(--hover);
+}
+
+/* The column is one tab stop that follows the caret, so when it is reached the
+   ring has to be obvious — it is the only thing saying focus left the text. */
+.answer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* An empty slot shows nothing until it is the thing holding focus. */
+.answer-empty:focus-visible {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+/* The error message, shown against the answer that could not be worked out. */
+.error-note {
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 10px 12px;
+}
+
+.error-note:focus {
+  outline: none;
+}
+
+.error-note p {
+  margin: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 /* ---- the sheet total ---- */

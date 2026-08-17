@@ -20,6 +20,7 @@ import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
 import { formatShortcut } from './shortcuts';
+import { useDialog } from './useDialog';
 import { SpaceSettings } from './SpaceSettings';
 import { GlobalSettings } from './GlobalSettings';
 import { engineOptionsFrom } from './engineOptions';
@@ -135,6 +136,10 @@ export function App() {
 
   /** Lets ⌘F open the sheet's find panel from anywhere in the app. */
   const editorRef = useRef<EditorHandle>(null);
+
+  // The share popover holds the link and nothing else, so closing it has to put
+  // the keyboard back on the 🔗 that opened it or there is nowhere to go.
+  const shareRef = useDialog<HTMLDivElement>(share !== null, () => setShare(null));
 
   /**
    * The line a palette result asked for, while its sheet is still loading.
@@ -613,7 +618,11 @@ export function App() {
             From {users.find((user) => user.id === sheetOwner)?.name ?? sheetOwner}
           </span>
         )}
-        <span className={`status status-${status}`}>{statusLabel(status, lock)}</span>
+        {/* Announced rather than only shown: whether the work is saved is the
+            one thing on this bar worth interrupting a reader for. */}
+        <span className={`status status-${status}`} role="status">
+          {statusLabel(status, lock)}
+        </span>
         {rates && (
           <span className="rates" title={`Exchange rates from ${rates.date}`}>
             {rates.stale ? '⚠ rates ' : 'rates '}
@@ -677,7 +686,13 @@ export function App() {
           {share && (
             <>
               <div className="menu-backdrop" onClick={() => setShare(null)} />
-              <div className="answer-menu share-menu">
+              <div
+                className="answer-menu share-menu"
+                role="dialog"
+                aria-label="Link to this sheet"
+                ref={shareRef}
+                tabIndex={-1}
+              >
                 <input
                   className="share-link"
                   value={share.url}

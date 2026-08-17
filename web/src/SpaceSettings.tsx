@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GlobalsEditor, named, useRows } from './GlobalsEditor';
 import { REGIONS, SettingField, regionLabel } from './SettingField';
+import { useDialog } from './useDialog';
 import type { Computed, User } from './api';
 
 export interface SpaceSettingsProps {
@@ -34,6 +35,7 @@ export function SpaceSettings(props: SpaceSettingsProps) {
 
   const [name, setName] = useState(space.name);
   const [spaceRows, setSpaceRows] = useRows(globals, open);
+  const panelRef = useDialog<HTMLElement>(open, onClose);
 
   useEffect(() => {
     if (open) setName(space.name);
@@ -60,7 +62,13 @@ export function SpaceSettings(props: SpaceSettingsProps) {
   return (
     <>
       <div className="menu-backdrop" onClick={onClose} />
-      <aside className="reference space-settings" aria-label={`${space.name} settings`}>
+      <aside
+        className="reference space-settings"
+        role="dialog"
+        aria-label={`${space.name} settings`}
+        ref={panelRef}
+        tabIndex={-1}
+      >
         <header className="reference-head">
           <strong>{space.name}</strong>
           <button type="button" className="ghost" onClick={onClose} title="Close">
@@ -73,6 +81,7 @@ export function SpaceSettings(props: SpaceSettingsProps) {
             <h3>Name</h3>
             <input
               className="space-name-input"
+              data-autofocus
               value={name}
               onChange={(event) => setName(event.target.value)}
               onBlur={commitName}
