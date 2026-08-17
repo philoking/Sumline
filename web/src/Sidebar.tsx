@@ -2,8 +2,15 @@ import { useState, type CSSProperties, type MouseEvent } from 'react';
 import type { Folder, SheetSummary } from './api';
 import { SHEET_COLORS, colorClass, colorLabel } from './colors';
 
-/** Roughly how tall a flyout is: the rename row, two swatch rows and clear. */
-const FLYOUT_HEIGHT = 132;
+/**
+ * Roughly how tall the tallest flyout is: rename, move up, move down, two
+ * swatch rows and the clear button.
+ *
+ * An over-estimate on purpose. Guessing high only flips a menu upwards a
+ * little sooner than it had to; guessing low leaves one clipped at the bottom
+ * of the window, which is the failure worth avoiding.
+ */
+const FLYOUT_HEIGHT = 200;
 
 /**
  * Places the flyout against the button that opened it.
@@ -86,8 +93,22 @@ export interface SidebarProps {
   onDeleteFolder(folder: Folder): void;
   onColorSheet(sheet: SheetSummary, color: string | null): void;
   onColorFolder(folder: Folder, color: string | null): void;
+  /** The sheets as they should now read, top to bottom. */
+  onReorder(ids: string[]): void;
+  /** True when this space arranges its list by hand. */
+  manualOrder: boolean;
+  onSortByRecent(): void;
   onToggleTrash(): void;
   onEmptyTrash(): void;
+}
+
+/** Moves one entry of a list to another index, returning a new list. */
+function movedTo<T>(items: readonly T[], from: number, to: number): T[] {
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  if (moved === undefined) return next;
+  next.splice(to, 0, moved);
+  return next;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -95,8 +116,48 @@ export function Sidebar(props: SidebarProps) {
     sheets, folders, activeId, activeFolder, query, viewingTrash, open,
     onSelect, onCreate, onRename, onDelete, onRestore, onMove, onQuery,
     onSelectFolder, onCreateFolder, onRenameFolder, onDeleteFolder,
-    onColorSheet, onColorFolder, onToggleTrash, onEmptyTrash,
+    onColorSheet, onColorFolder, onReorder, manualOrder, onSortByRecent,
+    onToggleTrash, onEmptyTrash,
   } = props;
+
+  /**
+   * The row being dragged and the gap it would drop into.
+   *
+   * Held here rather than reordering `sheets` as the pointer moves, so the
+   * list only changes once — on drop — and a drag abandoned outside the
+   * sidebar leaves nothing to undo.
+   */
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<number | null>(null);
+
+  /** Reordering the trash is meaningless, and search results are not a list
+      you own the order of — both would write positions for a view that isn't
+      the arrangement. */
+  const reorderable = !viewingTrash && query === '' && sheets.length > 1;
+
+  const finishDrag = () => {
+    setDragging(null);
+    setDropAt(null);
+  };
+
+  const dropDragged = (target: number) => {
+    const from = sheets.findIndex((sheet) => sheet.id === dragging);
+    finishDrag();
+    if (from === -1) return;
+    // A drop below its own row means the gap after it, which is where it
+    // already is once the row itself is taken out of the list.
+    const to = target > from ? target - 1 : target;
+    if (to === from) return;
+    onReorder(movedTo(sheets, from, to).map((sheet) => sheet.id));
+  };
+
+  /** Nudges a sheet one place, for a keyboard or a phone. */
+  const nudge = (sheet: SheetSummary, by: -1 | 1) => {
+    const from = sheets.findIndex((entry) => entry.id === sheet.id);
+    const to = from + by;
+    if (from === -1 || to < 0 || to >= sheets.length) return;
+    onReorder(movedTo(sheets, from, to).map((entry) => entry.id));
+  };
 
   /**
    * Which row has its edit flyout open, and where to put it.
@@ -142,11 +203,50 @@ export function Sidebar(props: SidebarProps) {
         />
       </div>
 
-      <ul className="sheet-list">
-        {sheets.map((sheet) => (
+      {manualOrder && !viewingTrash && (
+        <div className="order-note">
+          <span>Custom order</span>
+          <button type="button" onClick={onSortByRecent} title="Sort by most recent">
+            Sort by recent
+          </button>
+        </div>
+      )}
+
+      <ul className="sheet-list" onDragLeave={() => setDropAt(null)}>
+        {sheets.map((sheet, index) => (
           <li
             key={sheet.id}
-            className={`${sheet.id === activeId ? 'active' : ''}${colorClass(sheet.color)}`}
+            className={[
+              sheet.id === activeId ? 'active' : '',
+              dragging === sheet.id ? 'dragging' : '',
+              dropAt === index ? 'drop-before' : '',
+              dropAt === index + 1 && index === sheets.length - 1 ? 'drop-after' : '',
+            ]
+              .filter(Boolean)
+              .join(' ') + colorClass(sheet.color)}
+            draggable={reorderable}
+            onDragStart={(event) => {
+              setDragging(sheet.id);
+              event.dataTransfer.effectAllowed = 'move';
+              // Firefox ignores a drag that carries no data at all.
+              event.dataTransfer.setData('text/plain', sheet.id);
+            }}
+            onDragEnd={finishDrag}
+            onDragOver={(event) => {
+              if (!dragging || !reorderable) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              // Past the midpoint means the gap below this row, which is what
+              // makes dropping onto the lower half of the last row land at the
+              // very bottom rather than second to last.
+              const box = event.currentTarget.getBoundingClientRect();
+              const below = event.clientY > box.top + box.height / 2;
+              setDropAt(index + (below ? 1 : 0));
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              dropDragged(dropAt ?? index);
+            }}
           >
             <button
               type="button"
@@ -225,6 +325,37 @@ export function Sidebar(props: SidebarProps) {
                   >
                     Rename…
                   </button>
+                  {/* The same reorder a drag performs, reachable from a
+                      keyboard and workable on a phone, where the sidebar is
+                      an overlay and dragging fights the scroll. */}
+                  {reorderable && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flyout-item"
+                        disabled={index === 0}
+                        onClick={() => {
+                          closeEditor();
+                          nudge(sheet, -1);
+                        }}
+                      >
+                        Move up
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flyout-item"
+                        disabled={index === sheets.length - 1}
+                        onClick={() => {
+                          closeEditor();
+                          nudge(sheet, 1);
+                        }}
+                      >
+                        Move down
+                      </button>
+                    </>
+                  )}
                   <ColorPalette
                     current={sheet.color}
                     onPick={(color) => {

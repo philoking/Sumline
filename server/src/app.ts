@@ -305,15 +305,43 @@ export function buildApp(options: AppOptions): App {
     '/api/sheets',
     async (request) => {
       const { folder, q, trash } = request.query ?? {};
+      const owner = currentUser(request);
       return {
-        sheets: store.listSheets(currentUser(request), {
+        sheets: store.listSheets(owner, {
           ...(folder !== undefined && { folderId: folder === '' ? null : folder }),
           ...(q !== undefined && { query: q }),
           ...(trash === '1' && { trashed: true }),
+          // Read from this space's settings rather than asked for by the
+          // client, so every caller — including a second browser that has
+          // never been told — sees the order this space chose.
+          ...(store.getSettings(owner)['sheetOrder'] === 'manual' && {
+            manualOrder: true,
+          }),
         }),
       };
     },
   );
+
+  /**
+   * Rearranges the sheets named, in the order given.
+   *
+   * Switches the space to manual order on the way through, because a drag is
+   * an unambiguous statement that the list should stop rearranging itself —
+   * asking the client to send a settings change alongside every reorder would
+   * only invite the two to disagree.
+   */
+  server.put<{ Body: { ids?: unknown } }>('/api/sheets/order', async (request, reply) => {
+    const ids = request.body?.ids;
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+      return reply.code(400).send({ error: 'ids must be an array of sheet ids' });
+    }
+    const owner = currentUser(request);
+    if (!store.reorderSheets(owner, ids as string[])) {
+      return reply.code(400).send({ error: 'Nothing to reorder' });
+    }
+    store.saveSettings(owner, { sheetOrder: 'manual' });
+    return { ordered: true };
+  });
 
   server.post<{ Params: { id: string } }>(
     '/api/sheets/:id/restore',

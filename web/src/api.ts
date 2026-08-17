@@ -31,8 +31,17 @@ export interface Folder {
 
 export type Statistic = 'total' | 'average' | 'count' | 'median';
 
+export type SheetOrder = 'recent' | 'manual';
+
 export interface Settings {
   statistic?: Statistic;
+  /**
+   * Whether the sidebar is arranged by hand or by what changed last.
+   *
+   * Absent means recent, which is what every space had before dragging
+   * existed and stays the default for one that never drags anything.
+   */
+  sheetOrder?: SheetOrder;
   showTotal?: boolean;
   largeNumberNotation?: boolean;
   countVariablesInTotal?: boolean;
@@ -207,6 +216,19 @@ export const api = {
     request<{ id: string; color: string | null }>(`/api/folders/${id}/color`, {
       method: 'PUT',
       body: JSON.stringify({ color }),
+    }),
+
+  /**
+   * Puts the sheets in the given order and switches the space to manual.
+   *
+   * Send the ids as they are displayed. Only the positions those sheets
+   * already hold get reassigned, so reordering inside a folder or a search
+   * leaves everything off screen where it was.
+   */
+  reorderSheets: (ids: string[]) =>
+    request<{ ordered: boolean }>('/api/sheets/order', {
+      method: 'PUT',
+      body: JSON.stringify({ ids }),
     }),
 
   /** Mints (or returns) the slug this sheet is shared under. */

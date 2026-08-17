@@ -889,6 +889,30 @@ export function App() {
                 void api.listFolders().then(setFolders);
               });
           }}
+          manualOrder={settings.sheetOrder === 'manual'}
+          onReorder={(ids) => {
+            // Painted first so the row lands where it was dropped rather than
+            // springing back for the length of a round trip.
+            setSheets((current) => {
+              const byId = new Map(current.map((sheet) => [sheet.id, sheet]));
+              return ids.map((id) => byId.get(id)).filter((s) => s !== undefined);
+            });
+            // The setting is changed by the server as part of the reorder; this
+            // keeps the local copy from lagging a render behind it.
+            setSettings((current) => ({ ...current, sheetOrder: 'manual' }));
+            void api
+              .reorderSheets(ids)
+              .then(() => refreshSheets())
+              .catch((cause: unknown) => {
+                setError(describe(cause));
+                void refreshSheets();
+              });
+          }}
+          onSortByRecent={() => {
+            // The positions are left alone, so flipping to recent to find
+            // something and back again does not cost the arrangement.
+            void persistSettings({ sheetOrder: 'recent' }).then(() => refreshSheets());
+          }}
           onToggleTrash={() => {
             setViewingTrash((viewing) => !viewing);
             setActiveFolder(undefined);

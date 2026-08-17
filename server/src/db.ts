@@ -117,6 +117,7 @@ interface SheetRow {
   version: number;
   owner: string;
   color: string | null;
+  position: number | null;
   folder_id: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -252,6 +253,10 @@ export class Store {
     // rather than having chosen a particular one.
     this.addColumn('sheets', 'color', 'TEXT');
     this.addColumn('folders', 'color', 'TEXT');
+    // Where a sheet sits when the space orders its list by hand. Null until
+    // the first drag, which is what tells manual order from an arrangement
+    // that happens to start at zero.
+    this.addColumn('sheets', 'position', 'INTEGER');
     // Everything that existed before there were spaces belongs to the default
     // one, so nobody opens the app to find their sheets gone.
     //
@@ -399,7 +404,13 @@ export class Store {
    */
   listSheets(
     owner: UserId,
-    filter: { folderId?: string | null; query?: string; trashed?: boolean } = {},
+    filter: {
+      folderId?: string | null;
+      query?: string;
+      trashed?: boolean;
+      /** Order by hand rather than by when each sheet last changed. */
+      manualOrder?: boolean;
+    } = {},
   ): SheetSummary[] {
     const where: string[] = [
       'owner = ?',
@@ -421,15 +432,30 @@ export class Store {
       params.push(pattern, pattern);
     }
 
+    // A sheet with no position has never been placed — it was made after the
+    // list was last arranged — so it sorts above the arranged ones, newest
+    // first. A new sheet appearing at the top is what the recency order would
+    // have done too; dropping it silently at the bottom of a long list is the
+    // behaviour that would look like a bug.
+    // `rowid DESC` breaks ties on the timestamp, which is not the corner case
+    // it looks like: two sheets saved in the same millisecond compare equal,
+    // and SQLite is then free to return them in either order from one request
+    // to the next — a list that reshuffles itself between refreshes. Falling
+    // back to insertion order keeps the newer sheet above the older one, which
+    // is what the recency order was claiming to do anyway.
+    const order = filter.manualOrder
+      ? 'position IS NULL DESC, position ASC, updated_at DESC, rowid DESC'
+      : 'updated_at DESC, rowid DESC';
+
     // The line count is derived in SQL so the list endpoint never has to ship
     // sheet bodies just to say how long they are.
     const rows = this.db
       .prepare(
-        `SELECT id, title, version, owner, color, folder_id, deleted_at, created_at, updated_at,
+        `SELECT id, title, version, owner, color, position, folder_id, deleted_at, created_at, updated_at,
                 CASE WHEN content = '' THEN 0
                      ELSE length(content) - length(replace(content, char(10), '')) + 1
                 END AS lines
-         FROM sheets WHERE ${where.join(' AND ')} ORDER BY updated_at DESC`,
+         FROM sheets WHERE ${where.join(' AND ')} ORDER BY ${order}`,
       )
       .all(...(params as never[])) as unknown as Array<
       Omit<SheetRow, 'content'> & { lines: number }
@@ -545,6 +571,63 @@ export class Store {
       this.db.prepare('UPDATE sheets SET color = ? WHERE id = ?').run(color, id)
         .changes > 0
     );
+  }
+
+  /**
+   * Gives every live sheet in a space a position, in the order it shows now.
+   *
+   * Called before any reorder so the arrangement starts from what was on
+   * screen rather than rearranging itself the moment the list is first
+   * dragged. Safe to run repeatedly: renumbering the current display order is
+   * a no-op once every sheet already has a position.
+   */
+  seedSheetOrder(owner: UserId): void {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM sheets
+          WHERE owner = ? AND deleted_at IS NULL
+          ORDER BY position IS NULL DESC, position ASC, updated_at DESC, rowid DESC`,
+      )
+      .all(owner) as unknown as Array<{ id: string }>;
+    const update = this.db.prepare(
+      'UPDATE sheets SET position = ? WHERE id = ? AND owner = ?',
+    );
+    rows.forEach((row, index) => update.run(index, row.id, owner));
+  }
+
+  /**
+   * Rearranges sheets into the given order.
+   *
+   * Only the positions these sheets already hold are handed back out, in the
+   * new order. That is what keeps a reorder inside a folder — or inside a
+   * search — from disturbing anything not on screen: the slots are borrowed
+   * from the visible set and returned to it, so no sheet outside the filter
+   * can be pushed anywhere. Ids that are not this owner's live sheets are
+   * ignored rather than trusted.
+   */
+  reorderSheets(owner: UserId, ids: readonly string[]): boolean {
+    this.seedSheetOrder(owner);
+
+    const known = new Map(
+      (
+        this.db
+          .prepare(
+            `SELECT id, position FROM sheets
+              WHERE owner = ? AND deleted_at IS NULL`,
+          )
+          .all(owner) as unknown as Array<{ id: string; position: number }>
+      ).map((row) => [row.id, row.position]),
+    );
+
+    const moving = ids.filter((id) => known.has(id));
+    if (moving.length < 2) return false;
+
+    const slots = moving.map((id) => known.get(id)!).sort((a, b) => a - b);
+    const update = this.db.prepare(
+      'UPDATE sheets SET position = ? WHERE id = ? AND owner = ?',
+    );
+    moving.forEach((id, index) => update.run(slots[index]!, id, owner));
+    return true;
   }
 
   /** Colours a folder. Scoped to its owner, as renaming one is. */

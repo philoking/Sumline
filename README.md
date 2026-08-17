@@ -325,6 +325,25 @@ when deleted rather than destroyed — restore them, or empty the trash to remov
 Deleting a folder keeps its sheets and returns them to the top level. An untitled sheet names
 itself from its first line.
 
+### Order
+
+Sheets are listed with whatever changed last at the top. Drag one to put the list in your own
+order instead — or use **Move up** / **Move down** in the ✎ menu, which do the same thing from a
+keyboard, and are easier on a phone where the sidebar is an overlay.
+
+The first drag switches that space to a custom order, seeded from the order that was already on
+screen, so nothing jumps around the moment you touch it — the list simply stops rearranging
+itself. A **Custom order** line then appears above the sheets with a way back to sorting by
+recency, and switching back does not throw the arrangement away: flip to recent to find
+something, flip back, and your order is still there.
+
+A sheet made after you arranged things has no place in that arrangement yet, so it appears at
+the top — the same place the recency order would have put it.
+
+Reordering inside a folder, and reordering while searching, only shuffle what you can see:
+sheets outside the filter keep their positions exactly. Search results and the trash cannot be
+reordered, since neither is a list whose order means anything.
+
 ### Colour coding
 
 The ✎ on a sheet or a folder opens a small menu: rename, or pick one of eight colours. The
@@ -479,7 +498,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 695 engine tests, 126 server tests
+npm test        # 695 engine tests, 138 server tests
 npm run build   # build all three workspaces
 ```
 
