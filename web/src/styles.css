@@ -1595,29 +1595,26 @@ button.danger-button:disabled {
   font-size: 11px;
 }
 
-/* The heading for the total's own options, which Soulver puts in a submenu.
-   Indenting the group says the same thing without opening sideways. */
+/* The heading for a group of related rows, which Soulver puts in a submenu.
+   The heading alone does the grouping: indenting the rows under it left the
+   ticks in two columns, which read as damage rather than as structure. */
 .view-group {
-  padding: 7px 9px 2px 23px;
+  padding: 7px 9px 2px;
   color: var(--muted);
   font-size: 10.5px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-/* The rows under a heading are indented as a group, tick and all. */
-.view-group + li button,
-.view-group + li + li button {
-  padding-left: 18px;
-}
-
 /* Precision is a row of choices rather than a toggle, so it is laid out by
    hand instead of going through the tick gutter. */
+/* 10px to match the buttons' own padding, so "Precision" starts where the
+   other labels do rather than a few pixels off. */
 .view-precision {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 9px 5px 18px;
+  gap: 6px;
+  padding: 4px 10px 5px;
 }
 
 .precision-choices {

@@ -163,6 +163,9 @@ export function ViewMenu(props: ViewMenuProps) {
           Number format
         </li>
         <li className="view-precision">
+          {/* The same empty gutter the ticked rows carry, so this label lines
+              up with theirs instead of starting where their ticks do. */}
+          <span className="tick" />
           <span className="view-label">Precision</span>
           <span className="precision-choices" role="group" aria-label="Decimal places">
             {PRECISIONS.map((places) => (

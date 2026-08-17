@@ -30,6 +30,7 @@ import { Sidebar } from './Sidebar';
 import { DEFAULT_PRECISION } from '@webcalc/engine';
 import {
   DEFAULT_FONT_SIZE,
+  FONT_STEP,
   MAX_FONT_SIZE,
   MIN_FONT_SIZE,
   ViewMenu,
@@ -448,6 +449,24 @@ export function App() {
       if (mod && event.key.toLowerCase() === 's') event.preventDefault();
 
       /*
+       * Text size. The View menu was printing these two against Bigger and
+       * Smaller text while nothing listened for them — a menu claiming a key
+       * that does nothing is the same fault #78 was about, one level up.
+       *
+       * `+` arrives as `=` on an unshifted US layout and as `+` with shift, so
+       * both spell the same command; `_` is the shifted `-` for the same
+       * reason. Taking the event stops the browser zooming the whole page,
+       * which is emphatically not what was asked for.
+       */
+      if (mod && ['+', '=', '-', '_'].includes(event.key)) {
+        event.preventDefault();
+        const bigger = event.key === '+' || event.key === '=';
+        void persistSettings({
+          sheetFontSize: clampFontSize(fontSize + (bigger ? FONT_STEP : -FONT_STEP)),
+        });
+      }
+
+      /*
        * The three scopes searching has, and the two keys they live behind.
        *
        * ⌘F is find and replace in the sheet in front of you, which is what the
@@ -493,7 +512,10 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [createSheet]);
+    // `fontSize` is read when the key is pressed, so the listener has to be
+    // rebound as it changes or every press would step from the size the sheet
+    // was opened at.
+  }, [createSheet, fontSize, persistSettings]);
 
   const takeOver = async () => {
     if (!activeId) return;
