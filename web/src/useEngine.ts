@@ -10,6 +10,35 @@ import { api, type HolidayTable } from './api';
 
 
 /**
+ * The caller's options, plus what this hook fetched for itself.
+ *
+ * A spread, not a field-by-field copy: the copy is the same mistake
+ * `engineOptionsFrom` was written one layer up to prevent, and it had already
+ * cost the same thing twice. `zone` was resolved by the server, assembled by
+ * the caller, and dropped on this line, so a space that pinned the zone its
+ * dates resolve in was quietly ignored for as long as the setting existed;
+ * `precision`, `thousandsSeparators` and `currencyRounding` were about to go
+ * the same way. A spread cannot forget a key.
+ *
+ * Lifted out of the `useMemo` that calls it so it can be tested at all. What
+ * broke twice was one expression buried in a hook argument, reachable only by
+ * rendering — which is exactly why nothing caught it.
+ */
+export function engineInputs(
+  options: EngineOptions,
+  rates: RateTable | null,
+  holidays: HolidayTable | null,
+  history: HistoricalRates,
+): EngineOptions {
+  return {
+    ...options,
+    ...(rates && { rates }),
+    ...(holidays && { holidays: holidays.dates }),
+    historicalRates: history,
+  };
+}
+
+/**
  * Loads exchange rates once, then builds an engine around them.
  *
  * Evaluation is entirely client-side, so a slow or unreachable API never
@@ -51,26 +80,11 @@ export function useEngine(options: EngineOptions) {
   }, []);
 
   /*
-   * The caller's options are passed through, not copied field by field.
-   *
-   * They used to be re-listed here, which is the same mistake `engineOptionsFrom`
-   * was written to prevent one layer up — and it had already cost the same
-   * thing twice. `zone` was resolved, sent, and dropped on this line, so a space
-   * that pinned the zone its dates resolve in was quietly ignored; `precision`,
-   * `thousandsSeparators` and `currencyRounding` were about to be dropped the
-   * same way. A spread cannot forget a key.
-   *
    * `options` is memoised by the caller, so depending on it whole costs no more
    * renders than depending on each of its fields did.
    */
   const engine = useMemo(
-    () =>
-      createEngine({
-        ...options,
-        ...(rates && { rates }),
-        ...(holidays && { holidays: holidays.dates }),
-        historicalRates: history,
-      }),
+    () => createEngine(engineInputs(options, rates, holidays, history)),
     [options, rates, holidays, history],
   );
 

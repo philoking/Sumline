@@ -57,6 +57,18 @@ export interface FormatContext {
 export const DEFAULT_PRECISION = 10;
 
 /**
+ * The decimal places offered, exactly as Soulver's Precision submenu lists
+ * them. Six is deliberately absent — it is not one of Soulver's choices, which
+ * is what settled the default being ten rather than six.
+ *
+ * Here rather than in the menu that draws it, beside the default it belongs to:
+ * these are the values `formatNumber` actually has to answer well at, so they
+ * are what its tests sweep. A list the engine cannot see is a list the engine
+ * cannot be tested against.
+ */
+export const PRECISIONS = [0, 1, 2, 3, 4, 5, 10, 15] as const;
+
+/**
  * How many significant digits a double can be trusted for here.
  *
  * The same twelve `toPrecision(12)` already collapses to; past it the bits

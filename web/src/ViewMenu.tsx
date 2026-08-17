@@ -1,3 +1,4 @@
+import { PRECISIONS } from '@webcalc/engine';
 import { formatShortcut } from './shortcuts';
 
 /**
@@ -10,13 +11,6 @@ export const MIN_FONT_SIZE = 13;
 export const MAX_FONT_SIZE = 26;
 export const FONT_STEP = 1;
 export const DEFAULT_FONT_SIZE = 18;
-
-/**
- * The decimal places offered, exactly as Soulver's Precision submenu lists
- * them. Six is deliberately absent — it is not one of Soulver's choices, which
- * is what settled the default being ten rather than what this used to do.
- */
-export const PRECISIONS = [0, 1, 2, 3, 4, 5, 10, 15] as const;
 
 export interface ViewMenuProps {
   open: boolean;
