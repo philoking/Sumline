@@ -147,15 +147,6 @@ export function Reference({
                   ? `${holidayCount} public holidays known, used for workday maths.`
                   : 'No public holidays loaded, so workdays count weekends only.'}
               </p>
-              <h3>Not supported</h3>
-              <p className="reference-blurb">
-                Sales tax, compound interest, loan repayments and inflation;
-                conditionals, number bases and bitwise operators; live stock,
-                weather and knowledge lookups; and trip planning. Each was
-                deliberately left out rather than missed — the repository’s{' '}
-                <code>docs/decisions.md</code> says which were declined and
-                which are merely deferred.
-              </p>
               <h3>Credits</h3>
               <p className="reference-blurb">
                 The notepad calculator is{' '}

@@ -328,6 +328,22 @@ export const EXAMPLE_GROUPS: ExampleGroup[] = [
     ],
   },
   {
+    id: 'financial',
+    title: 'Tax, interest and repayments',
+    blurb:
+      'No financial functions were added: these are the percentage and exponent rules above, applied to money. A tax rate is worth keeping as a global, so every sheet in the space adds the same one.',
+    examples: [
+      { input: '$50 + 8.25%', expected: '$54.13' },
+      { input: '$120 is 20% on what', expected: '$100.00' },
+      { input: '$1,000 * (1 + 5%)^10', expected: '$1,628.89' },
+      { input: '$100 * (1 + 3%)^25', expected: '$209.38' },
+      {
+        input: '$250,000 * 0.05/12 / (1 - (1 + 0.05/12)^-360)',
+        expected: '$1,342.05',
+      },
+    ],
+  },
+  {
     id: 'past-rates',
     title: 'Rates on a past date',
     blurb:

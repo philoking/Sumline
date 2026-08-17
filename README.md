@@ -907,24 +907,16 @@ docker exec -e WEBCALC_URL=http://127.0.0.1:8080 webcalc \
   node server/dist/webcalc.js "day rate * 3"
 ```
 
-## What's deliberately not here
+## Why a sheet is plain text
 
-Soulver does several things WebCalc does not, and their absence is a decision rather than an
-oversight:
+Everything in a sheet is text you typed, its formatting included: `1/3 to 2 dp` and
+`100,000 in full` are written **into** the line rather than stored invisibly against it. Hidden
+per-line state would not survive a copy, an export, a search, or a line being moved — and plain
+text is what makes diffing two versions of a sheet possible at all.
 
-| Not included | Why |
-| --- | --- |
-| Sales tax, compound interest, loan repayments, inflation | Out of scope for how this instance is used. |
-| Conditionals and booleans | Branching would make a sheet something you cannot read top to bottom and trust. A bare comparison does answer — `3 > 2` shows `true` — but it is not documented or tested, and is not promised. |
-| Live stock prices, weather, knowledge lookups | Every usable provider needs an API key, which would compromise the guarantee that the container works with no internet access. |
-| Trip planning (time points) | Soulver marks these outside the text. Sheets here are plain text — the property that makes copy, export, search and conflict-diffing work — so it would have needed invented syntax. |
-
-Each is recorded in [docs/decisions.md](docs/decisions.md), which also separates the ones that
-were **declined** from the ones merely **deferred**.
-
-The same principle explains a design choice you'll notice in the app: per-line formatting is
-written **into** the line (`1/3 to 2 dp`, `100,000 in full`) rather than stored against it.
-Hidden per-line state would not survive a copy, an export, or a line being moved.
+That principle decided several things this does not do, which [docs/decisions.md](docs/decisions.md)
+records along with the rest: which were **declined**, which are merely **deferred**, and which have
+since been **reversed** on finding the reasoning was wrong.
 
 ## Development
 
@@ -933,7 +925,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 865 engine tests, 234 server tests, 34 web tests
+npm test        # 870 engine tests, 250 server tests, 38 web tests
 npm run build   # build all three workspaces
 ```
 
@@ -1036,7 +1028,7 @@ source where a rule came from there.
 
 WebCalc is an independent implementation, not a port: no Soulver code was used, and it is not
 affiliated with or endorsed by Soulver's makers. If you want the polished native original — with
-the features listed under [What's deliberately not here](#whats-deliberately-not-here), and many
+the features [docs/decisions.md](docs/decisions.md) records as deliberately left out, and many
 more — buy Soulver.
 
 ## License

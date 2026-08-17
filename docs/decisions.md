@@ -61,11 +61,20 @@ it. Hidden per-line state would not survive a copy, an export, or a line being m
 
 ## Deferred
 
-### Sales tax, compound interest, loan repayments, inflation, cooking density conversions
+### Named financial functions, and cooking density conversions
 
-Genuinely financial calculation, and out of scope for how this instance is used. Nothing about the
-engine makes it hard — rate quantities (`$/hour`, `km/day`) were deliberately kept, because those
-are unit maths rather than finance.
+What survives of an entry that used to cover sales tax and compounding as well; see
+[Sales tax, compound interest and inflation](#sales-tax-compound-interest-and-inflation) below for
+why those left. A loan repayment answers today —
+`$250,000 * 0.05/12 / (1 - (1 + 0.05/12)^-360)` → `$1,342.05`, and it is now in the reference — but
+writing it requires knowing it, which `pmt(0.05/12, 360, 250000)` would not. math.js supplies no
+financial functions, so any would be WebCalc's own.
+
+That is a reason to wait rather than a reason to refuse. Every phrasing the engine accepts is one
+with a worked example in Soulver's documentation, and Soulver has no PMT — inventing one means
+naming its arguments, fixing their order and their sign convention, and then maintaining that
+against no specification but this file. A formula in the reference costs nothing and can be copied.
+If sheets turn out to carry the same formula by hand, that is the evidence to build on.
 
 ### Live stock prices, weather, knowledge lookups
 
@@ -119,6 +128,29 @@ bitwise operators**.
 
 The lesson is the one recorded elsewhere in this repository: write down what the code *should* do,
 then check it against what it actually does.
+
+### Sales tax, compound interest and inflation
+
+Deferred as "genuinely financial calculation, and out of scope for how this instance is used", which
+mistook the subject for the mechanism. None of the three needs anything the engine does not already
+do. A percentage applied to a currency amount *is* sales tax — `$50 + 8.25%` → `$54.13` — and the
+reverse form recovers the price before it: `$120 is 20% on what` → `$100.00`. Percentages compose
+with exponentiation, and that is compounding, so `$1,000 * (1 + 5%)^10` is compound interest and
+`$100 * (1 + 3%)^25` is twenty-five years of inflation. They differ in what the rate is called.
+
+Sales tax was in fact built twice, because a rate wants to live in one place rather than be retyped
+on every line — and space globals already hold one. The README's own worked example of setting a
+global is `"vat": "20%"`, after which `day rate * 3 + vat` answers. That is Soulver's sales-tax
+preference, shipped and documented, while this file called the feature out of scope.
+
+All three are now [documented and tested](../engine/src/examples.ts) as **Tax, interest and
+repayments**. Loan repayments stay deferred, narrowed to the part that is genuinely missing:
+[named financial functions](#named-financial-functions-and-cooking-density-conversions).
+
+This is the number-bases lesson reached from the other side. That entry was wrong about what the
+engine did; this one was wrong about what the feature *was*. Judging a feature out of scope is not
+the same as it being absent, and only the second is a fact about the code — which is why both
+mistakes survived so long in a file no test can fail.
 
 ## Reachable but not supported
 
