@@ -62,7 +62,7 @@ describe('large numbers', () => {
 
   it('leaves ambiguous suffixes as the units they are', () => {
     expect(answer('5m to cm')).toBe('500 cm');
-    expect(answer('5K to degC')).toContain('degC');
+    expect(answer('5K to degC')).toContain('°C');
   });
 
   it('can be switched off entirely', () => {

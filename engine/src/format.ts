@@ -20,7 +20,7 @@ import {
   type NumberRegion,
   type Separators,
 } from './numberFormat.js';
-import { Multiplier, Percentage, Rate } from './values.js';
+import { Labelled, Multiplier, Percentage, Rate } from './values.js';
 
 export interface FormatContext {
   currencies: Set<string>;
@@ -62,6 +62,11 @@ export function formatValue(value: unknown, ctx: FormatContext): string {
   if (value instanceof Percentage) return `${formatNumber(value.ratio * 100, ctx)}%`;
   if (value instanceof Multiplier) return `${formatNumber(value.factor, ctx)}x`;
   if (value instanceof Rate) return `${formatValue(value.amount, ctx)}/${value.per}`;
+  // The label is echoed exactly as it was written, so the answer reads back
+  // the way the line does.
+  if (value instanceof Labelled) {
+    return `${formatNumber(value.value, ctx)} ${value.label}`;
+  }
 
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   if (typeof value === 'string') return value;
@@ -133,7 +138,24 @@ function formatUnit(unit: MathUnit, ctx: FormatContext): string {
   if (rate) return rate;
 
   // math.js spaces compound units as "km / h"; people write "km/h".
-  return `${formatNumber(amount, ctx)} ${label.replace(/ \/ /g, '/')}`;
+  return `${formatNumber(amount, ctx)} ${displayUnits(label)}`;
+}
+
+/**
+ * Units whose everyday spelling differs from the name math.js answers with.
+ *
+ * Only temperature needs this today: nobody writes `degC`, and the `celsius`
+ * spelling reaches the formatter whenever the line was written that way.
+ */
+const UNIT_DISPLAY: Record<string, string> = {
+  degF: '°F',
+  degC: '°C',
+  fahrenheit: '°F',
+  celsius: '°C',
+};
+
+function displayUnits(label: string): string {
+  return UNIT_DISPLAY[label] ?? label.replace(/ \/ /g, '/');
 }
 
 /**

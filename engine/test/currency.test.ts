@@ -34,4 +34,34 @@ describe('currency', () => {
   it('works with no rate table, treating currency words as unknown', () => {
     expect(answers('2 + 2')).toEqual(['4']);
   });
+
+  /*
+   * A price times a quantity is a cash amount, not a compound unit. These used
+   * to answer `62.6769 kWh USD` — no symbol, no rounding, and nothing later
+   * lines could add to.
+   */
+  describe('money times a quantity', () => {
+    const cases: Array<[string, string]> = [
+      ['569.79 kWh * $0.11', '$62.68'],
+      ['$0.11 * 569.79 kWh', '$62.68'],
+      ['2 kg * $5', '$10.00'],
+      ['3 hours * $20', '$60.00'],
+      ['(65 W * 1 year in kWh) * $0.11', '$62.68'],
+    ];
+
+    for (const [input, expected] of cases) {
+      it(`${input} -> ${expected}`, () => {
+        expect(answer(input)).toBe(expected);
+      });
+    }
+
+    it('produces a value later lines can go on using', () => {
+      expect(answer('569.79 kWh * $0.11 + $5')).toBe('$67.68');
+    });
+
+    it('leaves rates to cancel as they already did', () => {
+      expect(answer('$20/hour * 3 hours')).toBe('$60.00');
+      expect(answer('$50/week * 12 weeks')).toBe('$600.00');
+    });
+  });
 });

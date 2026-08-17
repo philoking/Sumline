@@ -20,6 +20,36 @@ export interface Preprocessed {
   notation?: 'full';
 }
 
+/**
+ * Removes brackets that wrap the whole line.
+ *
+ * `(8:30 to 17:15)` means exactly what it does without them, but almost every
+ * rule here and in the temporal chain is anchored to the start of the string,
+ * so a leading bracket stops all of them matching. Only a pair that genuinely
+ * encloses everything is removed — `(a) + (b)` also starts and ends with a
+ * bracket and must be left alone.
+ */
+export function stripOuterParens(input: string): string {
+  let s = input.trim();
+  while (s.startsWith('(') && s.endsWith(')')) {
+    let depth = 0;
+    let encloses = true;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '(') depth++;
+      else if (s[i] === ')') {
+        depth--;
+        if (depth === 0 && i < s.length - 1) {
+          encloses = false;
+          break;
+        }
+      }
+    }
+    if (!encloses || depth !== 0) break;
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 const NUM = String.raw`\d+(?:\.\d+)?`;
 /** A sub-expression operand: anything that is not an operator boundary. */
 const OPERAND = String.raw`[^,]+?`;
@@ -52,6 +82,7 @@ export function preprocess(input: string, ctx: PreprocessContext): Preprocessed 
   s = rewriteCurrencyAmounts(s);
   s = rewriteMagnitudes(s);
   s = normalizeCurrencyCodes(s, ctx);
+  s = rewriteTemperatures(s, ctx);
   s = rewriteReferences(s);
 
   // Rounding is pulled out before conversions, because `to nearest hundred`
@@ -66,6 +97,7 @@ export function preprocess(input: string, ctx: PreprocessContext): Preprocessed 
   s = rewriteConversions(s, ctx);
   s = rewriteWordOperators(s);
   s = rewriteConversionWords(s);
+  s = rewriteLabelledQuantities(s, ctx);
 
   const result: Preprocessed = { expr: s.trim() };
   if (rounding.decimals !== undefined) result.decimals = rounding.decimals;
@@ -167,6 +199,38 @@ function normalizeCurrencyCodes(s: string, ctx: PreprocessContext): string {
     if (ctx.isKnownUnit(word) || ctx.scopeNames.has(word)) return word;
     return upper;
   });
+}
+
+/**
+ * `72 F in C` — the everyday spelling of a temperature.
+ *
+ * math.js reads a bare `F` as farad and `C` as coulomb, so the line is a real
+ * conversion between real units that genuinely do not match, and the error
+ * says nothing about temperature. Farad and coulomb lose the abbreviation,
+ * which is the right trade for a notepad calculator.
+ *
+ * Only the two positions a temperature can occupy are rewritten — directly
+ * after a number, or as the target of a conversion — so a variable named `C`
+ * still resolves to the variable.
+ */
+function rewriteTemperatures(s: string, ctx: PreprocessContext): string {
+  const scaleFor = (letter: string) => (letter.toUpperCase() === 'F' ? 'degF' : 'degC');
+  const unbound = (letter: string) =>
+    !ctx.scopeNames.has(letter) && !ctx.scopeNames.has(letter.toLowerCase());
+
+  return s
+    // `72 F`, `72°F`, `72 degrees F`
+    .replace(
+      new RegExp(String.raw`(${NUM})\s*(?:°\s*|degrees?\s+)?([FC])\b`, 'g'),
+      (match, num: string, letter: string) =>
+        unbound(letter) ? `${num} ${scaleFor(letter)}` : match,
+    )
+    // `in C`, `to °F`
+    .replace(
+      /\b(in|to)\s+(?:°\s*|degrees?\s+)?([FC])\b/g,
+      (match, word: string, letter: string) =>
+        unbound(letter) ? `${word} ${scaleFor(letter)}` : match,
+    );
 }
 
 /** `line 3` and `prev` become the internal identifiers the scope carries. */
@@ -368,17 +432,33 @@ function rewriteMultipliersAndFractions(s: string): string {
 function rewriteRates(s: string, ctx: PreprocessContext): string {
   s = s.replace(/\bper\s+(?=[A-Za-z])/gi, '/ ');
 
-  // "30 bottles / week" — the noun is a label, not a unit.
+  /*
+   * "30 bottles / week" — the noun is a label, not a unit.
+   *
+   * Only when a unit follows the slash, which is what makes the line a rate.
+   * `12 widgets / 3` is a plain division, and dropping the noun there would
+   * throw away a label the answer should keep.
+   */
   s = s.replace(
-    new RegExp(`\\b(${NUM})\\s+([A-Za-z]+)\\s*/`, 'g'),
+    new RegExp(`\\b(${NUM})\\s+([A-Za-z]+)\\s*/\\s*(?=[A-Za-z])`, 'g'),
     (match, num: string, word: string) =>
-      ctx.isKnownUnit(word) || ctx.scopeNames.has(word) ? match : `${num} /`,
+      ctx.isKnownUnit(word) || ctx.scopeNames.has(word) ? match : `${num} / `,
   );
 
-  // "30/week as /month" — re-expressing a rate against another denominator.
-  const converted = /^(.+?)\s+(?:as|to|in)\s*\/\s*([A-Za-z]+)\s*$/i.exec(s);
+  /*
+   * "30/week as /month" — re-expressing a rate against another denominator,
+   * and "12 GB/s in GB/minute", which renames the numerator as well. The
+   * numerator is optional so both shapes reach the same helper; it also
+   * catches plain compound conversions like `65 mph in km/h`, which `rateAs`
+   * recognises as a unit rather than a rate and converts directly.
+   */
+  const converted = /^(.+?)\s+(?:as|to|in)\s*(?:([A-Za-z]+)\s*)?\/\s*([A-Za-z]+)\s*$/i.exec(s);
   if (converted) {
-    return `rateTo(${rewriteRates(converted[1]!, ctx)}, "${converted[2]}")`;
+    const rate = rewriteRates(converted[1]!, ctx);
+    const per = singular(converted[3]!);
+    return converted[2]
+      ? `rateAs(${rate}, "${converted[2]}", "${per}")`
+      : `rateTo(${rate}, "${per}")`;
   }
 
   /*
@@ -402,8 +482,20 @@ function rewriteRates(s: string, ctx: PreprocessContext): string {
 }
 
 /** Rate denominators read better in the singular: `$99/week`, not `/weeks`. */
+/**
+ * Time abbreviations that end in `s` without being plurals.
+ *
+ * `s` is the symbol for seconds and `ms` for milliseconds, so the plural rule
+ * below would leave `4 MB/s` with an empty denominator rendering as `4 MB/`.
+ * Spelled-out and longer forms (`secs`, `hrs`) are genuine plurals and are
+ * deliberately absent.
+ */
+const SINGULAR_ALREADY = new Set(['s', 'ms', 'us', 'µs', 'ns', 'ps', 'fs']);
+
 function singular(unit: string): string {
-  return unit.replace(/s$/i, '');
+  if (SINGULAR_ALREADY.has(unit.toLowerCase())) return unit;
+  // Never hand back an empty denominator, whatever the input.
+  return unit.replace(/s$/i, '') || unit;
 }
 
 /**
@@ -414,6 +506,20 @@ function singular(unit: string): string {
  */
 function rewriteConversions(s: string, ctx: PreprocessContext): string {
   const unitish = (word: string) => ctx.isKnownUnit(word) || ctx.currencies.has(word.toUpperCase());
+
+  /*
+   * The same phrasing inside brackets, where it is a sub-expression rather
+   * than the whole line: `(days in 3 weeks) * 2`. Handled before the anchored
+   * rule below, which can only ever see a line that is nothing else.
+   */
+  s = s.replace(
+    /\(([A-Za-z]+)\s+(?:in|per)\s+(?:an?\s+)?([^()]+)\)/gi,
+    (match, unit: string, rest: string) => {
+      const target = rest.trim();
+      if (!unitish(unit) || !/[A-Za-z]/.test(target)) return match;
+      return `((${/^[\d(]/.test(target) ? target : `1 ${target}`}) to ${unit})`;
+    },
+  );
 
   // "seconds in a day" / "days in 3 weeks" / "meters in 10 km"
   const reversed = /^([A-Za-z]+)\s+(?:in|per)\s+(?:an?\s+)?(.+)$/i.exec(s);
@@ -437,6 +543,38 @@ function rewriteConversions(s: string, ctx: PreprocessContext): string {
   }
 
   return s;
+}
+
+/**
+ * Words that survive every rewrite above and still are not labels.
+ *
+ * math.js reads these itself, so a number in front of one is arithmetic
+ * rather than someone counting things.
+ */
+const NOT_A_LABEL = new Set(['mod', 'to', 'in', 'as', 'of', 'per', 'and', 'or', 'x', 'e']);
+
+/**
+ * `12 widgets` — a number followed by a word nothing else claimed.
+ *
+ * Deliberately the last rule in the chain. By this point every phrasing the
+ * engine understands has been consumed into a function call or an operator,
+ * so a surviving `number word` pair is someone counting something the engine
+ * has no unit for. Running it earlier would swallow half the vocabulary.
+ *
+ * A word directly before a bracket is a function call, not a label, which is
+ * what keeps `round(1.5)` and friends intact.
+ */
+function rewriteLabelledQuantities(s: string, ctx: PreprocessContext): string {
+  return s.replace(
+    new RegExp(String.raw`(^|[^\w.])(${NUM})\s+([A-Za-z_]\w*)\b(?!\s*\()`, 'g'),
+    (match, lead: string, num: string, word: string) => {
+      const lower = word.toLowerCase();
+      if (NOT_A_LABEL.has(lower)) return match;
+      if (ctx.isKnownUnit(word) || ctx.currencies.has(word.toUpperCase())) return match;
+      if (ctx.scopeNames.has(lower) || word.startsWith('__')) return match;
+      return `${lead}labelled(${num}, "${word}")`;
+    },
+  );
 }
 
 /** Spelled-out arithmetic: `plus`, `times`, `divided by`, `to the power of`. */

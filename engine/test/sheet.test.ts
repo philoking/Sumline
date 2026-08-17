@@ -23,6 +23,41 @@ describe('variables', () => {
     expect(answers('commute = 12 km\ncommute * 2')).toEqual(['12 km', '24 km']);
   });
 
+  /*
+   * A variable named after a unit used to replace that unit for every line
+   * below it, almost always without an error: `2 hours` quietly became
+   * thirteen. The unit wins where only a unit can go — straight after a
+   * number — and the variable wins everywhere else.
+   */
+  describe('a name that is also a unit', () => {
+    it('leaves the unit alone directly after a number', () => {
+      expect(answers('hours = 6.5\n2 hours + 45 minutes')).toEqual([
+        '6.5',
+        '2.75 hours',
+      ]);
+      expect(answers('days = 3\n2 days + 1 day')).toEqual(['3', '3 days']);
+      expect(answers('kg = 10\n5 kg in g')).toEqual(['10', '5,000 g']);
+    });
+
+    it('protects a unit that is only spelled in upper case', () => {
+      expect(answers('W = 4\n65 W in kW')).toEqual(['4', '0.065 kW']);
+    });
+
+    it('still resolves the variable everywhere else', () => {
+      expect(answers('hours = 6.5\nhours * 2')).toEqual(['6.5', '13']);
+    });
+
+    it('does not guard a name that is not a unit', () => {
+      expect(answers('apples = 5\n3 apples')).toEqual(['5', '15']);
+      expect(answers('w = 4\n3 w')).toEqual(['4', '12']);
+    });
+
+    it('keeps a sheet consistent from top to bottom', () => {
+      const sheet = 'hours = 6.5\ndraw = 65 W\ndraw * 24 hours in kWh';
+      expect(answers(sheet)[2]).toBe('1.56 kWh');
+    });
+  });
+
   it('reports the assigned name on the result', () => {
     const [line] = createEngine().evaluate('take home pay = 4200');
     expect(line?.name).toBe('take home pay');

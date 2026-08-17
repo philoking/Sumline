@@ -50,7 +50,19 @@ const RESERVED_NAMES = new Set([
   'previous',
 ]);
 
-export function classify(raw: string): Classified {
+/**
+ * Splits a raw line into what to evaluate and what to ignore.
+ *
+ * `isKnownWord` reports whether a bare word means something to the engine — a
+ * unit, a currency, or a bound variable. Only the parenthesis-comment rule
+ * needs it, and it defaults to "nothing is known", which is the safe answer
+ * for callers that have no evaluation context: an unrecognised word makes a
+ * group look more like prose, never less.
+ */
+export function classify(
+  raw: string,
+  isKnownWord: (word: string) => boolean = () => false,
+): Classified {
   const tags: string[] = [];
 
   // Strip a trailing `//` comment, but not one inside a string literal.
@@ -71,7 +83,7 @@ export function classify(raw: string): Classified {
   });
 
   body = stripQuotedText(body);
-  body = stripParentheticalComments(body);
+  body = stripParentheticalComments(body, isKnownWord);
 
   const label = extractLabel(body);
   if (label) body = label.rest;
@@ -137,16 +149,43 @@ function stripQuotedText(text: string): string {
 }
 
 /**
+ * Words that mark a parenthesised group as arithmetic rather than an aside.
+ *
+ * Deliberately narrow. `to` and `in` carry conversions and intervals, which is
+ * how `(8:30 to 17:15)` is told apart from `(for iPhone 16)`; words like `on`,
+ * `of` and `at` appear far too often in real notes to be worth claiming.
+ */
+const EXPRESSION_KEYWORDS = new Set(['to', 'in', 'per', 'through', 'until', 'mod']);
+
+/**
  * `$999 (for iPhone 16)` — a parenthesised aside is a comment.
  *
- * Only groups that read as prose are removed: the content must contain a word
- * and no operators, so `(2 km + 3 km)` and `(3 + 4) * 5` stay arithmetic. A
- * group directly after an identifier is a function call and is left alone.
+ * Testing for letters alone is not enough, because so much of the engine's
+ * vocabulary *is* letters: `(8:30 to 17:15)` was being deleted as prose, which
+ * left the rest of the line to evaluate without it and answer confidently
+ * wrong. A group is only an aside when it cannot be read as arithmetic:
+ *
+ *  - a group that is the entire line is an expression, never an aside — an
+ *    aside is by definition attached to something else;
+ *  - an arithmetic operator inside keeps `(3 + 4) * 5` intact, as before;
+ *  - a group carrying both digits and engine vocabulary — a unit, a currency,
+ *    a bound variable, or a conversion word — is arithmetic.
+ *
+ * `isKnownWord` is the same predicate the prose-stripper in `evaluate` uses,
+ * so the two agree on what counts as engine vocabulary.
  */
-function stripParentheticalComments(text: string): string {
+function stripParentheticalComments(
+  text: string,
+  isKnownWord: (word: string) => boolean,
+): string {
   return text.replace(/(^|[^\w)])\(([^()]*)\)/g, (match, lead: string, inner: string) => {
-    const isProse = /[A-Za-z]{2}/.test(inner) && !/[+\-*/^]/.test(inner);
-    return isProse ? lead : match;
+    if (match.trim() === text.trim()) return match;
+    if (!/[A-Za-z]{2}/.test(inner) || /[+\-*/^]/.test(inner)) return match;
+
+    const vocabulary = (inner.match(/[A-Za-z_][\w]*/g) ?? []).some(
+      (word) => EXPRESSION_KEYWORDS.has(word.toLowerCase()) || isKnownWord(word),
+    );
+    return /\d/.test(inner) && vocabulary ? match : lead;
   });
 }
 

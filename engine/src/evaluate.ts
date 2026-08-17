@@ -9,8 +9,8 @@ import {
 import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, type MathContext } from './mathInstance.js';
-import { preprocess } from './preprocess.js';
-import { Multiplier, Percentage, Rate } from './values.js';
+import { preprocess, stripOuterParens } from './preprocess.js';
+import { Labelled, Multiplier, Percentage, Rate } from './values.js';
 import type { Engine, EngineOptions, LineResult, Statistic } from './types.js';
 
 export function createEngine(options: EngineOptions = {}): Engine {
@@ -128,7 +128,7 @@ function evaluateLines(
   const results: LineResult[] = [];
 
   for (const [index, raw] of lines.entries()) {
-    const line = classify(raw ?? '');
+    const line = classify(raw ?? '', (word) => isKnownWord(ctx, state, word));
     const result = evaluateLine(line, index, state, ctx, now, fmt);
     results.push(result);
 
@@ -237,6 +237,43 @@ interface Computed {
   error?: string;
 }
 
+/**
+ * Replaces a parenthesised duration with that duration written out.
+ *
+ * The temporal rules are a chain of anchored patterns with no notion of
+ * nesting, so `(8:30 to 17:15) - 45 minutes` cannot be matched as a whole.
+ * Resolving the group first leaves `8 hours 45 minutes - 45 minutes`, which
+ * the existing rules do handle.
+ *
+ * Only durations are substituted. A date or a clock time would have to be
+ * rendered back into text and re-parsed, and round-tripping an answer through
+ * its own display format is how precision goes missing.
+ */
+function resolveTemporalGroups(
+  body: string,
+  options: { now: Date; holidays: ReadonlySet<string>; fps: number },
+): string {
+  if (!body.includes('(')) return body;
+  return body.replace(/\(([^()]+)\)/g, (match, inner: string) => {
+    if (!looksTemporal(inner)) return match;
+    const value = evaluateTemporal(inner, options);
+    return value instanceof Timespan ? spellOut(value) : match;
+  });
+}
+
+/**
+ * Writes a duration back out in the units it is held in, so the temporal
+ * rules can read it as an operand.
+ *
+ * The parts are used rather than the display format: `8 hours 45 minutes`
+ * re-parses to exactly the value it came from, where an abbreviated or
+ * rounded rendering would not.
+ */
+function spellOut(span: Timespan): string {
+  if (span.parts.length === 0) return '0 seconds';
+  return span.parts.map((part) => `${part.value} ${part.unit}s`).join(' ');
+}
+
 function compute(
   body: string,
   state: SheetState,
@@ -246,27 +283,32 @@ function compute(
 ): Computed {
   if (body.trim() === '') return { output: '' };
 
+  /*
+   * Brackets are resolved once, up front, and the result is what both the
+   * temporal rules and the expression parser see. Feeding the original text
+   * to the parser after resolving it for the temporal pass is how
+   * `(8:30 to 17:15) - 45 minutes` ended up back at math.js as a range.
+   */
+  const options = { now, holidays: ctx.holidays, fps: ctx.fps };
+  const source = resolveTemporalGroups(stripOuterParens(body), options);
+
   // Dates, times and durations never reach math.js; the gate keeps ordinary
   // arithmetic out of this branch.
-  if (looksTemporal(body)) {
-    const temporal = evaluateTemporal(body, {
-      now,
-      holidays: ctx.holidays,
-      fps: ctx.fps,
-    });
+  if (looksTemporal(source)) {
+    const temporal = evaluateTemporal(source, options);
     if (temporal !== null && temporal !== undefined) {
       return { value: temporal, output: formatValue(temporal, fmt) };
     }
   }
 
-  const { expr, hint, decimals, notation } = preprocess(body, {
+  const { expr, hint, decimals, notation } = preprocess(source, {
     currencies: ctx.currencies,
     isKnownUnit: (word) => isKnownUnit(ctx, word),
     scopeNames: new Set(state.aliases.keys()),
     region: fmt.region,
   });
 
-  const resolved = applyAliases(expr, state.aliases);
+  const resolved = applyAliases(expr, state.aliases, (word) => isKnownUnit(ctx, word));
   const format = (value: unknown): Computed => ({
     value,
     output: formatValue(value, {
@@ -328,6 +370,7 @@ function isFinitePresentable(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value);
   if (value instanceof Percentage) return Number.isFinite(value.ratio);
   if (value instanceof Multiplier) return Number.isFinite(value.factor);
+  if (value instanceof Labelled) return Number.isFinite(value.value);
   if (value instanceof Rate) return isFinitePresentable(value.amount);
 
   const unit = value as { formatUnits?: () => string; toNumeric?: (u: string) => number };
@@ -427,17 +470,36 @@ function aliasFor(name: string, state: SheetState): string {
   return alias;
 }
 
-/** Substitutes known variable names, longest first so prefixes do not win. */
-function applyAliases(expr: string, aliases: Map<string, string>): string {
+/**
+ * Substitutes known variable names, longest first so prefixes do not win.
+ *
+ * A name that is also a unit keeps its unit meaning in the one place it can
+ * only be a unit — directly after a number. Without that, `hours = 6.5` on one
+ * line quietly redefined `hours` for every line below it, so `2 hours` became
+ * thirteen and nothing said so.
+ *
+ * The guard applies only to names math.js already knows as units. Anything
+ * else substitutes everywhere exactly as before, so `apples = 5` still makes
+ * `3 apples` fifteen.
+ */
+function applyAliases(
+  expr: string,
+  aliases: Map<string, string>,
+  isUnit: (word: string) => boolean,
+): string {
   if (aliases.size === 0) return expr;
   const names = [...aliases.keys()].sort((a, b) => b.length - a.length);
   let out = expr;
   for (const name of names) {
-    const pattern = new RegExp(
-      `(?<![\\w])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}(?![\\w])`,
-      'gi',
+    const alias = aliases.get(name)!;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, 'gi');
+    // Tested against the text as actually written, not the lowercased key the
+    // alias is stored under: `W` is watt where `w` is nothing, so a variable
+    // named `w` still substitutes while the unit `W` is protected.
+    out = out.replace(pattern, (match: string, offset: number, whole: string) =>
+      isUnit(match) && /\d\s*$/.test(whole.slice(0, offset)) ? match : alias,
     );
-    out = out.replace(pattern, aliases.get(name)!);
   }
   return out;
 }
@@ -456,6 +518,7 @@ function isKnownUnit(ctx: MathContext, word: string): boolean {
 /** Only numbers and units take part in totals; dates and text do not. */
 function isAddable(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value);
+  if (value instanceof Labelled) return Number.isFinite(value.value);
   if (
     value instanceof CalendarDate ||
     value instanceof Timespan ||

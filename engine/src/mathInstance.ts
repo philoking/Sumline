@@ -80,6 +80,21 @@ const EVERYDAY_UNITS: Array<[string, string]> = [
   ['sqm', '1 m^2'],
   ['kcal', '1000 cal'],
   ['rpm', '1 / min'],
+
+  /*
+   * Bit rates. math.js ships bits and bytes but no per-second aliases, so
+   * `940 Mbps` was an undefined symbol. Both cases of each are registered
+   * because people type `mbps` as readily as `Mbps`, and the SI reading of a
+   * lowercase `m` — millibits per second — is not something anyone means.
+   * Byte rates need nothing: `MB/s` already parses as a rate.
+   */
+  ['bps', '1 b/s'],
+  ['kbps', '1 kb/s'], ['Kbps', '1 kb/s'],
+  ['mbps', '1 Mb/s'], ['Mbps', '1 Mb/s'],
+  ['gbps', '1 Gb/s'], ['Gbps', '1 Gb/s'],
+  ['tbps', '1 Tb/s'], ['Tbps', '1 Tb/s'],
+  ['Pbps', '1 Pb/s'],
+  ['Ebps', '1 Eb/s'],
 ];
 
 function addEverydayUnits(math: MathJsInstance): void {

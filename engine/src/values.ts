@@ -34,6 +34,26 @@ export class Rate {
   ) {}
 }
 
+/**
+ * A count of something the engine has no unit for: `12 widgets`, `28 cameras`.
+ *
+ * The label is carried, not understood. Two quantities sharing a label add up
+ * and keep it; mixed with anything else the label is dropped and a plain
+ * number falls out, because `12 widgets + 3 kg` has no honest answer but 15 is
+ * a more useful one than an error. `label` is stored exactly as written, so
+ * the answer reads back the way the line does.
+ */
+export class Labelled {
+  constructor(
+    readonly value: number,
+    readonly label: string,
+  ) {}
+}
+
+export function isLabelled(value: unknown): value is Labelled {
+  return value instanceof Labelled;
+}
+
 export function isRate(value: unknown): value is Rate {
   return value instanceof Rate;
 }
@@ -105,6 +125,23 @@ export function registerValueTypes(
   typed.addType({ name: 'Percentage', test: isPercentage });
   typed.addType({ name: 'Multiplier', test: isMultiplier });
   typed.addType({ name: 'Rate', test: isRate });
+  typed.addType({ name: 'Labelled', test: isLabelled });
+
+  /** Same label keeps it; anything else falls back to a bare number. */
+  const combineLabels = (a: Labelled, b: Labelled, total: number): unknown =>
+    a.label.toLowerCase() === b.label.toLowerCase()
+      ? new Labelled(total, a.label)
+      : total;
+
+  /** The numeric size of an operand a labelled quantity is combined with. */
+  const sizeOf = (value: unknown): number => {
+    if (value instanceof Labelled) return value.value;
+    if (typeof value === 'number') return value;
+    const unit = value as UnitLike;
+    return typeof unit?.formatUnits === 'function'
+      ? unit.toNumeric(unit.formatUnits())
+      : Number.NaN;
+  };
 
   /** How many of `from` make one `to` — 1 week is 7 days. */
   const perFactor = (from: string, to: string): number => {
@@ -125,6 +162,9 @@ export function registerValueTypes(
       /** Constructor used by the preprocessor: `20%` becomes `pct(20)`. */
       pct: (n: number) => new Percentage(n / 100),
       multiplierOf: (n: number) => new Multiplier(n),
+
+      /** `12 widgets` becomes `labelled(12, "widgets")`. */
+      labelled: (value: number, label: string) => new Labelled(value, label),
 
       /** `20% as dec`, `5 km as number` — strip the meaning, keep the number. */
       asPlainNumber: math.typed('asPlainNumber', {
@@ -167,6 +207,24 @@ export function registerValueTypes(
       rateTo: (rate: unknown, per: string) =>
         rate instanceof Rate ? rateTo(rate, per) : rate,
 
+      /**
+       * `12 GB/s in GB/minute` — a conversion naming both halves.
+       *
+       * The same phrasing covers ordinary compound units (`65 mph in km/h`),
+       * which are not rates at all, so anything that is not a `Rate` is handed
+       * to math.js as a single `numerator/denominator` conversion.
+       */
+      rateAs: (value: unknown, numerator: string, per: string): unknown => {
+        if (!(value instanceof Rate)) {
+          const unit = value as { to?: (target: string) => unknown };
+          return typeof unit?.to === 'function' ? unit.to(`${numerator}/${per}`) : value;
+        }
+        const amount = value.amount as { to?: (target: string) => unknown };
+        const renamed =
+          typeof amount?.to === 'function' ? amount.to(numerator) : value.amount;
+        return rateTo(new Rate(renamed, value.per), per);
+      },
+
       /** `1.7e6` rather than `1.7M`, for the times you want the exponent. */
       sciOf: (value: unknown): string => {
         const n = value instanceof Percentage ? value.ratio : Number(value);
@@ -192,17 +250,36 @@ export function registerValueTypes(
           math.multiply(b.amount as never, a.toNumeric(b.per) as never),
         'Rate, number': (a: Rate, b: number) => new Rate(scale(a.amount, b), a.per),
         'number, Rate': (a: number, b: Rate) => new Rate(scale(b.amount, a), b.per),
+        // Scaling a count keeps what is being counted; two counts multiplied
+        // are not a count of anything, so the label goes.
+        'Labelled, number': (a: Labelled, b: number) => new Labelled(a.value * b, a.label),
+        'number, Labelled': (a: number, b: Labelled) => new Labelled(a * b.value, b.label),
+        'Labelled, Labelled': (a: Labelled, b: Labelled) => a.value * b.value,
+        'Labelled, Percentage': (a: Labelled, b: Percentage) =>
+          new Labelled(a.value * b.ratio, a.label),
+        'Percentage, Labelled': (a: Percentage, b: Labelled) =>
+          new Labelled(a.ratio * b.value, b.label),
+        // `28 cameras * 4 Mbps` is 112 Mbps: the count is the multiplier and
+        // the unit is what the answer is in.
+        'Labelled, Unit': (a: Labelled, b: unknown) => scale(b, a.value),
+        'Unit, Labelled': (a: unknown, b: Labelled) => scale(a, b.value),
       }),
 
       divide: math.typed('divide', {
         'Percentage, number': (a: Percentage, b: number) => new Percentage(a.ratio / b),
         'number, Percentage': (a: number, b: Percentage) => a / b.ratio,
         'Unit, Percentage': (a: unknown, b: Percentage) => scale(a, 1 / b.ratio),
+        'Labelled, number': (a: Labelled, b: number) => new Labelled(a.value / b, a.label),
+        // Sharing counts between counts answers how many times over, not how
+        // many things, so the label does not survive.
+        'Labelled, Labelled': (a: Labelled, b: Labelled) => a.value / b.value,
+        'number, Labelled': (a: number, b: Labelled) => a / b.value,
       }),
 
       unaryMinus: math.typed('unaryMinus', {
         Percentage: (a: Percentage) => new Percentage(-a.ratio),
         Multiplier: (a: Multiplier) => new Multiplier(-a.factor),
+        Labelled: (a: Labelled) => new Labelled(-a.value, a.label),
       }),
 
       equal: math.typed('equal', {
@@ -219,7 +296,53 @@ export function registerValueTypes(
     { override: false } as never,
   );
 
-  registerAdditionRules(math, combineUnits, assimilate, rateTo);
+  registerAdditionRules(math, combineUnits, assimilate, rateTo, combineLabels, sizeOf);
+  registerMoneyProducts(math, isMoney);
+}
+
+/**
+ * Money multiplied by a quantity answers in money.
+ *
+ * `569.79 kWh × $0.11` is dimensionally kWh·USD, which is not a thing anyone
+ * means: the writer is pricing something per kilowatt-hour. The quantity is
+ * treated as a scalar, so the answer is a cash amount — and, just as
+ * importantly, it is a value later lines can add to and the formatter renders
+ * with a symbol, where a compound unit carried neither.
+ *
+ * Only a mixed currency-and-unit product is rewritten. Two currencies, a
+ * currency times a bare number, and every rate are left to the rules that
+ * already handle them, which is why this is registered as one narrow
+ * signature over a fallback to everything math.js did before.
+ */
+function registerMoneyProducts(
+  math: MathJsInstance,
+  isMoney: (unit: UnitLike) => boolean,
+): void {
+  const originalMultiply = math.multiply.bind(math) as (a: unknown, b: unknown) => unknown;
+
+  /** A plain amount in a single currency, with no prefix on the unit. */
+  const plainMoney = (unit: UnitLike): boolean =>
+    isMoney(unit) && unit.units.length === 1;
+
+  math.import(
+    {
+      multiply: math.typed('multiply', {
+        'Unit, Unit': (a: UnitLike, b: UnitLike) => {
+          const aMoney = isMoney(a);
+          if (aMoney === isMoney(b)) return originalMultiply(a, b);
+          const money = aMoney ? a : b;
+          const quantity = aMoney ? b : a;
+          if (!plainMoney(money)) return originalMultiply(a, b);
+          const label = money.formatUnits();
+          const scaled =
+            money.toNumeric(label) * quantity.toNumeric(quantity.formatUnits());
+          return math.unit(scaled, label);
+        },
+        'any, any': (a: unknown, b: unknown) => originalMultiply(a, b),
+      }),
+    } as never,
+    { override: true } as never,
+  );
 }
 
 /**
@@ -235,6 +358,8 @@ function registerAdditionRules(
   combineUnits: (a: UnitLike, b: UnitLike, sign: 1 | -1) => unknown,
   assimilate: (value: number, unit: UnitLike) => unknown,
   rateTo: (rate: Rate, per: string) => Rate,
+  combineLabels: (a: Labelled, b: Labelled, total: number) => unknown,
+  sizeOf: (value: unknown) => number,
 ): void {
   const originalAdd = math.add.bind(math) as (a: unknown, b: unknown) => unknown;
   const originalSubtract = math.subtract.bind(math) as (a: unknown, b: unknown) => unknown;
@@ -257,6 +382,20 @@ function registerAdditionRules(
           combineUnits(a, assimilate(b, a) as UnitLike, 1),
         'Rate, Rate': (a: Rate, b: Rate) =>
           new Rate(math.add(rateTo(a, b.per).amount as never, b.amount as never), b.per),
+        'Labelled, Labelled': (a: Labelled, b: Labelled) =>
+          combineLabels(a, b, a.value + b.value),
+        'Labelled, any': (a: Labelled, b: unknown) => {
+          const size = sizeOf(b);
+          // A bare number joins the count; a unit or a currency does not, and
+          // what is left is the arithmetic without the label.
+          return typeof b === 'number'
+            ? new Labelled(a.value + b, a.label)
+            : a.value + size;
+        },
+        'any, Labelled': (a: unknown, b: Labelled) =>
+          typeof a === 'number'
+            ? new Labelled(a + b.value, b.label)
+            : sizeOf(a) + b.value,
         'any, any': (a: unknown, b: unknown) => originalAdd(a, b),
       }),
 
@@ -274,6 +413,16 @@ function registerAdditionRules(
           combineUnits(a, assimilate(b, a) as UnitLike, -1),
         'Rate, Rate': (a: Rate, b: Rate) =>
           new Rate(math.subtract(rateTo(a, b.per).amount as never, b.amount as never), b.per),
+        'Labelled, Labelled': (a: Labelled, b: Labelled) =>
+          combineLabels(a, b, a.value - b.value),
+        'Labelled, any': (a: Labelled, b: unknown) =>
+          typeof b === 'number'
+            ? new Labelled(a.value - b, a.label)
+            : a.value - sizeOf(b),
+        'any, Labelled': (a: unknown, b: Labelled) =>
+          typeof a === 'number'
+            ? new Labelled(a - b.value, b.label)
+            : sizeOf(a) - b.value,
         'any, any': (a: unknown, b: unknown) => originalSubtract(a, b),
       }),
     } as never,
