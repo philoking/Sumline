@@ -9,7 +9,7 @@ import {
 import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { convertAt, parseHistoricalConversion } from './historical.js';
 import { describeError } from './errors.js';
-import { formatValue, type FormatContext } from './format.js';
+import { DEFAULT_PRECISION, formatValue, type FormatContext } from './format.js';
 import { createMathContext, toFps, type MathContext } from './mathInstance.js';
 import { toNumberRegion } from './numberFormat.js';
 import { toZone, wallClockDate } from './temporal/zones.js';
@@ -52,6 +52,12 @@ export function createEngine(options: EngineOptions = {}): Engine {
     now,
     region,
     largeNumberNotation: options.largeNumberNotation ?? true,
+    // Clamped rather than trusted: these are stored settings, and the README
+    // documents writing settings with `curl`, so a negative or absurd value is
+    // a real arrival and `toFixed` throws outside 0–100.
+    precision: clampPrecision(options.precision),
+    thousandsSeparators: options.thousandsSeparators ?? true,
+    currencyRounding: options.currencyRounding ?? true,
   });
 
   return {
@@ -189,6 +195,16 @@ interface SheetState {
   referenced: Set<number>;
   /** The line `prev` currently points at, or null before any value. */
   prevLine: number | null;
+}
+
+/** The most decimal places worth offering, and the most `toFixed` accepts. */
+const MAX_PRECISION = 15;
+
+function clampPrecision(precision: number | undefined): number {
+  if (precision === undefined || !Number.isFinite(precision)) {
+    return DEFAULT_PRECISION;
+  }
+  return Math.min(MAX_PRECISION, Math.max(0, Math.round(precision)));
 }
 
 /** `line 3` in a line's own text, matching what `rewriteReferences` rewrites. */

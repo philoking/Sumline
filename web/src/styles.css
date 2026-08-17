@@ -1605,10 +1605,48 @@ button.danger-button:disabled {
   text-transform: uppercase;
 }
 
-/* The two rows under the heading are indented as a group, tick and all. */
+/* The rows under a heading are indented as a group, tick and all. */
 .view-group + li button,
 .view-group + li + li button {
   padding-left: 18px;
+}
+
+/* Precision is a row of choices rather than a toggle, so it is laid out by
+   hand instead of going through the tick gutter. */
+.view-precision {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 5px 18px;
+}
+
+.precision-choices {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.precision-choices button {
+  min-width: 22px;
+  padding: 2px 4px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.precision-choices button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.precision-choices button.picked {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* While managing, the row stops being a target for switching and becomes a

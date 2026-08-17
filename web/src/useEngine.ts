@@ -50,26 +50,28 @@ export function useEngine(options: EngineOptions) {
     };
   }, []);
 
+  /*
+   * The caller's options are passed through, not copied field by field.
+   *
+   * They used to be re-listed here, which is the same mistake `engineOptionsFrom`
+   * was written to prevent one layer up — and it had already cost the same
+   * thing twice. `zone` was resolved, sent, and dropped on this line, so a space
+   * that pinned the zone its dates resolve in was quietly ignored; `precision`,
+   * `thousandsSeparators` and `currencyRounding` were about to be dropped the
+   * same way. A spread cannot forget a key.
+   *
+   * `options` is memoised by the caller, so depending on it whole costs no more
+   * renders than depending on each of its fields did.
+   */
   const engine = useMemo(
     () =>
       createEngine({
+        ...options,
         ...(rates && { rates }),
         ...(holidays && { holidays: holidays.dates }),
-        ...(options.globals && { globals: options.globals }),
-        ...(options.region && { region: options.region }),
-        ...(options.fps !== undefined && { fps: options.fps }),
         historicalRates: history,
-        largeNumberNotation: options.largeNumberNotation,
       }),
-    [
-      rates,
-      holidays,
-      history,
-      options.largeNumberNotation,
-      options.globals,
-      options.region,
-      options.fps,
-    ],
+    [options, rates, holidays, history],
   );
 
   /**

@@ -17,6 +17,7 @@ import {
   group,
   join,
   toSiNotation,
+  trimZeros,
   type NumberRegion,
   type Separators,
 } from './numberFormat.js';
@@ -30,9 +31,38 @@ export interface FormatContext {
   largeNumberNotation: boolean;
   /** Fixed number of decimal places requested by the line itself. */
   decimals?: number;
+  /**
+   * How many decimal places an answer may show before it is rounded.
+   *
+   * A ceiling, not a width: trailing zeros are still trimmed, so `20.50`
+   * answers `20.5` at any precision. Soulver calls this Precision and offers
+   * 0–5, 10 and 15, with 10 as its default.
+   */
+  precision: number;
+  /** Whether digits are grouped — `1,234` against `1234`. */
+  thousandsSeparators: boolean;
+  /**
+   * Whether money is held to its currency's usual number of decimals.
+   *
+   * On, `$10.005` shows as `$10.01` and yen never show a fraction. Off, money
+   * is formatted like any other number, which is what you want when the
+   * rounding is hiding the difference you are looking for.
+   */
+  currencyRounding: boolean;
   /** Render a bare number as a percentage. */
   hint?: 'percent';
 }
+
+/** Soulver's own default, and the one the menu ticks. */
+export const DEFAULT_PRECISION = 10;
+
+/**
+ * How many significant digits a double can be trusted for here.
+ *
+ * The same twelve `toPrecision(12)` already collapses to; past it the bits
+ * describe the representation rather than the answer.
+ */
+const SIGNIFICANT_DIGITS = 12;
 
 export function defaultContext(currencies: Set<string>): FormatContext {
   return {
@@ -40,6 +70,9 @@ export function defaultContext(currencies: Set<string>): FormatContext {
     now: new Date(),
     region: 'north-america',
     largeNumberNotation: true,
+    precision: DEFAULT_PRECISION,
+    thousandsSeparators: true,
+    currencyRounding: true,
   };
 }
 
@@ -196,14 +229,27 @@ export function formatMoney(
   code: string,
   ctx: FormatContext,
 ): string {
+  const grouping = groupingFor(ctx);
+  const symbol = CODE_TO_SYMBOL[code];
+  const money = (body: string, negative: boolean) => {
+    const sign = negative ? '-' : '';
+    return symbol ? `${sign}${symbol}${body}` : `${sign}${body} ${code}`;
+  };
+
+  /*
+   * With rounding off, money is formatted like any other number — held to the
+   * general precision and trimmed. A line asked for a fixed number of places
+   * still gets them: `to 2 dp` is written into the sheet and outranks a
+   * preference set in a menu.
+   */
+  if (!ctx.currencyRounding && ctx.decimals === undefined) {
+    return money(formatNumber(Math.abs(amount), ctx), amount < 0);
+  }
+
   const decimals = ctx.decimals ?? (ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2);
-  const separators = REGION_SEPARATORS[ctx.region];
   const rounded = round(amount, decimals);
   const [whole = '0', fraction] = Math.abs(rounded).toFixed(decimals).split('.');
-  const body = join(group(whole, separators), fraction, separators);
-  const sign = rounded < 0 ? '-' : '';
-  const symbol = CODE_TO_SYMBOL[code];
-  return symbol ? `${sign}${symbol}${body}` : `${sign}${body} ${code}`;
+  return money(join(group(whole, grouping), fraction, grouping), rounded < 0);
 }
 
 /**
@@ -212,13 +258,13 @@ export function formatMoney(
  */
 export function formatNumber(value: number, ctx: FormatContext): string {
   if (!Number.isFinite(value)) return String(value);
-  const separators = REGION_SEPARATORS[ctx.region];
+  const grouping = groupingFor(ctx);
 
   if (ctx.decimals !== undefined) {
     const fixed = round(value, ctx.decimals).toFixed(ctx.decimals);
     const [whole = '0', fraction] = fixed.replace('-', '').split('.');
     const sign = value < 0 && round(value, ctx.decimals) !== 0 ? '-' : '';
-    return `${sign}${join(group(whole, separators), fraction, separators)}`;
+    return `${sign}${join(group(whole, grouping), fraction, grouping)}`;
   }
 
   if (value === 0) return '0';
@@ -236,11 +282,37 @@ export function formatNumber(value: number, ctx: FormatContext): string {
   // 12 significant digits keeps real precision while collapsing 0.1 + 0.2
   // into 0.3 rather than 0.30000000000000004.
   const clean = Number(value.toPrecision(12));
-  const fixed = round(clean, 6).toFixed(6).replace(/\.?0+$/, '');
+  /*
+   * The requested precision, capped by the significant digits actually left.
+   *
+   * Asking for ten decimals of 1,234,567.89 is asking for seventeen
+   * significant figures, which a double does not have: `toFixed(10)` answers
+   * 1,234,567.8899999999, faithfully printing the noise below the twelve
+   * digits promised a line above. Spending the budget on the integer part
+   * first is what keeps a large number honest and a small one precise.
+   *
+   * `toFixed` also does the rounding, rather than `round` — that multiplies by
+   * 10^places, which passes 2^53 and loses the low digits at this magnitude.
+   */
+  const magnitudeDigits = Math.abs(clean) >= 1 ? Math.floor(Math.log10(Math.abs(clean))) + 1 : 1;
+  const places = Math.min(ctx.precision, Math.max(0, SIGNIFICANT_DIGITS - magnitudeDigits));
+  const fixed = trimZeros(clean.toFixed(places));
   const [whole = '0', fraction] = fixed.split('.');
   const sign = whole.startsWith('-') ? '-' : '';
-  const grouped = group(whole.replace('-', ''), separators);
-  return `${sign}${join(grouped, fraction, separators)}`;
+  const grouped = group(whole.replace('-', ''), grouping);
+  return `${sign}${join(grouped, fraction, grouping)}`;
+}
+
+/**
+ * The region's separators, with grouping turned off if that is the preference.
+ *
+ * Emptying the group character rather than branching at every call site: the
+ * decimal point still has to be the region's own, and only one of the two is
+ * being switched off.
+ */
+function groupingFor(ctx: FormatContext): Separators {
+  const separators = REGION_SEPARATORS[ctx.region];
+  return ctx.thousandsSeparators ? separators : { ...separators, group: '' };
 }
 
 function round(value: number, decimals: number): number {

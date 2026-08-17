@@ -58,15 +58,45 @@ describe('the settings that reach the engine', () => {
     );
   });
 
-  it('keeps display-only settings away from the engine', () => {
-    // The corner statistic, the total's visibility and the sidebar order are the
-    // app's business; the engine has no opinion about any of them.
+  /*
+   * How an answer is *written* is the engine's business, because the engine is
+   * what writes it — notation, precision, separators and currency rounding all
+   * end up in its `FormatContext`. How the app is *arranged* is not.
+   */
+  it('treats the other number-format settings as on when absent', () => {
+    expect(engineOptionsFrom({}).thousandsSeparators).toBe(true);
+    expect(engineOptionsFrom({}).currencyRounding).toBe(true);
+    expect(engineOptionsFrom({ thousandsSeparators: false }).thousandsSeparators).toBe(
+      false,
+    );
+    expect(engineOptionsFrom({ currencyRounding: false }).currencyRounding).toBe(false);
+  });
+
+  it('leaves precision off entirely when unset, so the engine owns the default', () => {
+    expect('precision' in engineOptionsFrom({})).toBe(false);
+    expect(engineOptionsFrom({ precision: 2 }).precision).toBe(2);
+    // Zero is a real choice and must survive, which `?? 10` would have eaten.
+    expect(engineOptionsFrom({ precision: 0 }).precision).toBe(0);
+  });
+
+  it('keeps settings about the app, rather than the answer, away from the engine', () => {
+    // The corner statistic, the total's visibility, the sidebar order, the text
+    // size and the gutter are all the app's business; the engine has no opinion
+    // about any of them.
     const options = engineOptionsFrom({
       statistic: 'median',
       showTotal: false,
       sheetOrder: 'manual',
+      sheetFontSize: 22,
+      showLineNumbers: false,
+      countVariablesInTotal: false,
+      countReferencedInTotal: false,
     });
-    expect(Object.keys(options)).toEqual(['largeNumberNotation']);
+    expect(Object.keys(options).sort()).toEqual([
+      'currencyRounding',
+      'largeNumberNotation',
+      'thousandsSeparators',
+    ]);
   });
 
   it('carries every computed setting at once', () => {
@@ -82,6 +112,8 @@ describe('the settings that reach the engine', () => {
       region: 'eastern-europe',
       zone: 'Europe/Berlin',
       largeNumberNotation: false,
+      thousandsSeparators: true,
+      currencyRounding: true,
       globals: { vat: '20%' },
     });
   });

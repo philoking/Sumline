@@ -64,6 +64,19 @@ export interface EngineOptions {
    * Soulver. Never applied to currency amounts.
    */
   largeNumberNotation?: boolean;
+  /**
+   * How many decimal places an answer may show. Defaults to 10, as Soulver's
+   * Precision does. A ceiling rather than a width: trailing zeros are trimmed,
+   * so `20.50` still answers `20.5`.
+   */
+  precision?: number;
+  /** Group digits as `1,234`. On by default. */
+  thousandsSeparators?: boolean;
+  /**
+   * Hold money to its currency's usual decimals — `$10.01`, and no fraction on
+   * yen. On by default. Off formats money like any other number.
+   */
+  currencyRounding?: boolean;
   /** Public holidays as `YYYY-MM-DD`, excluded from workday calculations. */
   holidays?: readonly string[];
   /** Default frame rate for timecodes that do not name one. */

@@ -11,9 +11,22 @@ export const MAX_FONT_SIZE = 26;
 export const FONT_STEP = 1;
 export const DEFAULT_FONT_SIZE = 18;
 
+/**
+ * The decimal places offered, exactly as Soulver's Precision submenu lists
+ * them. Six is deliberately absent — it is not one of Soulver's choices, which
+ * is what settled the default being ten rather than what this used to do.
+ */
+export const PRECISIONS = [0, 1, 2, 3, 4, 5, 10, 15] as const;
+
 export interface ViewMenuProps {
   open: boolean;
   fontSize: number;
+  precision: number;
+  thousandsSeparators: boolean;
+  currencyRounding: boolean;
+  onPrecision(next: number): void;
+  onToggleSeparators(): void;
+  onToggleCurrencyRounding(): void;
   sidebarOpen: boolean;
   showLineNumbers: boolean;
   showTotal: boolean;
@@ -146,11 +159,43 @@ export function ViewMenu(props: ViewMenuProps) {
 
         <li className="menu-separator" role="separator" />
 
+        <li className="view-group" role="presentation">
+          Number format
+        </li>
+        <li className="view-precision">
+          <span className="view-label">Precision</span>
+          <span className="precision-choices" role="group" aria-label="Decimal places">
+            {PRECISIONS.map((places) => (
+              <button
+                key={places}
+                type="button"
+                className={places === props.precision ? 'picked' : undefined}
+                aria-pressed={places === props.precision}
+                title={`${places} decimal places`}
+                onClick={() => props.onPrecision(places)}
+              >
+                {places}
+              </button>
+            ))}
+          </span>
+        </li>
+        <Check
+          on={props.thousandsSeparators}
+          label="Thousands separators"
+          hint={props.thousandsSeparators ? '1,234' : '1234'}
+          onClick={props.onToggleSeparators}
+        />
         <Check
           on={props.largeNumberNotation}
-          label="Abbreviate large numbers"
+          label="Notation for large numbers"
           hint={props.largeNumberNotation ? '300k' : '300,000'}
           onClick={props.onToggleNotation}
+        />
+        <Check
+          on={props.currencyRounding}
+          label="Currency rounding"
+          hint={props.currencyRounding ? '$3.33' : '$3.3333333333'}
+          onClick={props.onToggleCurrencyRounding}
         />
       </ul>
     </>

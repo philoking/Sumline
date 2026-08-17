@@ -31,7 +31,7 @@ describe('rounding', () => {
     const engine = createEngine({ rates: TEST_RATES, now: TEST_NOW });
     const results = engine.evaluate('1/3 to 2 dp\n1/3 to 2 dp');
     expect(results[0]?.output).toBe('0.33');
-    expect(engine.total(results)).toBe('0.666667');
+    expect(engine.total(results)).toBe('0.6666666667');
   });
 });
 
@@ -101,7 +101,7 @@ describe('operators', () => {
     ['3 to the power of 2', '9'],
     ['remainder of 21 divided by 5', '1'],
     ['√16', '4'],
-    ['π', '3.141593'],
+    ['π', '3.1415926536'],
   ];
 
   for (const [input, expected] of cases) {

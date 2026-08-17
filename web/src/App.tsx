@@ -27,6 +27,7 @@ import { Login } from './Login';
 import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
+import { DEFAULT_PRECISION } from '@webcalc/engine';
 import {
   DEFAULT_FONT_SIZE,
   MAX_FONT_SIZE,
@@ -138,6 +139,10 @@ export function App() {
   const countReferenced = settings.countReferencedInTotal !== false;
   const showLineNumbers = settings.showLineNumbers !== false;
   const fontSize = clampFontSize(settings.sheetFontSize ?? DEFAULT_FONT_SIZE);
+  const thousandsSeparators = settings.thousandsSeparators !== false;
+  const currencyRounding = settings.currencyRounding !== false;
+  // The engine clamps this too; here it only decides which button looks picked.
+  const precision = settings.precision ?? DEFAULT_PRECISION;
 
   // Everything the engine is told, derived in one named place — see
   // engineOptions.ts for why that is not a spread written inline here.
@@ -809,10 +814,12 @@ export function App() {
             aria-haspopup="menu"
             aria-expanded={viewMenuOpen}
           >
-            {/* Not a gear, which would promise the settings panels, and not a
-                half-circle, which the theme button next door already uses.
-                This menu leads with text size, and Aa is what that means. */}
-            Aa
+            {/* `Aa` said fonts, which is one row of this menu rather than what
+                it is. An eye is the plain word for the rest of it — what is on
+                screen and what is not. Not a gear, which would promise the
+                settings panels; not a half-circle, which the theme button next
+                door already uses. */}
+            👁
           </button>
           <ViewMenu
             open={viewMenuOpen}
@@ -823,6 +830,16 @@ export function App() {
             countReferenced={countReferenced}
             countVariables={countVariables}
             largeNumberNotation={siNotation}
+            precision={precision}
+            thousandsSeparators={thousandsSeparators}
+            currencyRounding={currencyRounding}
+            onPrecision={(next) => void persistSettings({ precision: next })}
+            onToggleSeparators={() =>
+              void persistSettings({ thousandsSeparators: !thousandsSeparators })
+            }
+            onToggleCurrencyRounding={() =>
+              void persistSettings({ currencyRounding: !currencyRounding })
+            }
             onFontSize={(next) =>
               void persistSettings({ sheetFontSize: clampFontSize(next) })
             }
@@ -843,14 +860,6 @@ export function App() {
             onClose={() => setViewMenuOpen(false)}
           />
         </div>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => setSidebarOpen((open) => !open)}
-          title={sidebarOpen ? 'Hide sheets' : 'Show sheets'}
-        >
-          ▤
-        </button>
         {/* Shown even for one person, since this is where a second is added. */}
         {users.length > 0 && (
           <div className="menu-anchor">

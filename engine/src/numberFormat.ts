@@ -109,6 +109,13 @@ export function join(
   return fraction ? `${whole}${separators.decimal}${fraction}` : whole;
 }
 
-function trimZeros(text: string): string {
+/**
+ * Drops the trailing zeros a fixed-width rendering leaves behind.
+ *
+ * Only ever past the decimal point. `'1000'.replace(/\.?0+$/, '')` is `'1'`,
+ * which is what this guard is for: with a precision of 0 there is no point in
+ * the string for the pattern to stop at.
+ */
+export function trimZeros(text: string): string {
   return text.includes('.') ? text.replace(/\.?0+$/, '') : text;
 }

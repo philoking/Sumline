@@ -119,7 +119,7 @@ describe('lines this must not claim', () => {
   it('leaves ordinary conversions, dates and prose alone', () => {
     const cases: Array<[string, string]> = [
       ['100 USD in EUR', '€80.00'],
-      ['5 km in miles', '3.106856 miles'],
+      ['5 km in miles', '3.1068559612 miles'],
       ['today + 3 weeks', 'Sat 5 Sep 2026'],
       ['3 days on holiday', '3 days'],
       ['days between 3 March and 30 May', '88 days'],

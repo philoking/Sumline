@@ -433,9 +433,21 @@ not survive being copied, exported, or having its lines moved around.
 
 ### The view menu
 
-`Aa` in the toolbar holds everything about how a sheet is *shown*, rather than what it says:
-text size, the sidebar, line numbers, the total and its options, and whether large numbers are
-abbreviated to `300k`. All of it is stored per space, so it follows you between browsers.
+`👁` in the toolbar holds everything about how a sheet is *shown*, rather than what it says:
+text size, the sidebar, line numbers, the total and its options, and how numbers are written.
+All of it is stored per space, so it follows you between browsers.
+
+Under **Number format**:
+
+- **Precision** — how many decimal places an answer may show: 0–5, 10 or 15, defaulting to 10.
+  A ceiling rather than a width, so `20.50` still answers `20.5`. Large numbers spend the
+  available digits on the whole part first, so `1,234,567.89` stays itself rather than
+  becoming `1,234,567.8899999999`.
+- **Thousands separators** — `1,234` against `1234`. The decimal point stays the region's own.
+- **Notation for large numbers** — `300k` against `300,000`.
+- **Currency rounding** — money held to its currency's usual decimals, so `$3.33` rather than
+  `$3.3333333333`, and no fraction on yen. A line that asks for `to 4 dp` still gets it: what
+  is written in the sheet outranks a preference set in a menu.
 
 ### The total
 

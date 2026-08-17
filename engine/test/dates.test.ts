@@ -73,8 +73,8 @@ describe('a date standing on its own', () => {
   it('leaves chained division alone', () => {
     expect(answer('1/2')).toBe('0.5');
     expect(answer('3/4/5')).toBe('0.15');
-    expect(answer('5000/12/2026')).toBe('0.20566');
-    expect(answer('100/25/2026')).toBe('0.001974');
+    expect(answer('5000/12/2026')).toBe('0.2056597565');
+    expect(answer('100/25/2026')).toBe('0.0019743337');
   });
 
   /*
@@ -84,8 +84,8 @@ describe('a date standing on its own', () => {
    * same silent wrongness this issue is about.
    */
   it('refuses a date that does not exist', () => {
-    expect(answer('99/99/2026')).toBe('0.000494');
-    expect(answer('13/45/2026')).toBe('0.000143');
-    expect(answer('2/30/2026')).toBe('0.000033');
+    expect(answer('99/99/2026')).toBe('0.0004935834');
+    expect(answer('13/45/2026')).toBe('0.0001425908');
+    expect(answer('2/30/2026')).toBe('0.0000329056');
   });
 });

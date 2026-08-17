@@ -34,8 +34,13 @@ export function engineOptionsFrom(settings: Settings): EngineOptions {
   };
 
   return {
-    // Absent means on, matching the toolbar's default.
+    // Absent means on, matching the View menu's default.
     largeNumberNotation: settings.largeNumberNotation !== false,
+    thousandsSeparators: settings.thousandsSeparators !== false,
+    currencyRounding: settings.currencyRounding !== false,
+    // Left off when unset so the engine applies its own default rather than
+    // this layer keeping a second copy of what that default is.
+    ...(settings.precision !== undefined && { precision: settings.precision }),
     ...(globals && { globals }),
     // Left off entirely when unset, so the engine applies its own default
     // rather than this layer keeping a second copy of what that default is.

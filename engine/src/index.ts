@@ -5,7 +5,7 @@ export {
   Timecode,
   Timespan,
 } from './temporal/types.js';
-export { formatNumber, formatMoney } from './format.js';
+export { DEFAULT_PRECISION, formatNumber, formatMoney } from './format.js';
 export { SYMBOL_TO_CODE, CODE_TO_SYMBOL } from './currencies.js';
 export type {
   Engine,

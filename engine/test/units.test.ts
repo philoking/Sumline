@@ -3,17 +3,17 @@ import { answer } from './helpers.js';
 
 describe('units', () => {
   const cases: Array<[string, string]> = [
-    ['5 km in miles', '3.106856 miles'],
+    ['5 km in miles', '3.1068559612 miles'],
     ['100 cm to m', '1 m'],
     ['2 hours + 45 minutes', '2.75 hours'],
-    ['180 lbs in kg', '81.646627 kg'],
+    ['180 lbs in kg', '81.6466266 kg'],
     ['1 GB in MB', '1,000 MB'],
     ['32 degF to degC', '0 °C'],
-    ['72 F in C', '22.222222 °C'],
+    ['72 F in C', '22.2222222222 °C'],
     ['20 C in F', '68 °F'],
-    ['72 °F in °C', '22.222222 °C'],
+    ['72 °F in °C', '22.2222222222 °C'],
     ['65 mph in km/h', '104.60736 km/h'],
-    ['3 cups in ml', '709.76471 ml'],
+    ['3 cups in ml', '709.7647095 ml'],
   ];
 
   for (const [input, expected] of cases) {
@@ -32,7 +32,7 @@ describe('units', () => {
       ['1 Gbps in Mbps', '1,000 Mbps'],
       ['500 kbps in Mbps', '0.5 Mbps'],
       ['4 Mbps in MB/s', '0.5 MB/s'],
-      ['120 GB / 940 Mbps in minutes', '17.021277 minutes'],
+      ['120 GB / 940 Mbps in minutes', '17.0212765957 minutes'],
       ['12 GB / s in GB/minute', '720 GB/minute'],
     ];
 

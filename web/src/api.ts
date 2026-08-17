@@ -97,6 +97,16 @@ export interface Settings {
   countReferencedInTotal?: boolean;
   /** Point size of the sheet's text. Absent means the default. */
   sheetFontSize?: number;
+  /**
+   * Decimal places an answer may show, from Soulver's Format → Precision.
+   * Absent means 10, which is Soulver's default and the only one of its
+   * offered values that is not a short fixed width.
+   */
+  precision?: number;
+  /** Group digits as `1,234`. Absent means grouped. */
+  thousandsSeparators?: boolean;
+  /** Hold money to its currency's decimals. Absent means it is held. */
+  currencyRounding?: boolean;
   /** Absent means shown, which is what the gutter has always done. */
   showLineNumbers?: boolean;
   /** This space's own globals. */
