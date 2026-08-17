@@ -111,6 +111,18 @@ export type TemporalValue =
 const DATE_TOKEN = new RegExp(
   String.raw`\b(?:today|tomorrow|yesterday|now|timestamp|iso8601|iso|timespan|laptime|time|date\b|workdays?|weekdays?|business\s+days?|week\s+(?:of|number)|fps|frames?|` +
     String.raw`\d{4}-\d{1,2}-\d{1,2}|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm)|` +
+    /*
+     * `12/25/2026` and `25.12.2026` — a date standing on its own, which is a
+     * legitimate thing to write at the top of a sheet. Without this the line
+     * falls through to math.js and answers 0.000237, two divisions.
+     *
+     * The four-digit year is what makes it safe to claim: `3/4/5` and `1/2/3`
+     * are arithmetic people genuinely write, and no reading of the gate can
+     * tell those from a date with a short year. `parseDate` still accepts a
+     * two-digit year where something else on the line has already established
+     * that it is a date — `12/25/26 + 3 days`.
+     */
+    String.raw`\d{1,2}[/.]\d{1,2}[/.]\d{4}\b|` +
     String.raw`${MONTH_PATTERN}|${WEEKDAY_PATTERN}|` +
     String.raw`(?:next|last|this)\s+(?:week|month|year)|days?\s+(?:until|till|since|from|between|in|ago)|` +
     String.raw`\d+\s*(?:${SPAN_UNIT_PATTERN})\b|\d+\s*[hms]\b\s*\d+\s*[hms]\b)`,

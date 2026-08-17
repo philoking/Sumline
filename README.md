@@ -260,6 +260,11 @@ without a year picks whichever year puts it nearest today, so in December `Janua
 January. ISO dates (`2026-08-15`) are unambiguous; slashes read as month/day/year and dots as the
 European day.month.year.
 
+A slash or dot date standing on its own needs a four-digit year — `12/25/2026` is Christmas,
+where `3/4/5` stays chained division, because nothing distinguishes the two otherwise. A short
+year is still read as one where the rest of the line has already established a date, as in
+`12/25/26 + 3 days`.
+
 ### Workdays
 
 | You type | You get |
@@ -430,6 +435,11 @@ not survive being copied, exported, or having its lines moved around.
 
 The figure in the corner cycles between **total, average, count and median** when clicked, and
 can be hidden. Both choices persist across sheets and browsers.
+
+By default a `monthly rent = 1500` line counts towards it like any other value. The `+x=`
+button in the toolbar leaves variable lines out, for a sheet that declares a few amounts and
+then works with them — where counting the declarations reads high by exactly the sum of the
+things the answer was built from.
 
 ### Sheets
 

@@ -13,6 +13,12 @@ export interface MathContext {
   math: MathJsInstance;
   /** ISO codes registered as units on this instance. */
   currencies: Set<string>;
+  /**
+   * Every unit name this instance knows, for suggesting a correction to one
+   * it does not. Snapshotted after registration, so it includes the everyday
+   * aliases and the currencies as well as what math.js ships with.
+   */
+  unitNames: Set<string>;
   /** Public holidays as `YYYY-MM-DD`, excluded from workday calculations. */
   holidays: ReadonlySet<string>;
   /** Default frame rate for timecodes that do not name one. */
@@ -77,7 +83,25 @@ export function createMathContext(
   // mixed-currency sum answers in, so the set must already be populated.
   registerValueTypes(math, currencies);
 
-  return { math, currencies, holidays, fps: toFps(fps), historicalRates, zone };
+  return {
+    math,
+    currencies,
+    unitNames: registeredUnitNames(math),
+    holidays,
+    fps: toFps(fps),
+    historicalRates,
+    zone,
+  };
+}
+
+/**
+ * The names on `Unit.UNITS`, which is where every unit — built in, everyday
+ * alias, or currency — ends up once `createUnit` has run.
+ */
+function registeredUnitNames(math: MathJsInstance): Set<string> {
+  const units = (math as unknown as { Unit?: { UNITS?: Record<string, unknown> } })
+    .Unit?.UNITS;
+  return new Set(Object.keys(units ?? {}));
 }
 
 function registerCurrencies(

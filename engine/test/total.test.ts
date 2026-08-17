@@ -37,3 +37,47 @@ describe('sheet total', () => {
     expect(total('5 km\n10 USD')).toBe('');
   });
 });
+
+/*
+ * Issue #54 — a sheet that declares variables and then works with them counted
+ * the declarations as well as the results, and the setting that was supposed to
+ * govern that was declared in the web layer and read by nothing.
+ */
+describe('counting variable lines in the figure', () => {
+  const sheet = 'monthly rent = 1500\nfood = 400\nprev * 2';
+
+  function summary(source: string, countVariables?: boolean): string {
+    const results = engine.evaluate(source);
+    return countVariables === undefined
+      ? engine.summary(results, 'total')
+      : engine.summary(results, 'total', { countVariables });
+  }
+
+  it('counts them when the option is absent, as it always has', () => {
+    expect(summary(sheet)).toBe('2,700');
+    expect(summary(sheet, true)).toBe('2,700');
+  });
+
+  it('leaves the declarations out when asked to', () => {
+    expect(summary(sheet, false)).toBe('800');
+  });
+
+  it('applies to every statistic, not only the total', () => {
+    const results = engine.evaluate(sheet);
+    expect(engine.summary(results, 'count', { countVariables: false })).toBe('1');
+    expect(engine.summary(results, 'count', { countVariables: true })).toBe('3');
+  });
+
+  it('leaves a sheet of nothing but expressions alone', () => {
+    expect(summary('10\n20\n30', false)).toBe('60');
+  });
+
+  /*
+   * A list of named amounts is the case the setting cannot be a rule for: here
+   * the declarations *are* the sheet, and excluding them empties the corner.
+   */
+  it('empties the figure on a sheet that is only declarations', () => {
+    expect(summary('rent = 100\nfood = 50', false)).toBe('');
+    expect(summary('rent = 100\nfood = 50', true)).toBe('150');
+  });
+});

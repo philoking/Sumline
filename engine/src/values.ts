@@ -1,4 +1,5 @@
 import type { MathJsInstance } from 'mathjs';
+import { UnknownUnitError } from './errors.js';
 
 /**
  * Value types math.js has no notion of.
@@ -298,6 +299,38 @@ export function registerValueTypes(
 
   registerAdditionRules(math, combineUnits, assimilate, rateTo, combineLabels, sizeOf);
   registerMoneyProducts(math, isMoney);
+  registerConversionRules(math);
+}
+
+/**
+ * Converting something the engine could not identify as a quantity.
+ *
+ * `1 BTC in USD`, with no BTC in the rate table, reaches math.js as
+ * `labelled(1, "BTC") to USD` — a count of BTCs, because that is all an
+ * unrecognised word after a number can be. math.js refused it in its own
+ * vocabulary ("expected: Array or DenseMatrix or Matrix"), which named neither
+ * the line's problem nor its cause.
+ *
+ * The label is the one thing that identifies what went wrong, so the error
+ * carries it and the answer column can say `No unit or currency called BTC`.
+ */
+function registerConversionRules(math: MathJsInstance): void {
+  const originalTo = math.to.bind(math) as (a: unknown, b: unknown) => unknown;
+
+  math.import(
+    {
+      to: math.typed('to', {
+        'Labelled, any': (a: Labelled): never => {
+          throw new UnknownUnitError(a.label);
+        },
+        'any, Labelled': (_a: unknown, b: Labelled): never => {
+          throw new UnknownUnitError(b.label);
+        },
+        'any, any': (a: unknown, b: unknown) => originalTo(a, b),
+      }),
+    } as never,
+    { override: true } as never,
+  );
 }
 
 /**

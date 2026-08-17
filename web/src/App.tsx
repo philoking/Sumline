@@ -105,6 +105,8 @@ export function App() {
   const siNotation = settings.largeNumberNotation !== false;
   const statistic = settings.statistic ?? 'total';
   const showTotal = settings.showTotal !== false;
+  // Absent means counted, which is what the corner did before this was a choice.
+  const countVariables = settings.countVariablesInTotal !== false;
 
   // Everything the engine is told, derived in one named place — see
   // engineOptions.ts for why that is not a spread written inline here.
@@ -113,8 +115,8 @@ export function App() {
   const { engine, rates, holidays, needRates } = useEngine(engineOptions);
   const results = useResults(engine, content, needRates);
   const summary = useMemo(
-    () => engine.summary(results, statistic),
-    [engine, results, statistic],
+    () => engine.summary(results, statistic, { countVariables }),
+    [engine, results, statistic, countVariables],
   );
 
   /** The content the server last confirmed, so we never save a no-op. */
@@ -666,6 +668,19 @@ export function App() {
           }
         >
           {siNotation ? '300k' : '300,000'}
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          aria-pressed={countVariables}
+          onClick={() => void persistSettings({ countVariablesInTotal: !countVariables })}
+          title={
+            countVariables
+              ? 'Variable lines count towards the figure — click to leave them out'
+              : 'Variable lines are left out of the figure — click to count them'
+          }
+        >
+          {countVariables ? '+x=' : '−x='}
         </button>
         <button
           type="button"

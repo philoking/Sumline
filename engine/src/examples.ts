@@ -364,6 +364,11 @@ export const EXAMPLE_GROUPS: ExampleGroup[] = [
       { input: 'last monday', expected: 'Mon 10 Aug 2026' },
       { input: 'March 3 2026', expected: 'Tue 3 Mar 2026' },
       { input: '3 March 2026', expected: 'Tue 3 Mar 2026' },
+      // A date on its own, which is what the blurb above invites a reader to
+      // try. Both used to fall through to arithmetic: `12/25/2026` answered
+      // 0.000237, two divisions.
+      { input: '12/25/2026', expected: 'Fri 25 Dec 2026' },
+      { input: '25.12.2026', expected: 'Fri 25 Dec 2026' },
     ],
   },
   {

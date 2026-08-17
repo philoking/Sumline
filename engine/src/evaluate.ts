@@ -8,6 +8,7 @@ import {
 } from './temporal/types.js';
 import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { convertAt, parseHistoricalConversion } from './historical.js';
+import { describeError } from './errors.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, toFps, type MathContext } from './mathInstance.js';
 import { toNumberRegion } from './numberFormat.js';
@@ -86,9 +87,14 @@ export function createEngine(options: EngineOptions = {}): Engine {
     total(results) {
       return this.summary(results, 'total');
     },
-    summary(results, statistic) {
+    summary(results, statistic, summaryOptions) {
+      // Absent means counted, which is what the corner has always done.
+      const countVariables = summaryOptions?.countVariables !== false;
       const values = results
-        .filter((r) => r.kind === 'expression' || r.kind === 'assignment')
+        .filter(
+          (r) =>
+            r.kind === 'expression' || (countVariables && r.kind === 'assignment'),
+        )
         .map((r) => r.value)
         .filter(isAddable);
       if (values.length === 0) return '';
@@ -378,6 +384,17 @@ function compute(
   });
 
   const resolved = applyAliases(expr, state.aliases, (word) => isKnownUnit(ctx, word));
+
+  /*
+   * `5 km in` — a conversion whose target has not been typed yet.
+   *
+   * math.js reads the trailing `in` as inches and answers `5 km in`, an area
+   * nobody asked for, on every keystroke between `in` and the unit that
+   * follows it. A word directly after a number really is inches (`12 in`), so
+   * only a dangling one is refused.
+   */
+  if (isDanglingConversion(resolved)) return { output: '' };
+
   const format = (value: unknown): Computed => ({
     value,
     output: formatValue(value, {
@@ -398,17 +415,31 @@ function compute(
     }
     return format(value);
   } catch (error) {
-    // "I spent $128 + $45 on clothes" is a note with a sum in it, not a broken
-    // expression. If the only problem was surrounding prose, drop it and retry.
-    const withoutProse = stripProse(resolved, (word) => isKnownWord(ctx, state, word));
-    if (withoutProse) {
-      try {
-        return format(ctx.math.evaluate(withoutProse, state.scope));
-      } catch {
-        // fall through to the original error, which is the more useful one
+    const explained = describeError(error, {
+      currencies: ctx.currencies,
+      units: ctx.unitNames,
+    });
+
+    /*
+     * A line that named a unit or currency the engine does not have is not a
+     * note with a number in it, and must not be rescued by dropping the word
+     * it got wrong: `1 BTC in USD` would fall to `1 BTC`, answering a question
+     * nobody asked. The refusal is the answer.
+     */
+    if (explained.unknown === undefined) {
+      // "I spent $128 + $45 on clothes" is a note with a sum in it, not a broken
+      // expression. If the only problem was surrounding prose, drop it and retry.
+      const withoutProse = stripProse(resolved, (word) => isKnownWord(ctx, state, word));
+      if (withoutProse) {
+        try {
+          return format(ctx.math.evaluate(withoutProse, state.scope));
+        } catch {
+          // fall through to the original error, which is the more useful one
+        }
       }
     }
-    return { output: '', error: cleanError(error) };
+
+    return { output: '', error: explained.message };
   }
 }
 
@@ -505,6 +536,23 @@ function isKnownWord(ctx: MathContext, state: SheetState, word: string): boolean
 }
 
 /**
+ * Words that are conversion operators here, whatever else they also mean.
+ *
+ * `as` and `into` are rewritten to `to` before an expression gets this far, so
+ * only the two survivors need naming. Both are also real units — `in` is
+ * inches — which is the whole difficulty.
+ */
+const CONVERSION_WORDS = new Set(['in', 'to']);
+
+/** Whether an expression ends in a conversion whose target is missing. */
+function isDanglingConversion(expr: string): boolean {
+  const trailing = /^(.*?)\s+([A-Za-z]+)$/.exec(expr.trim());
+  if (!trailing || !CONVERSION_WORDS.has(trailing[2]!.toLowerCase())) return false;
+  // A number before the word makes it a unit — `12 in` is twelve inches.
+  return !/\d$/.test(trailing[1]!.trim());
+}
+
+/**
  * Strips the words around an expression, so a line written the way people
  * actually keep notes still produces a number.
  *
@@ -528,6 +576,20 @@ function stripProse(expr: string, isKnown: (word: string) => boolean): string | 
   const tokens = rest.split(/\s+/);
   while (tokens.length > 1) {
     const last = tokens[tokens.length - 1]!;
+    /*
+     * A conversion keyword at the end is not a word that survived the scan —
+     * it is the operator whose right-hand side has just been removed. `in` is
+     * also the symbol for inches, so what remained still evaluated, in inches:
+     * "10 in binary" answered `10 in`. Dropping the keyword as well leaves the
+     * quantity the line was about, which is what a note like "45 USD in cash"
+     * meant anyway. A conversion the engine could actually have performed
+     * never reaches here — an unknown code is refused before the retry rather
+     * than rescued into a different question.
+     */
+    if (CONVERSION_WORDS.has(last.toLowerCase())) {
+      tokens.pop();
+      continue;
+    }
     if (!/^[A-Za-z_][\w']*$/.test(last) || isKnown(last)) break;
     tokens.pop();
   }
@@ -660,14 +722,4 @@ function isAddable(value: unknown): boolean {
 function looksComputational(body: string): boolean {
   if (!/\d/.test(body)) return false;
   return /[+\-*/^()%]|\b(?:to|in|of|off|per|mod)\b/.test(body);
-}
-
-function cleanError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message
-    .replace(/^Error:\s*/, '')
-    .replace(/\s*\(char \d+\)$/, '')
-    .replace(/__v\d+/g, 'value')
-    .replace(/__line(\d+)/g, 'line $1')
-    .replace(/__prev/g, 'prev');
 }

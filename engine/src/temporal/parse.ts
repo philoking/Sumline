@@ -211,7 +211,13 @@ export function parseDate(text: string, now: Date): CalendarDate | null {
     const dayFirstFormat = separated[2] === '.';
     const month = dayFirstFormat ? +separated[3]! : +separated[1]!;
     const date = dayFirstFormat ? +separated[1]! : +separated[3]!;
-    return day(year, month - 1, date);
+    /*
+     * Refused rather than rolled over. `new Date` reads month 99 as eight
+     * years and three months on, so `99/99/2026` would answer with a real
+     * date nobody wrote — and a line the engine cannot read as a date is
+     * better handed back to the expression parser, where it is arithmetic.
+     */
+    if (isRealDate(year, month, date)) return day(year, month - 1, date);
   }
 
   const monthFirst = new RegExp(`^(${MONTH_ALT})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?$`).exec(s);
@@ -242,6 +248,13 @@ export function parseDate(text: string, now: Date): CalendarDate | null {
 
 function day(year: number, month: number, date: number): CalendarDate {
   return new CalendarDate(new Date(year, month, date));
+}
+
+/** Whether a month and day exist in that year — 31 February does not. */
+function isRealDate(year: number, month: number, date: number): boolean {
+  if (month < 1 || month > 12 || date < 1) return false;
+  // Day zero of the next month is the last day of this one.
+  return date <= new Date(year, month, 0).getDate();
 }
 
 /** Picks the year that puts a month/day combination closest to today. */

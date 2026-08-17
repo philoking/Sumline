@@ -79,6 +79,20 @@ export interface EngineOptions {
 /** Which figure the sheet-level summary reports. */
 export type Statistic = 'total' | 'average' | 'count' | 'median';
 
+export interface SummaryOptions {
+  /**
+   * Whether `monthly rent = 1500` lines feed the figure.
+   *
+   * True by default, which is what the corner has always done. A sheet that
+   * declares a few variables and then works with them counts the declarations
+   * as well as the results, so the total reads high by exactly the sum of the
+   * things it was built from — while a sheet that *is* a list of named amounts
+   * needs them counted. Only the writer knows which kind of sheet it is, which
+   * is why this is a setting rather than a rule.
+   */
+  countVariables?: boolean;
+}
+
 export interface Engine {
   evaluate(source: string | string[]): LineResult[];
   /**
@@ -100,7 +114,11 @@ export interface Engine {
    * The sheet-level figure, as total, average, count or median. `total` is
    * the same calculation `total()` performs.
    */
-  summary(results: LineResult[], statistic: Statistic): string;
+  summary(
+    results: LineResult[],
+    statistic: Statistic,
+    options?: SummaryOptions,
+  ): string;
   /** ISO codes this engine knows how to convert between. */
   currencies: string[];
   rateDate: string | null;
