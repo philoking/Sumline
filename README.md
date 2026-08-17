@@ -431,15 +431,27 @@ Formatting chosen from that menu is **written into the line as text** (` to 2 dp
 rather than stored invisibly against it. A sheet is plain text, and hidden per-line state would
 not survive being copied, exported, or having its lines moved around.
 
+### The view menu
+
+`Aa` in the toolbar holds everything about how a sheet is *shown*, rather than what it says:
+text size, the sidebar, line numbers, the total and its options, and whether large numbers are
+abbreviated to `300k`. All of it is stored per space, so it follows you between browsers.
+
 ### The total
 
 The figure in the corner cycles between **total, average, count and median** when clicked, and
 can be hidden. Both choices persist across sheets and browsers.
 
-By default a `monthly rent = 1500` line counts towards it like any other value. The `+x=`
-button in the toolbar leaves variable lines out, for a sheet that declares a few amounts and
-then works with them — where counting the declarations reads high by exactly the sum of the
-things the answer was built from.
+Under **View → Total options** are the two questions of what feeds it, both counted by default:
+
+- **Include variable declaration lines** — whether `monthly rent = 1500` counts like any other
+  value. Untick it for a sheet that declares a few amounts and then works with them, where
+  counting the declarations reads high by exactly the sum of the things the answer was built
+  from. A sheet that *is* a list of named amounts needs them counted, which is why it is a
+  setting rather than a rule.
+- **Include referenced lines** — whether a line that a later line reads still counts on its own.
+  Untick it and `10 / 20 / prev + 5` totals 35 rather than 55: the 20 counts once inside the 25
+  instead of once there and once again by itself.
 
 **Select more than one line** and the same figure appears beside the selection, for those lines
 alone. It follows whichever statistic the corner is set to, so the two never disagree about what

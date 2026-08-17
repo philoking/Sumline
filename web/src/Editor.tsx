@@ -60,6 +60,8 @@ export interface EditorProps {
    * the two would disagree about what "the figure" means.
    */
   summarise(from: number, to: number): { label: string; value: string } | null;
+  /** Whether the gutter is drawn. Off is View → Line numbers, unticked. */
+  showLineNumbers: boolean;
   ref?: Ref<EditorHandle>;
 }
 
@@ -438,6 +440,7 @@ export function Editor({
   reveal,
   onRevealed,
   summarise,
+  showLineNumbers,
   ref,
 }: EditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -446,6 +449,7 @@ export function Editor({
   const onChangeRef = useRef(onChange);
   const onRevealedRef = useRef(onRevealed);
   const readOnlyCompartment = useRef(new Compartment());
+  const gutterCompartment = useRef(new Compartment());
   const answersRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLUListElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
@@ -560,7 +564,7 @@ export function Editor({
           // At the top, where a browser's own find bar sits, rather than at the
           // bottom over the total.
           search({ top: true }),
-          lineNumbers(),
+          gutterCompartment.current.of(showLineNumbers ? lineNumbers() : []),
           keepReferencesPointing(frozenValue),
           sheetHighlighting,
           EditorView.lineWrapping,
@@ -664,6 +668,19 @@ export function Editor({
       ),
     });
   }, [readOnly]);
+
+  // Dropping the gutter moves every line left, so the answers have to be
+  // placed again — the same reason the find panel needs a measure.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: gutterCompartment.current.reconfigure(
+        showLineNumbers ? lineNumbers() : [],
+      ),
+    });
+    requestAnimationFrame(() => measure.current());
+  }, [showLineNumbers]);
 
   // Answers must follow the text when the window or the surrounding layout
   // changes size, and while the sheet is scrolled.

@@ -88,6 +88,17 @@ export interface Settings {
   showTotal?: boolean;
   largeNumberNotation?: boolean;
   countVariablesInTotal?: boolean;
+  /**
+   * Whether a line that a later line reads still feeds the figure.
+   *
+   * The sibling of `countVariablesInTotal`; Soulver offers both under
+   * View → Total Options and ships both ticked, so absent means counted.
+   */
+  countReferencedInTotal?: boolean;
+  /** Point size of the sheet's text. Absent means the default. */
+  sheetFontSize?: number;
+  /** Absent means shown, which is what the gutter has always done. */
+  showLineNumbers?: boolean;
   /** This space's own globals. */
   globals?: Record<string, string>;
   /**

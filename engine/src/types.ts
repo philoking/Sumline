@@ -35,6 +35,14 @@ export interface LineResult {
   name?: string;
   /** Tags (`#food`) found on the line. */
   tags?: string[];
+  /**
+   * True when a later line read this one's value, through `line N` or `prev`.
+   *
+   * Recorded during evaluation rather than worked out afterwards, because
+   * `prev` means "the last line that produced a value", which is only knowable
+   * from where the sheet had got to at the time.
+   */
+  referenced?: boolean;
 }
 
 export interface EngineOptions {
@@ -91,6 +99,17 @@ export interface SummaryOptions {
    * is why this is a setting rather than a rule.
    */
   countVariables?: boolean;
+  /**
+   * Whether a line another line later reads feeds the figure.
+   *
+   * True by default, matching Soulver, whose View → Total Options ships this
+   * ticked. Turned off, `10 / 20 / prev + 5` totals 35 rather than 55: the 20
+   * counts once inside the 25 instead of once on its own and once again there.
+   * Which of those is wanted depends on whether the sheet is a list of amounts
+   * or a calculation shown in steps, so like `countVariables` it is a setting
+   * rather than a rule.
+   */
+  countReferenced?: boolean;
 }
 
 export interface Engine {

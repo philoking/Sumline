@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   api,
   clientIdentity,
@@ -20,6 +27,12 @@ import { Login } from './Login';
 import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
+import {
+  DEFAULT_FONT_SIZE,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
+  ViewMenu,
+} from './ViewMenu';
 import { formatShortcut } from './shortcuts';
 import { useDialog } from './useDialog';
 import { SpaceSettings } from './SpaceSettings';
@@ -75,6 +88,7 @@ export function App() {
     () => !window.matchMedia('(max-width: 760px)').matches,
   );
   const [exportOpen, setExportOpen] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /**
    * The line the sheet should be scrolled to, when one was searched for.
@@ -118,8 +132,12 @@ export function App() {
   const siNotation = settings.largeNumberNotation !== false;
   const statistic = settings.statistic ?? 'total';
   const showTotal = settings.showTotal !== false;
-  // Absent means counted, which is what the corner did before this was a choice.
+  // Absent means counted, which is what the corner did before this was a choice
+  // — and what Soulver's own Total Options ship ticked.
   const countVariables = settings.countVariablesInTotal !== false;
+  const countReferenced = settings.countReferencedInTotal !== false;
+  const showLineNumbers = settings.showLineNumbers !== false;
+  const fontSize = clampFontSize(settings.sheetFontSize ?? DEFAULT_FONT_SIZE);
 
   // Everything the engine is told, derived in one named place — see
   // engineOptions.ts for why that is not a spread written inline here.
@@ -128,8 +146,8 @@ export function App() {
   const { engine, rates, holidays, needRates } = useEngine(engineOptions);
   const results = useResults(engine, content, needRates);
   const summary = useMemo(
-    () => engine.summary(results, statistic, { countVariables }),
-    [engine, results, statistic, countVariables],
+    () => engine.summary(results, statistic, { countVariables, countReferenced }),
+    [engine, results, statistic, countVariables, countReferenced],
   );
 
   /**
@@ -144,6 +162,7 @@ export function App() {
     (from: number, to: number) => {
       const value = engine.summary(results.slice(from - 1, to), statistic, {
         countVariables,
+        countReferenced,
       });
       if (!value) return null;
       return {
@@ -151,7 +170,7 @@ export function App() {
         value,
       };
     },
-    [engine, results, statistic, countVariables],
+    [engine, results, statistic, countVariables, countReferenced],
   );
 
   /** The content the server last confirmed, so we never save a no-op. */
@@ -640,7 +659,10 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    // The size is set here rather than in the stylesheet so the line height,
+    // the answer column and the gutter — all of which derive from it — scale
+    // together instead of drifting apart at the edges of the range.
+    <div className="app" style={{ '--sheet-font-size': `${fontSize}px` } as CSSProperties}>
       <header className="topbar">
         <input
           className="title-input"
@@ -776,31 +798,51 @@ export function App() {
         >
           ?
         </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => void persistSettings({ largeNumberNotation: !siNotation })}
-          title={
-            siNotation
-              ? 'Large numbers shown as 300k — click to write them out'
-              : 'Large numbers written out — click to abbreviate'
-          }
-        >
-          {siNotation ? '300k' : '300,000'}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          aria-pressed={countVariables}
-          onClick={() => void persistSettings({ countVariablesInTotal: !countVariables })}
-          title={
-            countVariables
-              ? 'Variable lines count towards the figure — click to leave them out'
-              : 'Variable lines are left out of the figure — click to count them'
-          }
-        >
-          {countVariables ? '+x=' : '−x='}
-        </button>
+        {/* Everything about how a sheet is shown lives behind this, rather
+            than as a row of unlabelled glyphs on the bar. */}
+        <div className="menu-anchor">
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setViewMenuOpen((open) => !open)}
+            title="How this sheet is shown"
+            aria-haspopup="menu"
+            aria-expanded={viewMenuOpen}
+          >
+            {/* Not a gear, which would promise the settings panels, and not a
+                half-circle, which the theme button next door already uses.
+                This menu leads with text size, and Aa is what that means. */}
+            Aa
+          </button>
+          <ViewMenu
+            open={viewMenuOpen}
+            fontSize={fontSize}
+            sidebarOpen={sidebarOpen}
+            showLineNumbers={showLineNumbers}
+            showTotal={showTotal}
+            countReferenced={countReferenced}
+            countVariables={countVariables}
+            largeNumberNotation={siNotation}
+            onFontSize={(next) =>
+              void persistSettings({ sheetFontSize: clampFontSize(next) })
+            }
+            onToggleSidebar={() => setSidebarOpen((open) => !open)}
+            onToggleLineNumbers={() =>
+              void persistSettings({ showLineNumbers: !showLineNumbers })
+            }
+            onToggleTotal={() => void persistSettings({ showTotal: !showTotal })}
+            onToggleReferenced={() =>
+              void persistSettings({ countReferencedInTotal: !countReferenced })
+            }
+            onToggleVariables={() =>
+              void persistSettings({ countVariablesInTotal: !countVariables })
+            }
+            onToggleNotation={() =>
+              void persistSettings({ largeNumberNotation: !siNotation })
+            }
+            onClose={() => setViewMenuOpen(false)}
+          />
+        </div>
         <button
           type="button"
           className="ghost"
@@ -1147,6 +1189,7 @@ export function App() {
               results={results}
               readOnly={!lock.granted}
               reveal={reveal}
+              showLineNumbers={showLineNumbers}
               summarise={summariseLines}
               onChange={setContent}
               onRevealed={() => setReveal(null)}
@@ -1330,6 +1373,17 @@ async function copyToClipboard(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Keeps a stored size inside what the sheet can actually be read at.
+ *
+ * The settings store is free-form, so a hand-edited or stale value arrives
+ * unchecked — and a sheet set to 2px is one nobody can find the menu to fix.
+ */
+function clampFontSize(size: number): number {
+  if (!Number.isFinite(size)) return DEFAULT_FONT_SIZE;
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(size)));
 }
 
 function capitalise(text: string): string {

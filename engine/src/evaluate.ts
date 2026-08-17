@@ -88,12 +88,17 @@ export function createEngine(options: EngineOptions = {}): Engine {
       return this.summary(results, 'total');
     },
     summary(results, statistic, summaryOptions) {
-      // Absent means counted, which is what the corner has always done.
+      // Absent means counted, which is what the corner has always done and
+      // what Soulver's own Total Options ship ticked.
       const countVariables = summaryOptions?.countVariables !== false;
+      const countReferenced = summaryOptions?.countReferenced !== false;
       const values = results
         .filter(
           (r) =>
-            r.kind === 'expression' || (countVariables && r.kind === 'assignment'),
+            (r.kind === 'expression' || (countVariables && r.kind === 'assignment')) &&
+            // Two independent filters, as in Soulver: a declaration that is
+            // also read later is dropped by either one on its own.
+            (countReferenced || !r.referenced),
         )
         .map((r) => r.value)
         .filter(isAddable);
@@ -161,6 +166,8 @@ const EMPTY_SHEET: SheetState = {
   aliases: new Map(),
   section: [],
   tagged: new Map(),
+  referenced: new Set(),
+  prevLine: null,
 };
 
 /** Mutable state threaded down the sheet as each line is evaluated. */
@@ -172,6 +179,37 @@ interface SheetState {
   section: unknown[];
   /** Values by tag, for `sum #food`. */
   tagged: Map<string, unknown[]>;
+  /**
+   * Line numbers a later line has read, for `countReferenced`.
+   *
+   * Collected as the sheet is walked rather than scanned for afterwards,
+   * because `prev` resolves to the last line that produced a value — which
+   * depends on where evaluation had reached, not on the text alone.
+   */
+  referenced: Set<number>;
+  /** The line `prev` currently points at, or null before any value. */
+  prevLine: number | null;
+}
+
+/** `line 3` in a line's own text, matching what `rewriteReferences` rewrites. */
+const LINE_REFERENCE = /\bline\s*(\d+)\b/gi;
+const PREV_REFERENCE = /\b(?:prev|previous|last)\b/i;
+
+/**
+ * Notes which earlier lines this one reads.
+ *
+ * Only backwards: `line 5` written on line 2 is a forward reference, which the
+ * sheet cannot satisfy anyway, and counting line 5 as "used above" would then
+ * quietly drop it from the figure.
+ */
+function noteReferences(body: string, at: number, state: SheetState): void {
+  for (const match of body.matchAll(LINE_REFERENCE)) {
+    const target = Number(match[1]);
+    if (target >= 1 && target < at) state.referenced.add(target);
+  }
+  if (PREV_REFERENCE.test(body) && state.prevLine !== null) {
+    state.referenced.add(state.prevLine);
+  }
 }
 
 function evaluateLines(
@@ -187,12 +225,19 @@ function evaluateLines(
     aliases: new Map(),
     section: [],
     tagged: new Map(),
+    referenced: new Set(),
+    prevLine: null,
   };
   seedGlobals(state, ctx, now, wallNow, fmt, globals);
   const results: LineResult[] = [];
 
   for (const [index, raw] of lines.entries()) {
     const line = classify(raw ?? '', (word) => isKnownWord(ctx, state, word));
+    // Noted before this line is evaluated, while `prevLine` still means what
+    // it meant to this line rather than to the one after it.
+    if (line.kind === 'expression' || line.kind === 'assignment') {
+      noteReferences(line.body, index + 1, state);
+    }
     const result = evaluateLine(line, index, state, ctx, now, wallNow, fmt);
     results.push(result);
 
@@ -200,6 +245,7 @@ function evaluateLines(
     if (result.value !== undefined) {
       state.scope[`__line${index + 1}`] = result.value;
       state.scope['__prev'] = result.value;
+      state.prevLine = index + 1;
       // A subtotal must not feed the section it just closed, or the next
       // subtotal counts it a second time.
       if (line.kind !== 'directive' && isAddable(result.value)) {
@@ -211,6 +257,13 @@ function evaluateLines(
         }
       }
     }
+  }
+
+  // Marked at the end, because a line is only known to have been read once
+  // every line after it has been looked at.
+  for (const line of state.referenced) {
+    const result = results[line - 1];
+    if (result) result.referenced = true;
   }
 
   return results;

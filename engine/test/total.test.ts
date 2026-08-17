@@ -81,3 +81,82 @@ describe('counting variable lines in the figure', () => {
     expect(summary('rent = 100\nfood = 50', true)).toBe('150');
   });
 });
+
+/*
+ * Issue #79 — the sibling of the setting above. Soulver's View → Total Options
+ * offers both "Include Variable Declaration Lines" and "Include Referenced
+ * Lines", each ticked by default; only the first of the two existed here.
+ */
+describe('counting referenced lines in the figure', () => {
+  function figure(source: string, countReferenced?: boolean): string {
+    const results = engine.evaluate(source);
+    return countReferenced === undefined
+      ? engine.summary(results, 'total')
+      : engine.summary(results, 'total', { countReferenced });
+  }
+
+  it('counts them when the option is absent, as Soulver ships it', () => {
+    expect(figure('10\n20\nprev + 5')).toBe('55');
+    expect(figure('10\n20\nprev + 5', true)).toBe('55');
+  });
+
+  /* The 20 was counted once on its own and once inside the 25. */
+  it('drops a line a later line consumed when asked to', () => {
+    expect(figure('10\n20\nprev + 5', false)).toBe('35');
+  });
+
+  it('follows a numbered reference as well as prev', () => {
+    expect(figure('10\n20\nline 2 + 5', false)).toBe('35');
+  });
+
+  it('leaves a sheet that references nothing alone', () => {
+    expect(figure('100\n200\n300', false)).toBe('600');
+    expect(figure('rent = 100\nfood = 50', false)).toBe('150');
+  });
+
+  it('marks which lines were read, so the flag is not guesswork', () => {
+    const results = engine.evaluate('10\n20\nprev + 5');
+    expect(results.map((r) => r.referenced === true)).toEqual([false, true, false]);
+  });
+
+  /*
+   * `prev` means the last line that produced a value, not the line above. A
+   * comment between them must not make it point at the comment.
+   */
+  it('resolves prev past a line that produced nothing', () => {
+    const results = engine.evaluate('10\n// a note\nprev + 5');
+    expect(results[0]?.referenced).toBe(true);
+    expect(figure('10\n// a note\nprev + 5', false)).toBe('15');
+  });
+
+  /* A forward reference cannot be satisfied, and treating it as "used above"
+     would quietly drop a line the sheet never consumed. */
+  it('ignores a reference pointing forwards', () => {
+    const results = engine.evaluate('line 3 + 1\n20\n30');
+    expect(results[2]?.referenced).toBeUndefined();
+  });
+
+  it('applies to every statistic, not only the total', () => {
+    const results = engine.evaluate('10\n20\nprev + 5');
+    expect(engine.summary(results, 'count', { countReferenced: false })).toBe('2');
+    expect(engine.summary(results, 'count', { countReferenced: true })).toBe('3');
+  });
+
+  /* The two options are independent: either can drop a declaration alone. */
+  it('combines with the variable-line setting rather than overriding it', () => {
+    const sheet = 'food = 400\nprev * 2';
+    expect(engine.summary(engine.evaluate(sheet), 'total')).toBe('1,200');
+    expect(
+      engine.summary(engine.evaluate(sheet), 'total', { countReferenced: false }),
+    ).toBe('800');
+    expect(
+      engine.summary(engine.evaluate(sheet), 'total', { countVariables: false }),
+    ).toBe('800');
+    expect(
+      engine.summary(engine.evaluate(sheet), 'total', {
+        countVariables: false,
+        countReferenced: false,
+      }),
+    ).toBe('800');
+  });
+});
