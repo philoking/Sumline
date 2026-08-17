@@ -14,10 +14,12 @@ import {
   type User,
   UnauthorizedError,
 } from './api';
-import { Editor } from './Editor';
+import { Editor, type EditorHandle } from './Editor';
 import { Login } from './Login';
+import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
+import { formatShortcut } from './shortcuts';
 import { SpaceSettings } from './SpaceSettings';
 import { GlobalSettings } from './GlobalSettings';
 import { engineOptionsFrom } from './engineOptions';
@@ -71,6 +73,15 @@ export function App() {
     () => !window.matchMedia('(max-width: 760px)').matches,
   );
   const [exportOpen, setExportOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  /**
+   * The line the sheet should be scrolled to, when one was searched for.
+   *
+   * Held here rather than passed straight to the editor because the sheet it
+   * belongs to may not be open yet — see the load effect, which sets this only
+   * once that sheet's text is on its way into state.
+   */
+  const [reveal, setReveal] = useState<number | null>(null);
   const [share, setShare] = useState<{ url: string; copied: boolean } | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   /** Turns the space list into an editable one, rather than a second menu. */
@@ -121,6 +132,18 @@ export function App() {
 
   /** The content the server last confirmed, so we never save a no-op. */
   const savedContent = useRef('');
+
+  /** Lets ⌘F open the sheet's find panel from anywhere in the app. */
+  const editorRef = useRef<EditorHandle>(null);
+
+  /**
+   * The line a palette result asked for, while its sheet is still loading.
+   *
+   * A ref rather than state because nothing renders differently for it: it is
+   * a note to the load effect, handed on to `reveal` the moment the sheet the
+   * line belongs to is the one on screen.
+   */
+  const pendingLine = useRef<number | null>(null);
 
   const persistSettings = useCallback(async (changes: Settings) => {
     // Applied locally first so a toggle responds at once, then replaced by what
@@ -242,6 +265,14 @@ export function App() {
     void (async () => {
       try {
         await openSheet(activeId);
+        if (cancelled) return;
+        // Handed over before the lock is asked for, so it lands in the same
+        // batch as the text it refers to. Waiting until after would offer the
+        // editor a line number while it was still showing the previous sheet.
+        const line = pendingLine.current;
+        pendingLine.current = null;
+        if (line !== null) setReveal(line);
+
         const result = await api.acquireLock(activeId, identity.id, identity.name);
         if (cancelled) return;
         setLock({ granted: result.granted, holder: result.lock });
@@ -338,17 +369,41 @@ export function App() {
       // Autosave already handles persistence; this only stops the browser
       // offering to save the page.
       if (mod && event.key.toLowerCase() === 's') event.preventDefault();
-      if (mod && event.key.toLowerCase() === 'f') {
-        const search = document.querySelector<HTMLInputElement>('.sidebar-search input');
-        if (search) {
+
+      /*
+       * The three scopes searching has, and the two keys they live behind.
+       *
+       * ⌘F is find and replace in the sheet in front of you, which is what the
+       * key means in every other document. The other two — a sheet by name,
+       * and text in any sheet — share one list behind ⌘K, because the answer
+       * to either question regularly turns out to be the other one: you go
+       * looking for the sheet called Kitchen and find the line that says
+       * kitchen instead. ⌘⇧F opens the same list, for the hand that reaches
+       * for a shifted find rather than for a palette.
+       */
+      if (mod && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        // Inside the sheet CodeMirror's own keymap has already opened the
+        // panel and marked the event; this is the path from everywhere else,
+        // so ⌘F means the same thing wherever the caret happens to be.
+        if (!event.defaultPrevented) {
           event.preventDefault();
-          setSidebarOpen(true);
-          search.focus();
+          setPaletteOpen(false);
+          editorRef.current?.openSearch();
         }
       }
+      if (
+        mod &&
+        (event.key.toLowerCase() === 'k' ||
+          (event.shiftKey && event.key.toLowerCase() === 'f'))
+      ) {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+
       if (event.key === 'Escape') {
         setExportOpen(false);
         setReferenceOpen(false);
+        setPaletteOpen(false);
       }
       // `?` opens the reference, but not while a field or the sheet has focus.
       const target = event.target as HTMLElement | null;
@@ -634,7 +689,8 @@ export function App() {
                 <p className="share-hint">
                   {share.copied
                     ? 'Copied. The link keeps working if you rename the sheet.'
-                    : 'Press ⌘C to copy. The link keeps working if you rename the sheet.'}
+                    : `Press ${formatShortcut(['Mod', 'C'])} to copy. The link keeps ` +
+                      'working if you rename the sheet.'}
                 </p>
               </div>
             </>
@@ -1031,10 +1087,13 @@ export function App() {
         <div className="sheet-pane">
           <div className="sheet-scroll">
             <Editor
+              ref={editorRef}
               value={content}
               results={results}
               readOnly={!lock.granted}
+              reveal={reveal}
               onChange={setContent}
+              onRevealed={() => setReveal(null)}
             />
           </div>
           {showTotal && summary && (
@@ -1123,6 +1182,24 @@ export function App() {
             .catch((cause: unknown) => setError(describe(cause)));
         }}
         onClose={() => setGlobalSettingsOpen(false)}
+      />
+
+      <Palette
+        open={paletteOpen}
+        recent={sheets}
+        onClose={() => setPaletteOpen(false)}
+        onOpen={(id, line) => {
+          closeSidebarOnPhone();
+          // Results are never trashed sheets, so a list that was showing the
+          // trash has to come back to the live one to hold what was chosen.
+          setViewingTrash(false);
+          if (id === activeId) {
+            setReveal(line);
+            return;
+          }
+          pendingLine.current = line;
+          setActiveId(id);
+        }}
       />
 
       <Reference

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { EXAMPLE_GROUPS, type ExampleGroup } from '@webcalc/engine';
+import { formatShortcut } from './shortcuts';
 
 export interface ReferenceProps {
   open: boolean;
@@ -11,14 +12,25 @@ export interface ReferenceProps {
   onInsert(line: string): void;
 }
 
-const SHORTCUTS: Array<[string, string]> = [
-  ['Mod + \\', 'Reference the line above'],
-  ['Mod + T', 'Make the blank line a subtotal'],
-  ['Mod + /', 'Comment the line out'],
-  ['Mod + Shift + U', 'Freeze this line’s references'],
-  ['Mod + Shift + N', 'New sheet'],
-  ['Mod + F', 'Search sheets'],
-  ['?', 'Open and close this reference'],
+/**
+ * Every shortcut, written as the bindings themselves are written.
+ *
+ * `Mod` is left unresolved here and spelled out at render time, so the table
+ * says ⌘ to a reader on a Mac and Ctrl to everyone else instead of naming a
+ * key that is on neither keyboard — see shortcuts.ts.
+ */
+const SHORTCUTS: Array<[string[], string]> = [
+  [['Mod', '\\'], 'Reference the line above'],
+  [['Mod', 'T'], 'Make the blank line a subtotal'],
+  [['Mod', '/'], 'Comment the line out'],
+  [['Mod', 'Shift', 'U'], 'Freeze this line’s references'],
+  [['Mod', 'Shift', 'N'], 'New sheet'],
+  [['Mod', 'F'], 'Find and replace in this sheet'],
+  [['Mod', 'G'], 'Find the next match'],
+  [['Mod', 'Shift', 'G'], 'Find the previous match'],
+  [['Mod', 'K'], 'Go to a sheet, or find text in any sheet'],
+  [['Mod', 'Shift', 'F'], 'The same, opened for finding text'],
+  [['?'], 'Open and close this reference'],
 ];
 
 export function Reference({
@@ -81,8 +93,8 @@ export function Reference({
                 <h3>Keyboard</h3>
                 <dl className="shortcut-list">
                   {SHORTCUTS.map(([keys, action]) => (
-                    <div key={keys}>
-                      <dt>{keys}</dt>
+                    <div key={keys.join('-')}>
+                      <dt>{formatShortcut(keys)}</dt>
                       <dd>{action}</dd>
                     </div>
                   ))}

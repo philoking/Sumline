@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
-import type { Folder, SheetMatch, SheetSummary } from './api';
+import type { Folder, SheetSummary } from './api';
 import { SHEET_COLORS, colorClass, colorLabel } from './colors';
+import { Snippet } from './Snippet';
 
 /**
  * Roughly how tall the tallest flyout is: rename, move up, move down, two
@@ -102,28 +103,6 @@ export interface SidebarProps {
   onSortByRecent(): void;
   onToggleTrash(): void;
   onEmptyTrash(): void;
-}
-
-/**
- * The matching line of a search result, with the search term marked.
- *
- * The offsets come from the server, which found the match — recomputing them
- * here against the query would be a second implementation of the same search,
- * and the two would disagree on the first line that contains the term twice.
- */
-function Snippet({ match }: { match: SheetMatch }) {
-  const before = match.text.slice(0, match.at);
-  const hit = match.text.slice(match.at, match.at + match.length);
-  const after = match.text.slice(match.at + match.length);
-  return (
-    <span className="sheet-match">
-      {match.truncated && '…'}
-      {before}
-      <mark>{hit}</mark>
-      {after}
-      {match.truncated && '…'}
-    </span>
-  );
 }
 
 /** Moves one entry of a list to another index, returning a new list. */

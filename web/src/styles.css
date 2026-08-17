@@ -1558,6 +1558,129 @@ button.danger-button:disabled {
   }
 }
 
+/* ---- the palette (⌘K) ---- */
+
+/* Placed high rather than centred: the list grows downwards as you type, and a
+   box pinned to the middle of the window would shift under the reader's eyes
+   with every keystroke. */
+.palette {
+  position: fixed;
+  z-index: 21;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 520px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 40%);
+  overflow: hidden;
+}
+
+.palette-input {
+  padding: 13px 15px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.palette-input:focus {
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--muted);
+}
+
+.palette-results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.palette-results button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+/* One highlight, driven by the keyboard. The pointer moves it rather than
+   painting a second one of its own, so there is never a question about which
+   row Enter would open. */
+.palette-results li.active button {
+  background: var(--hover);
+}
+
+.palette-title {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-where {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* The quoted line spans both columns, under the title it belongs to. */
+.palette-results .sheet-match {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: 18px 15px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.palette-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 15px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+@media (max-width: 760px) {
+  .palette {
+    top: 8px;
+    max-height: calc(100vh - 16px);
+  }
+}
+
+@media print {
+  .palette {
+    display: none !important;
+  }
+}
+
 /* ---- the reference panel ---- */
 
 .reference {
