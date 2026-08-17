@@ -320,10 +320,26 @@ can be hidden. Both choices persist across sheets and browsers.
 
 ### Sheets
 
-Sheets can be grouped into folders, searched by title or content, and are moved to a **trash**
-when deleted rather than destroyed — restore them, or empty the trash to remove them for good.
-Deleting a folder keeps its sheets and returns them to the top level. An untitled sheet names
-itself from its first line.
+Sheets can be searched by title or content, and are moved to a **trash** when deleted rather
+than destroyed — restore them, or empty the trash to remove them for good. An untitled sheet
+names itself from its first line.
+
+### Folders
+
+Folders are part of the sheet list, not a filter beside it. A folder is a heading you can
+collapse; its sheets sit inside it and go away with it, so filing something makes the list
+shorter. A shut folder shows how many sheets are in it. Loose sheets follow the folders.
+
+Which folders you keep shut is remembered per browser, like the appearance, since it depends on
+the screen you are sitting at rather than on who you are.
+
+Move a sheet in or out with the dropdown beside it. Deleting a folder keeps its sheets and
+returns them to the top level.
+
+**Searching flattens the list.** Matches appear as one run regardless of folder, each naming the
+folder it lives in — a tree would hide matches inside collapsed folders, which would make search
+lie about what it found. The trash is flat for the same kind of reason: it is not a place with
+structure.
 
 ### Order
 
@@ -340,9 +356,9 @@ something, flip back, and your order is still there.
 A sheet made after you arranged things has no place in that arrangement yet, so it appears at
 the top — the same place the recency order would have put it.
 
-Reordering inside a folder, and reordering while searching, only shuffle what you can see:
-sheets outside the filter keep their positions exactly. Search results and the trash cannot be
-reordered, since neither is a list whose order means anything.
+Each folder is its own run, and so is the top level: dragging inside a folder rearranges that
+folder and leaves everything outside it exactly where it was. Search results and the trash
+cannot be reordered, since neither is a list whose order means anything.
 
 ### Colour coding
 

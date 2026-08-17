@@ -389,6 +389,120 @@ button.ghost:hover {
   padding: 8px 11px;
 }
 
+/* ---- folders as containers ---- */
+
+.folder-group {
+  position: relative;
+  margin-bottom: 3px;
+}
+
+.folder-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.folder-head:hover {
+  background: var(--hover);
+}
+
+.folder-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+
+/* Rotated rather than swapped for a second glyph, so the arrow turns in place
+   and the row's text never shifts sideways as it opens. */
+.chevron {
+  display: inline-block;
+  width: 10px;
+  flex: none;
+  transition: transform 120ms ease;
+  transform: rotate(0deg);
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Says how much is inside without opening it, which is the question a shut
+   folder invites. */
+.folder-count {
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--line-number);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.folder-actions {
+  display: none;
+  padding-right: 4px;
+}
+
+.folder-head:hover .folder-actions,
+.folder-group:has(.edit-flyout) .folder-actions {
+  display: flex;
+}
+
+.folder-head:hover .folder-count {
+  display: none;
+}
+
+.folder-sheets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Indented so the tree reads at a glance, and the colour bar of a sheet
+   inside a folder still has room to sit at its own leading edge. */
+.sheet-list li.in-folder > .sheet-link {
+  padding-left: 24px;
+}
+
+.sheet-list li.in-folder.tinted > .sheet-link {
+  padding-left: 27px;
+}
+
+.sheet-list li.in-folder.tinted::before {
+  left: 13px;
+}
+
+.folder-sheets .empty {
+  padding: 6px 10px 6px 24px;
+  color: var(--line-number);
+  font-size: 11.5px;
+}
+
+/* Which folder a search result actually lives in — the tree is gone while
+   searching, so without this a match is unplaceable. */
+.in-folder-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- reordering ---- */
 
 /* Says which order is in force and offers the way back, so a list that has
@@ -473,8 +587,12 @@ button.ghost:hover {
   background: var(--tint);
 }
 
-.sheet-list li.tinted .sheet-link,
-.folder-row.tinted .folder-link {
+/* Child combinators throughout: a tinted folder header would otherwise match
+   the .sheet-link of every sheet nested inside it, and quietly cancel their
+   indent by giving them the bar's padding instead. */
+.sheet-list li.tinted > .sheet-link,
+.folder-head.tinted > .folder-toggle,
+.folder-row.tinted > .folder-link {
   padding-left: 14px;
 }
 

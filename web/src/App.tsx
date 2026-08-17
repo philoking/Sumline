@@ -38,7 +38,6 @@ export function App() {
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeFolder, setActiveFolder] = useState<string | null | undefined>(undefined);
   const [query, setQuery] = useState('');
   const [viewingTrash, setViewingTrash] = useState(false);
   const [title, setTitle] = useState('');
@@ -111,13 +110,12 @@ export function App() {
 
   const refreshSheets = useCallback(async () => {
     const list = await api.listSheets({
-      ...(activeFolder !== undefined && { folderId: activeFolder }),
       ...(query && { query }),
       ...(viewingTrash && { trashed: true }),
     });
     setSheets(list);
     return list;
-  }, [activeFolder, query, viewingTrash]);
+  }, [query, viewingTrash]);
 
   const openSheet = useCallback(async (id: string) => {
     const sheet = await api.getSheet(id);
@@ -281,14 +279,14 @@ export function App() {
 
   const createSheet = useCallback(async () => {
     try {
-      const sheet = await api.createSheet('Untitled', '', activeFolder ?? null);
+      const sheet = await api.createSheet('Untitled');
       await refreshSheets();
       setViewingTrash(false);
       setActiveId(sheet.id);
     } catch (cause) {
       setError(describe(cause));
     }
-  }, [activeFolder, refreshSheets]);
+  }, [refreshSheets]);
 
   // App-level shortcuts. The editor owns everything that edits text.
   useEffect(() => {
@@ -799,7 +797,6 @@ export function App() {
           sheets={sheets}
           folders={folders}
           activeId={activeId}
-          activeFolder={activeFolder}
           query={query}
           viewingTrash={viewingTrash}
           open={sidebarOpen}
@@ -824,10 +821,6 @@ export function App() {
               .catch((cause: unknown) => setError(describe(cause)));
           }}
           onQuery={setQuery}
-          onSelectFolder={(folderId) => {
-            setViewingTrash(false);
-            setActiveFolder(folderId);
-          }}
           onCreateFolder={() => {
             const name = window.prompt('Folder name');
             if (!name?.trim()) return;
@@ -851,10 +844,7 @@ export function App() {
             void api
               .deleteFolder(folder.id)
               .then(() => api.listFolders())
-              .then((list) => {
-                setFolders(list);
-                setActiveFolder(undefined);
-              })
+              .then(setFolders)
               .catch((cause: unknown) => setError(describe(cause)));
           }}
           onColorSheet={(sheet, color) => {
@@ -913,10 +903,7 @@ export function App() {
             // something and back again does not cost the arrangement.
             void persistSettings({ sheetOrder: 'recent' }).then(() => refreshSheets());
           }}
-          onToggleTrash={() => {
-            setViewingTrash((viewing) => !viewing);
-            setActiveFolder(undefined);
-          }}
+          onToggleTrash={() => setViewingTrash((viewing) => !viewing)}
           onEmptyTrash={() => {
             if (!window.confirm('Permanently delete everything in the trash?')) return;
             void api.emptyTrash().then(() => refreshSheets());

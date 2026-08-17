@@ -23,6 +23,16 @@ afterEach(async () => {
 
 const as = (user: string) => ({ cookie: `webcalc_user=${user}` });
 
+/**
+ * Lets the clock move on between writes.
+ *
+ * Sheets created in one go otherwise share a millisecond, and every ordering
+ * assertion then rests on the tie-break rather than on the timestamps it
+ * claims to be about — which quietly makes these tests agree with almost any
+ * behaviour. A few milliseconds buys real recency to assert against.
+ */
+const tick = () => new Promise((resolve) => setTimeout(resolve, 3));
+
 async function make(title: string, owner = 'jason', folderId: string | null = null) {
   const response = await app.server.inject({
     method: 'POST',
@@ -57,8 +67,11 @@ const reorder = (order: string[], owner = 'jason') =>
 /** Three sheets, newest first: C, B, A. */
 async function threeSheets() {
   const a = await make('A');
+  await tick();
   const b = await make('B');
+  await tick();
   const c = await make('C');
+  await tick();
   return { a, b, c };
 }
 
@@ -73,6 +86,7 @@ describe('a space that never drags anything', () => {
       sheets: Array<{ id: string; title: string; version: number }>;
     };
     const a = sheets.find((s) => s.title === 'A')!;
+    await tick();
     await app.server.inject({
       method: 'PUT',
       url: `/api/sheets/${a.id}`,
@@ -100,6 +114,7 @@ describe('dragging a sheet', () => {
 
     // Now edit B. Under recency it would jump to the top; the whole point of
     // a manual order is that it does not.
+    await tick();
     await app.server.inject({
       method: 'PUT',
       url: `/api/sheets/${b.id}`,
@@ -152,6 +167,7 @@ describe('dragging a sheet', () => {
   it('puts a newly created sheet at the top rather than the bottom', async () => {
     const { a, b, c } = await threeSheets();
     await reorder([a.id, b.id, c.id]);
+    await tick();
     await make('D');
     // A new sheet has no position; landing it silently at the foot of a long
     // arranged list is the behaviour that reads as a bug.
@@ -171,9 +187,13 @@ describe('reordering inside a filtered view', () => {
     ).json() as { id: string };
 
     const loose1 = await make('Loose one');
+    await tick();
     const inA = await make('In A', 'jason', folder.id);
+    await tick();
     const loose2 = await make('Loose two');
+    await tick();
     const inB = await make('In B', 'jason', folder.id);
+    await tick();
 
     // Arrange the whole list first, so every sheet holds a position.
     await reorder([inB.id, loose2.id, inA.id, loose1.id]);
@@ -241,27 +261,37 @@ describe('what a reorder refuses', () => {
     const settings = await app.server.inject({ url: '/api/settings', headers: as('jason') });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
 
-    // And an edit still floats a sheet, which it would not if positions had
-    // been written behind the refusal.
+    // The lasting damage of the old behaviour only showed later: positions
+    // written behind a refusal are an arrangement nobody made, waiting for
+    // the day the space switches to manual. So edit a sheet, then switch —
+    // with nothing written, manual has no positions to use and must agree
+    // exactly with recency. Comparing the two orders rather than naming one
+    // keeps this from depending on which millisecond anything landed in.
+    await tick();
     await app.server.inject({
       method: 'PUT',
-      url: `/api/sheets/${c.id}`,
+      url: `/api/sheets/${a.id}`,
       headers: as('jason'),
-      payload: { content: 'touched', version: c.version },
+      payload: { content: 'touched', version: a.version },
     });
-    expect(await titles()).toEqual(['C', 'B', 'A']);
+    const byRecency = await titles();
+    // A was the oldest and has just been touched, so recency must now lead
+    // with it — if it does not, the comparison below proves nothing.
+    expect(byRecency[0]).toBe('A');
+
     await app.server.inject({
       method: 'PUT',
-      url: `/api/sheets/${b.id}`,
+      url: '/api/settings',
       headers: as('jason'),
-      payload: { content: 'touched', version: b.version },
+      payload: { sheetOrder: 'manual' },
     });
-    expect(await titles()).toEqual(['B', 'C', 'A']);
+    expect(await titles()).toEqual(byRecency);
   });
 
   it('keeps each space on its own ordering', async () => {
     const { a, b, c } = await threeSheets();
     await make('Hers one', 'kim');
+    await tick();
     await make('Hers two', 'kim');
 
     await reorder([a.id, b.id, c.id]);
