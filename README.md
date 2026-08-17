@@ -736,8 +736,12 @@ Copying needs a secure context. On an instance reached over plain HTTP the link 
 for you to copy by hand instead.
 
 The lock is advisory — the real protection is a version check on every save. If a sheet changed
-while you were editing, the save is refused and you're shown both versions to choose between,
-rather than one of them being silently lost.
+while you were editing, the save is refused and you're shown **which lines differ**: what yours
+has that the server's does not, and the other way round.
+
+Three ways out. **Keep both** saves your version and puts the server's in a new sheet beside it,
+so nothing is discarded — it leads because it is the only one that cannot lose work. **Keep
+mine** and **Take the server's** each throw one version away, and say so.
 
 ### The password, if you want one
 

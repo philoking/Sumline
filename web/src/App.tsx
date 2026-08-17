@@ -14,6 +14,7 @@ import {
   type User,
   UnauthorizedError,
 } from './api';
+import { Conflict } from './Conflict';
 import { Editor, type EditorHandle } from './Editor';
 import { Login } from './Login';
 import { Palette } from './Palette';
@@ -351,6 +352,31 @@ export function App() {
     const handle = setTimeout(() => void save({ content }), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(handle);
   }, [content, activeId, lock.granted, conflict, save]);
+
+  /**
+   * Resolves a conflict by keeping the server's copy as a sheet of its own.
+   *
+   * The copy is made *before* ours overwrites it, so a failure to create it
+   * leaves the server's version where it is rather than destroying it on the
+   * way to preserving it. It goes in the same folder, since that is where
+   * someone will look for it.
+   */
+  const keepBoth = useCallback(async () => {
+    if (!conflict || !activeId) return;
+    try {
+      const folderId = sheets.find((sheet) => sheet.id === activeId)?.folderId ?? null;
+      const copy = await api.createSheet(
+        `${title || 'Untitled'} (conflicted copy)`,
+        conflict.content,
+        folderId,
+      );
+      await save({ content }, conflict.version);
+      await refreshSheets();
+      setNotice(`The server’s version is kept as “${copy.title}”. Nothing was lost.`);
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  }, [conflict, activeId, sheets, title, content, save, refreshSheets]);
 
   const createSheet = useCallback(async () => {
     try {
@@ -952,27 +978,19 @@ export function App() {
       )}
 
       {conflict && (
-        <div className="banner banner-warn">
-          <span>
-            This sheet changed elsewhere while you were editing. Keep which
-            version?
-          </span>
-          <button type="button" onClick={() => void save({ content }, conflict.version)}>
-            Keep mine
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setContent(conflict.content);
-              setVersion(conflict.version);
-              savedContent.current = conflict.content;
-              setConflict(null);
-              setStatus('idle');
-            }}
-          >
-            Load theirs
-          </button>
-        </div>
+        <Conflict
+          mine={content}
+          theirs={conflict.content}
+          onKeepMine={() => void save({ content }, conflict.version)}
+          onTakeTheirs={() => {
+            setContent(conflict.content);
+            setVersion(conflict.version);
+            savedContent.current = conflict.content;
+            setConflict(null);
+            setStatus('idle');
+          }}
+          onKeepBoth={() => void keepBoth()}
+        />
       )}
 
       <div className="main">

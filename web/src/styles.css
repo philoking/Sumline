@@ -240,6 +240,125 @@ button.ghost:hover {
   background: var(--active);
 }
 
+/* ---- the save-conflict resolver ---- */
+
+/* A block rather than a one-line banner: it has to show what differs, and the
+   decision it is asking for is the one place in this app where being told too
+   little costs someone their work. */
+.conflict {
+  flex: none;
+  padding: 10px 14px 11px;
+  background: var(--warn-soft);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.conflict-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.conflict-head strong {
+  color: var(--warn);
+}
+
+.conflict-diff {
+  max-height: 190px;
+  margin: 8px 0 0;
+  padding: 5px 0;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.conflict-diff li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 10px;
+  font-family: var(--font-sheet);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Marked by colour *and* by the ∓ glyph and a word, so which side a line came
+   from does not rest on colour alone. */
+.conflict-diff .from-mine .conflict-mark,
+.conflict-diff .from-mine .conflict-where {
+  color: var(--danger);
+}
+
+.conflict-diff .from-theirs .conflict-mark,
+.conflict-diff .from-theirs .conflict-where {
+  color: var(--tint-green);
+}
+
+.conflict-mark {
+  width: 1ch;
+  flex: none;
+  font-weight: 600;
+}
+
+.conflict-where {
+  width: 8ch;
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.conflict-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.conflict-more {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.conflict-actions button {
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 10px;
+}
+
+.conflict-actions button:hover {
+  background: var(--active);
+}
+
+/* The one that loses nothing leads, and looks like the default. */
+.conflict-actions button:first-child {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.conflict-hint {
+  flex: 1 1 260px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 /* ---- layout ---- */
 
 /*
