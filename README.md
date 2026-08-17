@@ -398,8 +398,18 @@ uses a print stylesheet that lays the answer column beside the text on paper.
 
 ### Global variables
 
-Variables available to every sheet in a space. There is no screen for these — they are set
-through the API:
+Variables available to every sheet in a space — a `day rate` or a `vat` that every sheet can use
+without declaring it.
+
+Set them in **Space settings**, from the menu behind the initial in the top bar. Each row is a
+name and a value, with what it works out to shown beside it, so a typo is visible there rather
+than discovered later in a sheet that quietly answers nothing. A sheet can shadow a global by
+declaring the same name itself.
+
+The panel edits the space you are working in; to change another one's variables, switch to it
+first.
+
+They can also be set through the API, which is worth knowing for scripting an instance:
 
 ```bash
 curl -X PUT http://localhost:8422/api/settings \
@@ -407,8 +417,6 @@ curl -X PUT http://localhost:8422/api/settings \
   -H 'cookie: webcalc_user=work' \
   -d '{"globals": {"day rate": "$550", "vat": "20%"}}'
 ```
-
-A sheet can use them like any other variable, and can shadow one by declaring the same name.
 
 **The cookie decides which space you are writing to**, and it is not optional on an instance with
 more than one: without it the request resolves to whichever space is listed first, so globals meant

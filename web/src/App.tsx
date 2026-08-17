@@ -15,6 +15,7 @@ import {
 import { Editor } from './Editor';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
+import { SpaceSettings } from './SpaceSettings';
 import { useEngine, useResults } from './useEngine';
 import { useTheme } from './useTheme';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
@@ -62,6 +63,7 @@ export function App() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   /** Turns the space list into an editable one, rather than a second menu. */
   const [managingSpaces, setManagingSpaces] = useState(false);
+  const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
     () => new URLSearchParams(window.location.search).has('help'),
@@ -348,17 +350,24 @@ export function App() {
     }
   };
 
-  const renameSpace = async (user: User) => {
-    const next = window.prompt('Rename space', user.name);
-    if (next === null || next.trim() === '' || next.trim() === user.name) return;
+  /** Applies a name the caller has already settled on. */
+  const applySpaceName = async (user: User, name: string) => {
+    if (name === '' || name === user.name) return;
     try {
-      const renamed = await api.renameSpace(user.id, next.trim());
+      const renamed = await api.renameSpace(user.id, name);
       setUsers((current) =>
         current.map((entry) => (entry.id === user.id ? renamed : entry)),
       );
     } catch (cause) {
       setError(describe(cause));
     }
+  };
+
+  /** The switcher's rename, which has to ask for the name first. */
+  const renameSpace = async (user: User) => {
+    const next = window.prompt('Rename space', user.name);
+    if (next === null) return;
+    await applySpaceName(user, next.trim());
   };
 
   /**
@@ -708,6 +717,20 @@ export function App() {
                       onClick={() => {
                         setUserMenuOpen(false);
                         setManagingSpaces(false);
+                        setSpaceSettingsOpen(true);
+                      }}
+                    >
+                      <span className="tick" />
+                      Space settings…
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setManagingSpaces(false);
                         void addSpace();
                       }}
                     >
@@ -951,6 +974,30 @@ export function App() {
           )}
         </div>
       </div>
+
+      {space && (
+        <SpaceSettings
+          open={spaceSettingsOpen}
+          space={{ id: space, name: currentUserName || space }}
+          globals={settings.globals ?? {}}
+          canRemove={users.length > 1}
+          // One line through the same engine the sheets use, so the preview
+          // cannot disagree with what a sheet would actually compute.
+          preview={(expression) => engine.evaluate(expression)[0]?.output ?? ''}
+          onRename={(next) => {
+            const current = users.find((user) => user.id === space);
+            if (current) void applySpaceName(current, next);
+          }}
+          onSaveGlobals={(globals) => void persistSettings({ globals })}
+          onRemove={() => {
+            const current = users.find((user) => user.id === space);
+            if (!current) return;
+            setSpaceSettingsOpen(false);
+            void removeSpace(current);
+          }}
+          onClose={() => setSpaceSettingsOpen(false)}
+        />
+      )}
 
       <Reference
         open={referenceOpen}
