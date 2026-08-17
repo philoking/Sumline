@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>WebCalc</title>
+    <!--
+      An abacus (U+1F9EE), drawn as an inline SVG so the app ships no image file.
+
+      The same glyph is in the top-left of the bar, as APP_ICON in src/App.tsx.
+      It is repeated rather than shared because this link is static HTML and
+      cannot import a module; change one and change the other.
+    -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%A7%AE%3C/text%3E%3C/svg%3E" />
   </head>
   <body>

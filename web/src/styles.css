@@ -171,6 +171,21 @@ body {
   flex: none;
 }
 
+/*
+ * The app's mark, in the corner of the window the favicon occupies in the tab.
+ *
+ * Deliberately not a button. Every other glyph on this bar does something when
+ * clicked, and a mark that looked the same while answering nothing would be the
+ * one that taught people the row is not all alike. Sized to the ghost buttons
+ * opposite it so both ends of the bar sit on one optical line.
+ */
+.app-mark {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+  user-select: none;
+}
+
 .title-input {
   flex: 1;
   min-width: 0;

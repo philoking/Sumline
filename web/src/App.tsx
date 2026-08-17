@@ -80,6 +80,16 @@ const FALLBACK_POLL_MS = 30_000;
 
 const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
 
+/**
+ * The app's own mark — the same abacus the favicon draws.
+ *
+ * Written out here as well as in `index.html` rather than shared, because a
+ * `<link rel="icon">` is static HTML and cannot import a module. Two copies of
+ * one glyph, noted in both places so a change to either goes looking for the
+ * other.
+ */
+const APP_ICON = '🧮';
+
 export function App() {
   const browser = useMemo(clientIdentity, []);
   const theme = useTheme();
@@ -936,6 +946,12 @@ export function App() {
     // together instead of drifting apart at the edges of the range.
     <div className="app" style={{ '--sheet-font-size': `${fontSize}px` } as CSSProperties}>
       <header className="topbar">
+        {/* Decorative, and hidden from assistive tech: the document title
+            already says which app this is, and an abacus announced ahead of
+            the sheet's name would be noise in front of the thing that matters. */}
+        <span className="app-mark" aria-hidden="true">
+          {APP_ICON}
+        </span>
         <input
           className="title-input"
           value={title}
