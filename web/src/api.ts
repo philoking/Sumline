@@ -50,6 +50,14 @@ export interface Folder {
   color: string | null;
 }
 
+/** The settings that change what a sheet computes. Missing means inherit. */
+export interface Computed {
+  region?: NumberRegion;
+  fps?: number;
+  zone?: string;
+  holidayCountry?: string;
+}
+
 export type Statistic = 'total' | 'average' | 'count' | 'median';
 
 export type SheetOrder = 'recent' | 'manual';
@@ -102,6 +110,15 @@ export interface Settings {
    */
   sharedGlobals?: Record<string, string>;
   effectiveGlobals?: Record<string, string>;
+  /**
+   * The computed settings in their two tiers, both derived by the server.
+   *
+   * `shared` is what every space starts from; `effective` is that resolved with
+   * this space's own overrides. Precedence is decided once, on the server, so
+   * the panel and the sheets cannot disagree about which value is winning.
+   */
+  shared?: Computed;
+  effective?: Computed;
 }
 
 export interface SheetQuery {
@@ -232,6 +249,18 @@ export const api = {
     request<{ globals: Record<string, string> }>('/api/settings/shared', {
       method: 'PUT',
       body: JSON.stringify({ globals }),
+    }),
+
+  /**
+   * Sets one instance-wide computed setting. `null` clears it.
+   *
+   * Its own call rather than part of `saveSharedGlobals`, so setting a region
+   * for the whole instance does not mean resending every shared variable.
+   */
+  saveSharedComputed: (key: string, value: string | number | null) =>
+    request<Record<string, unknown>>('/api/settings/shared', {
+      method: 'PUT',
+      body: JSON.stringify({ [key]: value }),
     }),
 
   saveSettings: (values: Settings) =>

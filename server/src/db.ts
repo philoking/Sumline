@@ -885,13 +885,16 @@ export class Store {
     return Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value)]));
   }
 
+  /** Writes the instance-wide settings. A `null` value removes the key. */
   saveSharedSettings(values: Record<string, unknown>): Record<string, unknown> {
     const statement = this.db.prepare(
       `INSERT INTO instance_settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     );
+    const remove = this.db.prepare('DELETE FROM instance_settings WHERE key = ?');
     for (const [key, value] of Object.entries(values)) {
-      statement.run(key, JSON.stringify(value));
+      if (value === null) remove.run(key);
+      else statement.run(key, JSON.stringify(value));
     }
     return this.sharedSettings();
   }
@@ -903,6 +906,14 @@ export class Store {
     return Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value)]));
   }
 
+  /**
+   * Writes a space's settings. A `null` value removes the key.
+   *
+   * Removal matters for the settings with a tier above them: storing null would
+   * be an override *to* null, where what is wanted is no override at all, so the
+   * instance-wide value shows through again. Without this a space could take an
+   * override on and never put it back.
+   */
   saveSettings(
     owner: UserId,
     values: Record<string, unknown>,
@@ -911,8 +922,12 @@ export class Store {
       `INSERT INTO user_settings (owner, key, value) VALUES (?, ?, ?)
        ON CONFLICT(owner, key) DO UPDATE SET value = excluded.value`,
     );
+    const remove = this.db.prepare(
+      'DELETE FROM user_settings WHERE owner = ? AND key = ?',
+    );
     for (const [key, value] of Object.entries(values)) {
-      statement.run(owner, key, JSON.stringify(value));
+      if (value === null) remove.run(owner, key);
+      else statement.run(owner, key, JSON.stringify(value));
     }
     return this.getSettings(owner);
   }

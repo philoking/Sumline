@@ -17,6 +17,162 @@ const REGIONS: Array<{ id: NumberRegion; label: string }> = [
 const DEFAULT_REGION: NumberRegion = 'north-america';
 const DEFAULT_FPS = 24;
 
+/**
+ * The settings that change what a sheet computes.
+ *
+ * A missing key is not a value of "default" — it means *inherit*, which is what
+ * lets an instance define its region once and one space differ from it.
+ */
+export interface Computed {
+  region?: NumberRegion;
+  fps?: number;
+  zone?: string;
+  holidayCountry?: string;
+}
+
+/**
+ * One tier of the computed settings.
+ *
+ * The same component serves the space and the Everywhere tier, which is what
+ * keeps the two looking and behaving alike. `inherited` is the tier above, or
+ * null when this *is* the top: each field then says what it would fall back to,
+ * so an empty box never leaves the reader guessing what is actually in force.
+ */
+function ComputedEditor({
+  values,
+  inherited,
+  holidays,
+  onSave,
+}: {
+  values: Computed;
+  inherited: Computed | null;
+  holidays: { country: string; count: number } | null;
+  onSave(key: keyof Computed, value: string | number | null): void;
+}) {
+  /** What this field falls back to, worded for the tier it is in. */
+  const fallback = (key: keyof Computed, spelled: (v: never) => string): string => {
+    if (!inherited) return 'the built-in default';
+    const above = inherited[key];
+    return above === undefined
+      ? 'the built-in default'
+      : `Everywhere — ${spelled(above as never)}`;
+  };
+
+  const regionLabel = (id: NumberRegion) =>
+    REGIONS.find((entry) => entry.id === id)?.label ?? id;
+
+  return (
+    <div className="computed-editor">
+      <label className="computed-row">
+        <span className="computed-label">Number region</span>
+        <select
+          className="setting-select"
+          value={values.region ?? ''}
+          onChange={(event) =>
+            onSave('region', event.target.value === '' ? null : event.target.value)
+          }
+        >
+          <option value="">Inherit — {fallback('region', regionLabel)}</option>
+          {REGIONS.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="computed-row">
+        <span className="computed-label">Time zone</span>
+        <input
+          className="setting-select"
+          defaultValue={values.zone ?? ''}
+          key={`zone-${values.zone ?? ''}`}
+          placeholder={`Inherit — ${fallback('zone', (v) => String(v))}`}
+          onBlur={(event) => {
+            const next = event.target.value.trim();
+            if (next !== (values.zone ?? '')) onSave('zone', next === '' ? null : next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </label>
+
+      <label className="computed-row">
+        <span className="computed-label">Frame rate</span>
+        <input
+          className="setting-input"
+          type="number"
+          min="1"
+          max="1000"
+          defaultValue={values.fps ?? ''}
+          key={`fps-${values.fps ?? ''}`}
+          placeholder={inherited?.fps ? String(inherited.fps) : String(DEFAULT_FPS)}
+          onBlur={(event) => {
+            const raw = event.target.value.trim();
+            if (raw === '') {
+              if (values.fps !== undefined) onSave('fps', null);
+              return;
+            }
+            const next = Number(raw);
+            if (!Number.isFinite(next) || next <= 0 || next > 1000) {
+              event.target.value = values.fps === undefined ? '' : String(values.fps);
+              return;
+            }
+            if (next !== values.fps) onSave('fps', next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </label>
+
+      <label className="computed-row">
+        <span className="computed-label">Holiday country</span>
+        <input
+          className="setting-input"
+          defaultValue={values.holidayCountry ?? ''}
+          key={`country-${values.holidayCountry ?? ''}`}
+          maxLength={2}
+          placeholder={inherited?.holidayCountry ?? 'US'}
+          onBlur={(event) => {
+            const next = event.target.value.trim().toUpperCase();
+            if (next === '') {
+              if (values.holidayCountry !== undefined) onSave('holidayCountry', null);
+              return;
+            }
+            if (!/^[A-Z]{2}$/.test(next)) {
+              event.target.value = values.holidayCountry ?? '';
+              return;
+            }
+            if (next !== values.holidayCountry) onSave('holidayCountry', next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </label>
+
+      {/* What actually loaded, not what was asked for: a code the provider does
+          not cover would otherwise surface much later as workday maths counting
+          a holiday as a working day. */}
+      {holidays && (
+        <p className="reference-note">
+          {holidays.count === 0
+            ? `No holidays loaded for ${holidays.country} — workdays count weekends only.`
+            : `${holidays.count} holidays loaded for ${holidays.country}.`}
+        </p>
+      )}
+
+      <p className="reference-note">
+        The region decides how a sheet is <strong>read</strong>: <code>1.234 + 1</code>{' '}
+        is 1.235 under Western Europe and 2.234 under North America. Leaving the
+        zone empty resolves dates wherever the reader is.
+      </p>
+    </div>
+  );
+}
+
 /** One editable global. A list, not a map, so a half-typed row can exist. */
 interface Row {
   name: string;
@@ -33,14 +189,10 @@ export interface SpaceSettingsProps {
   sharedGlobals: Record<string, string>;
   /** False when this is the only space, which cannot be removed. */
   canRemove: boolean;
-  /** This space's number convention, or undefined for the engine's default. */
-  region: NumberRegion | undefined;
-  /** Default frame rate for timecodes, or undefined for the engine's default. */
-  fps: number | undefined;
-  /** This space's timezone, or undefined for the reader's own. */
-  zone: string | undefined;
-  /** This space's holiday country, or undefined for the instance default. */
-  holidayCountry: string | undefined;
+  /** This space's own computed settings. A missing key means it inherits. */
+  computed: Computed;
+  /** The Everywhere tier every space starts from. */
+  sharedComputed: Computed;
   /** The country and holiday count actually in force, as the server reports it. */
   holidays: { country: string; count: number } | null;
   /** Shows what an expression works out to, for the preview beside each row. */
@@ -48,10 +200,10 @@ export interface SpaceSettingsProps {
   onRename(name: string): void;
   onSaveGlobals(globals: Record<string, string>): void;
   onSaveSharedGlobals(globals: Record<string, string>): void;
-  onSaveRegion(region: NumberRegion): void;
-  onSaveFps(fps: number): void;
-  onSaveZone(zone: string): void;
-  onSaveHolidayCountry(country: string): void;
+  /** Sets one of this space's own values. `null` clears it back to inheriting. */
+  onSaveComputed(key: keyof Computed, value: string | number | null): void;
+  /** Sets one Everywhere value. `null` clears it. */
+  onSaveSharedComputed(key: keyof Computed, value: string | number | null): void;
   onRemove(): void;
   onClose(): void;
 }
@@ -212,19 +364,17 @@ function GlobalsEditor({
  * right in one space and wrong in another, with nothing on screen saying why.
  */
 export function SpaceSettings(props: SpaceSettingsProps) {
-  const { open, space, globals, sharedGlobals, canRemove, region, fps, preview } = props;
-  const { zone, holidayCountry, holidays } = props;
+  const { open, space, globals, sharedGlobals, canRemove, preview } = props;
+  const { computed, sharedComputed, holidays } = props;
   const { onRename, onSaveGlobals, onSaveSharedGlobals, onRemove, onClose } = props;
-  const { onSaveRegion, onSaveFps, onSaveZone, onSaveHolidayCountry } = props;
+  const { onSaveComputed, onSaveSharedComputed } = props;
 
   const [name, setName] = useState(space.name);
   const [spaceRows, setSpaceRows] = useState<Row[]>(() => toRows(globals));
   const [sharedRows, setSharedRows] = useState<Row[]>(() => toRows(sharedGlobals));
   // Held as text so the field can be empty mid-edit without snapping to a
   // number the moment a digit is deleted.
-  const [fpsText, setFpsText] = useState(String(fps ?? DEFAULT_FPS));
-  const [countryText, setCountryText] = useState(holidayCountry ?? '');
-  const [zoneText, setZoneText] = useState(zone ?? '');
+
 
   // Reset whenever the panel opens, so a cancelled edit is not still sitting
   // there the next time it is opened.
@@ -233,10 +383,7 @@ export function SpaceSettings(props: SpaceSettingsProps) {
     setName(space.name);
     setSpaceRows(toRows(globals));
     setSharedRows(toRows(sharedGlobals));
-    setFpsText(String(fps ?? DEFAULT_FPS));
-    setCountryText(holidayCountry ?? '');
-    setZoneText(zone ?? '');
-  }, [open, space.name, space.id, globals, sharedGlobals, fps, holidayCountry, zone]);
+  }, [open, space.name, space.id, globals, sharedGlobals]);
 
   if (!open) return null;
 
@@ -289,126 +436,18 @@ export function SpaceSettings(props: SpaceSettingsProps) {
           </section>
 
           <section className="reference-group">
-            <h3>Numbers</h3>
+            <h3>Numbers and time in {space.name}</h3>
             <p className="reference-blurb">
-              Which convention this space’s sheets are written in.
+              These change what a sheet <strong>computes</strong>, not how it
+              looks. Each follows the Everywhere value until this space sets its
+              own.
             </p>
-            <select
-              className="setting-select"
-              value={region ?? DEFAULT_REGION}
-              aria-label="Number region"
-              onChange={(event) => onSaveRegion(event.target.value as NumberRegion)}
-            >
-              {REGIONS.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.label}
-                </option>
-              ))}
-            </select>
-            {/* Said plainly because it is not a display preference. Someone
-                expecting this to restyle answers would otherwise find their
-                existing sheets quietly computing different numbers. */}
-            <p className="reference-note">
-              This changes how sheets are <strong>read</strong>, not just how
-              answers look. Under Western Europe a <code>1.234</code> you have
-              already typed means one thousand two hundred and thirty-four, and
-              under North America it means one and a bit.
-            </p>
-
-            <h3>Timecode</h3>
-            <p className="reference-blurb">
-              The frame rate assumed by a timecode that does not name one.
-              Writing <code>@ 30 fps</code> on a line still wins.
-            </p>
-            <input
-              className="setting-input"
-              type="number"
-              min="1"
-              max="1000"
-              value={fpsText}
-              aria-label="Default frame rate"
-              onChange={(event) => setFpsText(event.target.value)}
-              onBlur={() => {
-                const next = Number(fpsText);
-                // A blank or nonsense entry returns to what is stored rather
-                // than saving something the engine would only refuse.
-                if (!Number.isFinite(next) || next <= 0 || next > 1000) {
-                  setFpsText(String(fps ?? DEFAULT_FPS));
-                  return;
-                }
-                if (next !== (fps ?? DEFAULT_FPS)) onSaveFps(next);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur();
-                if (event.key === 'Escape') setFpsText(String(fps ?? DEFAULT_FPS));
-              }}
+            <ComputedEditor
+              values={computed}
+              inherited={sharedComputed}
+              holidays={holidays}
+              onSave={onSaveComputed}
             />
-
-            <h3>Time zone</h3>
-            <p className="reference-blurb">
-              Where this space’s dates resolve. Leave it empty and they resolve
-              wherever the reader is, which is usually what you want.
-            </p>
-            <input
-              className="setting-select"
-              value={zoneText}
-              placeholder="Your own — e.g. Europe/Berlin"
-              aria-label="Time zone"
-              onChange={(event) => setZoneText(event.target.value)}
-              onBlur={() => {
-                const next = zoneText.trim();
-                if (next !== (zone ?? '')) onSaveZone(next);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur();
-                if (event.key === 'Escape') setZoneText(zone ?? '');
-              }}
-            />
-            {/* Shown from the engine rather than echoed back, so a name it does
-                not recognise reads as "still the reader's own" instead of
-                looking accepted. */}
-            <p className="reference-note">
-              {zone
-                ? `Dates here resolve as ${preview('now')} — it is currently ${preview('time in ' + zone) || 'unknown'} there.`
-                : 'Dates resolve in the reader’s own zone. A name it does not recognise falls back to that too.'}
-            </p>
-
-            <h3>Public holidays</h3>
-            <p className="reference-blurb">
-              Which country’s holidays <code>workdays</code> leaves out. A
-              two-letter code — <code>US</code>, <code>GB</code>, <code>DE</code>.
-            </p>
-            <input
-              className="setting-input"
-              value={countryText}
-              placeholder="US"
-              maxLength={2}
-              aria-label="Holiday country"
-              onChange={(event) => setCountryText(event.target.value.toUpperCase())}
-              onBlur={() => {
-                const next = countryText.trim().toUpperCase();
-                if (!/^[A-Z]{2}$/.test(next)) {
-                  setCountryText(holidayCountry ?? '');
-                  return;
-                }
-                if (next !== holidayCountry) onSaveHolidayCountry(next);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur();
-                if (event.key === 'Escape') setCountryText(holidayCountry ?? '');
-              }}
-            />
-            {/* What is actually loaded, not what was asked for. A code the
-                provider does not cover otherwise fails silently and shows up
-                much later as workday maths that counts a holiday. */}
-            <p className="reference-note">
-              {holidays === null
-                ? 'Holidays have not loaded yet.'
-                : holidays.count === 0
-                  ? `No holidays loaded for ${holidays.country} — workdays will count weekends only.`
-                  : `${holidays.count} holidays loaded for ${holidays.country}.`}
-              {holidayCountry === undefined && ' This is the instance default.'}
-            </p>
           </section>
 
           <section className="reference-group">
@@ -478,6 +517,18 @@ export function SpaceSettings(props: SpaceSettingsProps) {
               stored={sharedGlobals}
               preview={preview}
               onSave={onSaveSharedGlobals}
+            />
+
+            <h3>Numbers and time everywhere</h3>
+            <p className="reference-blurb">
+              The values every space starts from. Set the region once here rather
+              than once per space; a space that needs to differ overrides it above.
+            </p>
+            <ComputedEditor
+              values={sharedComputed}
+              inherited={null}
+              holidays={null}
+              onSave={onSaveSharedComputed}
             />
           </section>
 

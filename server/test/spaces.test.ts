@@ -132,6 +132,8 @@ describe('separate spaces', () => {
     expect(grace.json()).toEqual({
       sharedGlobals: {},
       effectiveGlobals: {},
+      shared: {},
+      effective: {},
     });
   });
 });

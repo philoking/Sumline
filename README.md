@@ -526,6 +526,34 @@ All four are per space rather than per browser, because they change what a sheet
 browsers open on the same space must not disagree about what `1.234` means. That is the opposite of
 the theme, which is per browser precisely because it changes nothing.
 
+**They have two scopes, exactly like the variables below.** Set a region once under *Numbers and
+time everywhere* and every space follows it; a space that needs to differ overrides it under
+*Numbers and time in \<space\>*. An override is a decision, not a copy: change the Everywhere value
+afterwards and the spaces that never overrode it follow along, while the one that did keeps what it
+chose. Clearing an override — the **Inherit** option, or an empty field — puts a space back on the
+Everywhere value.
+
+Through the API, the space's own tier is `PUT /api/settings` and the Everywhere tier is
+`PUT /api/settings/shared`; `null` clears an override:
+
+```bash
+# a region for the whole instance
+curl -X PUT localhost:8422/api/settings/shared \
+  -H 'content-type: application/json' -d '{"region": "western-europe"}'
+
+# except in this one space
+curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
+  -H 'cookie: webcalc_user=boston' -d '{"region": "north-america"}'
+
+# and back to following Everywhere
+curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
+  -H 'cookie: webcalc_user=boston' -d '{"region": null}'
+```
+
+`GET /api/settings` returns the space's own keys, `shared` (the Everywhere tier) and `effective`
+(the two resolved) — computed server-side so the panel and the sheets cannot disagree about which
+value is winning.
+
 They can be set through the API too:
 
 ```bash

@@ -135,7 +135,7 @@ describe('a space with its own holiday country', () => {
 
   it('refuses a code that is not a country code', async () => {
     build();
-    for (const value of ['Germany', 'D', 'DEU', 42, null, '']) {
+    for (const value of ['Germany', 'D', 'DEU', 42, '']) {
       const response = await setCountry('me', value);
       expect(response.statusCode, JSON.stringify(value)).toBe(400);
     }

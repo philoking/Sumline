@@ -1,5 +1,5 @@
 import type { EngineOptions } from '@webcalc/engine';
-import type { Settings } from './api';
+import type { Computed, Settings } from './api';
 
 /**
  * Which of a space's settings reach the engine, in one place.
@@ -33,15 +33,28 @@ export function engineOptionsFrom(settings: Settings): EngineInputs {
    */
   const globals = settings.effectiveGlobals ?? settings.globals;
 
+  /*
+   * The resolved tier, not this space's own keys. A space that has not
+   * overridden the region must still get the instance-wide one, and deciding
+   * that here rather than reading `settings.region` is what makes an Everywhere
+   * value actually reach the sheets.
+   */
+  const computed: Computed = settings.effective ?? {
+    ...(settings.region && { region: settings.region }),
+    ...(settings.fps !== undefined && { fps: settings.fps }),
+    ...(settings.zone && { zone: settings.zone }),
+    ...(settings.holidayCountry && { holidayCountry: settings.holidayCountry }),
+  };
+
   return {
     // Absent means on, matching the toolbar's default.
     largeNumberNotation: settings.largeNumberNotation !== false,
     ...(globals && { globals }),
     // Left off entirely when unset, so the engine applies its own default
     // rather than this layer keeping a second copy of what that default is.
-    ...(settings.region && { region: settings.region }),
-    ...(settings.fps !== undefined && { fps: settings.fps }),
-    ...(settings.zone && { zone: settings.zone }),
-    ...(settings.holidayCountry && { holidayCountry: settings.holidayCountry }),
+    ...(computed.region && { region: computed.region }),
+    ...(computed.fps !== undefined && { fps: computed.fps }),
+    ...(computed.zone && { zone: computed.zone }),
+    ...(computed.holidayCountry && { holidayCountry: computed.holidayCountry }),
   };
 }

@@ -1046,10 +1046,13 @@ export function App() {
           globals={settings.globals ?? {}}
           sharedGlobals={settings.sharedGlobals ?? {}}
           canRemove={users.length > 1}
-          region={settings.region}
-          fps={settings.fps}
-          zone={settings.zone}
-          holidayCountry={settings.holidayCountry}
+          computed={{
+            ...(settings.region && { region: settings.region }),
+            ...(settings.fps !== undefined && { fps: settings.fps }),
+            ...(settings.zone && { zone: settings.zone }),
+            ...(settings.holidayCountry && { holidayCountry: settings.holidayCountry }),
+          }}
+          sharedComputed={settings.shared ?? {}}
           holidays={
             holidays ? { country: holidays.country, count: holidays.dates.length } : null
           }
@@ -1061,12 +1064,17 @@ export function App() {
             if (current) void applySpaceName(current, next);
           }}
           onSaveGlobals={(globals) => void persistSettings({ globals })}
-          onSaveRegion={(region) => void persistSettings({ region })}
-          onSaveFps={(fps) => void persistSettings({ fps })}
-          onSaveZone={(zone) => void persistSettings({ zone })}
-          onSaveHolidayCountry={(country) =>
-            void persistSettings({ holidayCountry: country })
-          }
+          onSaveComputed={(key, value) => void persistSettings({ [key]: value })}
+          onSaveSharedComputed={(key, value) => {
+            // Refetched rather than merged, for the same reason the shared
+            // globals are: the server owns the resolved view, and a space that
+            // overrides this one must not appear to have picked up the change.
+            void api
+              .saveSharedComputed(key, value)
+              .then(() => api.settings())
+              .then(setSettings)
+              .catch((cause: unknown) => setError(describe(cause)));
+          }}
           onSaveSharedGlobals={(globals) => {
             // Refetched rather than merged locally: the server owns the resolved
             // view, and a space that overrides one of these must not appear to

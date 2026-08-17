@@ -98,6 +98,46 @@ function readRegion(value: unknown): string | typeof INVALID {
 }
 
 /**
+ * The settings that change what a sheet computes, rather than how it looks.
+ *
+ * These are the ones with two tiers — an instance-wide value every space
+ * inherits, and a per-space override — because each is usually true of the whole
+ * instance and occasionally true of one space alone. Display preferences stay
+ * per space and free-form; a wrong one costs an odd-looking toggle.
+ */
+const COMPUTED_SETTINGS = ['region', 'fps', 'zone', 'holidayCountry'] as const;
+
+/**
+ * Validates one computed setting, or reports why it cannot be stored.
+ *
+ * `null` is allowed throughout and means "stop overriding": it deletes the
+ * space's own value so the instance-wide one shows through again. Without it a
+ * space could take an override on and never put it back.
+ */
+function readComputed(key: string, value: unknown): unknown | typeof INVALID {
+  if (value === null) return null;
+  switch (key) {
+    case 'region':
+      return readRegion(value);
+    case 'fps':
+      return readFps(value);
+    case 'zone':
+      return readZone(value);
+    case 'holidayCountry':
+      return normaliseCountry(value) ?? INVALID;
+    default:
+      return value;
+  }
+}
+
+const COMPUTED_HELP: Record<string, string> = {
+  region: 'region must be a name like western-europe, or null to inherit',
+  fps: 'fps must be a positive number, or null to inherit',
+  zone: 'zone must be a name like Europe/Berlin, or null to inherit',
+  holidayCountry: 'holidayCountry must be a two-letter code like DE, or null to inherit',
+};
+
+/**
  * Checks a timezone name on its way in.
  *
  * Shape, not membership, for the third time and the same reason: the zone table
@@ -401,27 +441,52 @@ export function buildApp(options: AppOptions): App {
    * as right as the holidays behind it.
    */
   server.get('/api/holidays', async (request) => {
-    const country = store.getSettings(currentUser(request))['holidayCountry'];
+    // The resolved value, so a space with no country of its own follows the
+    // instance-wide one rather than jumping straight to HOLIDAY_COUNTRY.
+    const country =
+      store.getSettings(currentUser(request))['holidayCountry'] ??
+      store.sharedSettings()['holidayCountry'];
     return country === undefined ? holidays.current() : holidays.for(country);
   });
 
 /**
    * A space's settings, plus the tier above it and the two resolved together.
    *
-   * `sharedGlobals` and `effectiveGlobals` are derived, not stored here — they
-   * are returned so precedence is decided in one place rather than in whichever
-   * client happens to be merging. `PUT` refuses them for the same reason.
+   * `sharedGlobals`, `effectiveGlobals`, `shared` and `effective` are derived,
+   * not stored here — they are returned so precedence is decided in one place
+   * rather than in whichever client happens to be merging. `PUT` refuses them
+   * for the same reason.
    */
   const settingsFor = (owner: UserId) => {
     const own = store.getSettings(owner);
-    const shared = (store.sharedSettings()['globals'] ?? {}) as Record<string, string>;
+    const instance = store.sharedSettings();
+    const shared = (instance['globals'] ?? {}) as Record<string, string>;
     const mine = (own['globals'] ?? {}) as Record<string, string>;
+
+    /*
+     * The settings that change what a sheet computes get the same two tiers as
+     * the globals, and for the same reason: a number region or a holiday country
+     * is usually true of the whole instance, and occasionally true of one space
+     * only. Defining it once and overriding where it differs beats setting it
+     * again in every space and beats having no instance-wide answer at all.
+     */
+    const sharedComputed: Record<string, unknown> = {};
+    const effectiveComputed: Record<string, unknown> = {};
+    for (const key of COMPUTED_SETTINGS) {
+      if (instance[key] !== undefined) sharedComputed[key] = instance[key];
+      // Most specific wins, exactly as with a named global.
+      const winner = own[key] ?? instance[key];
+      if (winner !== undefined) effectiveComputed[key] = winner;
+    }
+
     return {
       ...own,
       sharedGlobals: shared,
       // Most specific wins: a space's own value displaces the shared one of the
       // same name, and a sheet's own declaration displaces both later on.
       effectiveGlobals: { ...shared, ...mine },
+      shared: sharedComputed,
+      effective: effectiveComputed,
     };
   };
 
@@ -442,28 +507,16 @@ export function buildApp(options: AppOptions): App {
        * display preferences, and a nonsense value costs a wrong-looking toggle
        * rather than a sheet full of missing answers.
        */
-      if ('region' in changes && readRegion(changes['region']) === INVALID) {
-        return reply.code(400).send({ error: 'region must be a name like western-europe' });
-      }
-      if ('fps' in changes && readFps(changes['fps']) === INVALID) {
-        return reply.code(400).send({ error: 'fps must be a positive number' });
-      }
-      if ('zone' in changes && readZone(changes['zone']) === INVALID) {
-        return reply
-          .code(400)
-          .send({ error: 'zone must be a name like Europe/Berlin' });
-      }
-      if ('holidayCountry' in changes) {
-        const country = normaliseCountry(changes['holidayCountry']);
-        if (!country) {
-          return reply
-            .code(400)
-            .send({ error: 'holidayCountry must be a two-letter code like DE' });
+      for (const key of COMPUTED_SETTINGS) {
+        if (!(key in changes)) continue;
+        const value = readComputed(key, changes[key]);
+        if (value === INVALID) {
+          return reply.code(400).send({ error: COMPUTED_HELP[key] });
         }
-        // Stored in the shape the provider and the cache both use, so a space
-        // that wrote `de` and one that wrote `DE` share a table rather than
+        // Written back because validation normalises: a space that typed `de`
+        // and one that typed `DE` must share a holiday table rather than
         // fetching the same calendar twice under two keys.
-        changes['holidayCountry'] = country;
+        changes[key] = value;
       }
 
       const owner = currentUser(request);
@@ -480,10 +533,32 @@ export function buildApp(options: AppOptions): App {
    * editable by anyone who can reach it — the one setting here that reaches
    * past the space you are working in.
    */
-  server.put<{ Body: { globals?: unknown } }>(
+  server.put<{ Body: { globals?: unknown } & Record<string, unknown> }>(
     '/api/settings/shared',
     async (request, reply) => {
+      /*
+       * The computed settings live here as well as per space, and this is the
+       * tier a space inherits when it has not overridden one. Validated by the
+       * same rules, so an instance-wide value cannot be something a space would
+       * have been refused.
+       */
+      const wide: Record<string, unknown> = {};
+      for (const key of COMPUTED_SETTINGS) {
+        if (!(key in (request.body ?? {}))) continue;
+        const value = readComputed(key, request.body[key]);
+        if (value === INVALID) {
+          return reply.code(400).send({ error: COMPUTED_HELP[key] });
+        }
+        wide[key] = value;
+      }
+
       const globals = request.body?.globals;
+      // Globals stay optional here: this endpoint is now two things, and setting
+      // a region instance-wide should not require sending the variables too.
+      if (globals === undefined && Object.keys(wide).length > 0) {
+        store.saveSharedSettings(wide);
+        return { ...wide };
+      }
       // Arrays are objects, and an array would land as globals named "0", "1"
       // — accepted, stored, and useless.
       if (
@@ -499,8 +574,8 @@ export function buildApp(options: AppOptions): App {
         if (name.trim() === '' || typeof value !== 'string') continue;
         cleaned[name.trim()] = value;
       }
-      store.saveSharedSettings({ globals: cleaned });
-      return { globals: cleaned };
+      store.saveSharedSettings({ ...wide, globals: cleaned });
+      return { ...wide, globals: cleaned };
     },
   );
 
