@@ -224,6 +224,41 @@ describe('what a reorder refuses', () => {
     expect((await reorder([])).statusCode).toBe(400);
   });
 
+  it('writes nothing at all when it refuses', async () => {
+    // A rejected call used to seed positions before deciding it had nothing to
+    // do, so any stray request — a health probe, a retry, a bad client — left
+    // every sheet in the space stamped with a position and the list quietly
+    // frozen out of recency order.
+    const { a, b, c } = await threeSheets();
+    expect(await titles()).toEqual(['C', 'B', 'A']);
+
+    expect((await reorder([])).statusCode).toBe(400);
+    expect((await reorder([a.id])).statusCode).toBe(400);
+    expect((await reorder(['not-a-sheet', 'nor-this'])).statusCode).toBe(400);
+
+    // Still recency, and still no preference recorded: nothing was written.
+    expect(await titles()).toEqual(['C', 'B', 'A']);
+    const settings = await app.server.inject({ url: '/api/settings', headers: as('jason') });
+    expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
+
+    // And an edit still floats a sheet, which it would not if positions had
+    // been written behind the refusal.
+    await app.server.inject({
+      method: 'PUT',
+      url: `/api/sheets/${c.id}`,
+      headers: as('jason'),
+      payload: { content: 'touched', version: c.version },
+    });
+    expect(await titles()).toEqual(['C', 'B', 'A']);
+    await app.server.inject({
+      method: 'PUT',
+      url: `/api/sheets/${b.id}`,
+      headers: as('jason'),
+      payload: { content: 'touched', version: b.version },
+    });
+    expect(await titles()).toEqual(['B', 'C', 'A']);
+  });
+
   it('keeps each space on its own ordering', async () => {
     const { a, b, c } = await threeSheets();
     await make('Hers one', 'kim');

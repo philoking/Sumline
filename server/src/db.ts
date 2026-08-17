@@ -606,6 +606,21 @@ export class Store {
    * ignored rather than trusted.
    */
   reorderSheets(owner: UserId, ids: readonly string[]): boolean {
+    // Decided before anything is written. Seeding first would mean a request
+    // this method goes on to refuse had already stamped a position onto every
+    // sheet in the space — a rejected call with a side effect, which is how a
+    // stray request ends up silently rearranging someone's list.
+    const live = new Set(
+      (
+        this.db
+          .prepare(
+            `SELECT id FROM sheets WHERE owner = ? AND deleted_at IS NULL`,
+          )
+          .all(owner) as unknown as Array<{ id: string }>
+      ).map((row) => row.id),
+    );
+    if (ids.filter((id) => live.has(id)).length < 2) return false;
+
     this.seedSheetOrder(owner);
 
     const known = new Map(
@@ -620,8 +635,6 @@ export class Store {
     );
 
     const moving = ids.filter((id) => known.has(id));
-    if (moving.length < 2) return false;
-
     const slots = moving.map((id) => known.get(id)!).sort((a, b) => a - b);
     const update = this.db.prepare(
       'UPDATE sheets SET position = ? WHERE id = ? AND owner = ?',

@@ -498,7 +498,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 695 engine tests, 138 server tests
+npm test        # 695 engine tests, 139 server tests
 npm run build   # build all three workspaces
 ```
 
