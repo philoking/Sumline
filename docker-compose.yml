@@ -11,6 +11,9 @@ services:
       # Date maths ("today + 3 weeks", "days until…") resolves in this zone,
       # so set it to wherever you actually are.
       TZ: ${TZ:-UTC}
+      # One shared password for the whole instance. Empty means no
+      # authentication, which is the default.
+      WEBCALC_PASSWORD: ${WEBCALC_PASSWORD:-}
     volumes:
       - webcalc-data:/data
     healthcheck:

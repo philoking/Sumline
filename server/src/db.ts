@@ -43,7 +43,76 @@ export interface Folder {
   color: string | null;
 }
 
-export type SheetSummary = Omit<Sheet, 'content'> & { lines: number };
+/**
+ * Where a search matched inside a sheet's body.
+ *
+ * Returned only for a search, and only when the body is what matched — a sheet
+ * found by its title alone has nothing useful to quote. The line number is
+ * carried because it is the number in the gutter, so a result can say where to
+ * look as well as what it found.
+ */
+export interface SheetMatch {
+  line: number;
+  text: string;
+  /** Offset of the match within `text`, for highlighting it. */
+  at: number;
+  length: number;
+  /** True when `text` was windowed out of a longer line. */
+  truncated: boolean;
+}
+
+export type SheetSummary = Omit<Sheet, 'content'> & {
+  lines: number;
+  /** The body line a search matched. Absent unless listing search results. */
+  match?: SheetMatch;
+};
+
+/** How much of a long matching line to quote. */
+const SNIPPET_WIDTH = 90;
+/** How much context to keep before the match when windowing a long line. */
+const SNIPPET_LEAD = 24;
+
+/**
+ * Finds the first body line matching a search, as something quotable.
+ *
+ * Case-insensitively, because SQLite's `LIKE` is case-insensitive for ASCII and
+ * the two must agree: a row the query selected but this function could not find
+ * would come back as a match with nothing to show for it.
+ *
+ * A long line is windowed rather than truncated from the start, so the match is
+ * visible instead of being cut off beyond the end of the quote.
+ */
+export function findMatch(content: string, query: string): SheetMatch | null {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return null;
+
+  const lines = content.split('\n');
+  for (const [index, raw] of lines.entries()) {
+    const at = raw.toLowerCase().indexOf(needle);
+    if (at === -1) continue;
+
+    const line = index + 1;
+    const trimmed = raw.trimStart();
+    const shift = raw.length - trimmed.length;
+
+    if (trimmed.length <= SNIPPET_WIDTH) {
+      return { line, text: trimmed.trimEnd(), at: at - shift, length: needle.length, truncated: false };
+    }
+
+    // Keep a little context ahead of the match, but never scroll past the start
+    // of the line just to centre it.
+    const start = Math.max(shift, at - SNIPPET_LEAD);
+    const text = raw.slice(start, start + SNIPPET_WIDTH).trimEnd();
+    return {
+      line,
+      text,
+      at: at - start,
+      length: needle.length,
+      truncated: true,
+    };
+  }
+  return null;
+}
 
 /**
  * Removes characters a text sheet cannot hold.
@@ -158,6 +227,21 @@ CREATE TABLE IF NOT EXISTS holidays (
   country    TEXT PRIMARY KEY,
   payload    TEXT NOT NULL,
   fetched_at TEXT NOT NULL
+);
+
+-- Rates on a past date, for "100 USD in EUR on 2020-01-01".
+--
+-- A row per date rather than one blob, because a sheet asks about the handful of
+-- dates it mentions and nothing ever needs the whole history. Kept for good once
+-- fetched: a published rate for a past date does not change, so this never goes
+-- stale and never needs refreshing — which is also what makes the feature work
+-- offline for any date already asked about.
+CREATE TABLE IF NOT EXISTS rate_history (
+  on_date    TEXT NOT NULL,
+  base       TEXT NOT NULL,
+  payload    TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (on_date, base)
 );
 
 CREATE TABLE IF NOT EXISTS folders (
@@ -410,6 +494,11 @@ export class Store {
    * Search matches title and body with LIKE rather than a full-text index: a
    * personal instance holds tens or hundreds of sheets, where the difference
    * is unmeasurable and the schema cost of FTS is not worth paying.
+   *
+   * A search also carries back the matching line, so a result can show why it
+   * is in the list. Bodies are read for that and then dropped — only when
+   * searching, and only for the rows that already matched, so the ordinary
+   * list still ships no sheet content at all.
    */
   listSheets(
     owner: UserId,
@@ -457,19 +546,31 @@ export class Store {
       : 'updated_at DESC, rowid DESC';
 
     // The line count is derived in SQL so the list endpoint never has to ship
-    // sheet bodies just to say how long they are.
+    // sheet bodies just to say how long they are. `content` joins it only for a
+    // search, where the matching line is the point of the result.
+    const search = filter.query?.trim();
     const rows = this.db
       .prepare(
         `SELECT id, title, version, owner, color, position, folder_id, deleted_at, created_at, updated_at,
+                ${search ? 'content,' : ''}
                 CASE WHEN content = '' THEN 0
                      ELSE length(content) - length(replace(content, char(10), '')) + 1
                 END AS lines
          FROM sheets WHERE ${where.join(' AND ')} ORDER BY ${order}`,
       )
       .all(...(params as never[])) as unknown as Array<
-      Omit<SheetRow, 'content'> & { lines: number }
+      Omit<SheetRow, 'content'> & { lines: number; content?: string }
     >;
-    return rows.map(toSummary);
+
+    return rows.map((row) => {
+      const summary = toSummary(row);
+      if (!search) return summary;
+      // Null rather than a match when only the title hit: quoting a body line
+      // that does not contain the search term would be a lie about why the
+      // sheet is in the list.
+      const match = findMatch(row.content ?? '', search);
+      return match ? { ...summary, match } : summary;
+    });
   }
 
   getSheet(id: string): Sheet | null {
@@ -916,6 +1017,23 @@ export class Store {
          ON CONFLICT(base) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
       )
       .run(base, JSON.stringify(payload), new Date().toISOString());
+  }
+
+  /** Cached rates for a past date. Never expires — see the schema comment. */
+  getHistoricalRates(onDate: string, base: string): unknown | null {
+    const row = this.db
+      .prepare('SELECT payload FROM rate_history WHERE on_date = ? AND base = ?')
+      .get(onDate, base) as unknown as { payload: string } | undefined;
+    return row ? JSON.parse(row.payload) : null;
+  }
+
+  saveHistoricalRates(onDate: string, base: string, payload: unknown): void {
+    this.db
+      .prepare(
+        `INSERT INTO rate_history (on_date, base, payload, fetched_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(on_date, base) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
+      )
+      .run(onDate, base, JSON.stringify(payload), new Date().toISOString());
   }
 }
 

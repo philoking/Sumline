@@ -5,12 +5,31 @@ export interface User {
   name: string;
 }
 
+/**
+ * Where a search matched inside a sheet's body.
+ *
+ * Present only on search results, and only when the body matched — a sheet
+ * found by its title alone has nothing to quote.
+ */
+export interface SheetMatch {
+  /** Line number as it appears in the editor gutter. */
+  line: number;
+  text: string;
+  /** Offset of the match within `text`, for highlighting it. */
+  at: number;
+  length: number;
+  /** True when `text` was windowed out of a longer line. */
+  truncated: boolean;
+}
+
 export interface SheetSummary {
   id: string;
   title: string;
   version: number;
   /** Number of lines in the sheet, counted server-side for the sheet list. */
   lines: number;
+  /** The body line a search matched. Absent unless listing search results. */
+  match?: SheetMatch;
   /** Whose space this sheet lives in. */
   owner: string;
   /** Colour-coding token from `SHEET_COLORS`, or null for none. */
@@ -84,12 +103,31 @@ export class ConflictError extends Error {
   }
 }
 
+/**
+ * Thrown when the instance wants a password we have not given.
+ *
+ * Its own type because the app answers it by showing the password form rather
+ * than by reporting an error: a session that aged out is not a failure.
+ */
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('This instance needs a password');
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export interface Session {
+  required: boolean;
+  authenticated: boolean;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: init?.body ? { 'content-type': 'application/json' } : undefined,
     ...init,
   });
 
+  if (response.status === 401) throw new UnauthorizedError();
   if (response.status === 409) {
     const body = (await response.json()) as { current: Sheet };
     throw new ConflictError(body.current);
@@ -110,7 +148,37 @@ export interface HolidayTable {
 }
 
 export const api = {
+  /** Whether this instance wants a password, and whether we have given it. */
+  session: () => request<Session>('/api/session'),
+
+  /**
+   * Offers the password. A 401 comes back as `UnauthorizedError`, which the
+   * caller reads as "wrong password" rather than as a broken request.
+   */
+  signIn: (password: string) =>
+    request<Session>('/api/session', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+
+  signOut: () => request<Session>('/api/session', { method: 'DELETE' }),
+
   rates: () => request<RateTable>('/api/rates'),
+
+  /**
+   * Rates on a past date, or null when there are none to be had.
+   *
+   * A 404 is the documented answer for a date the provider cannot cover, so it
+   * comes back as null rather than as a thrown error: the sheet has something to
+   * say about it, and it is not a failure of the request.
+   */
+  ratesOn: (date: string) =>
+    request<RateTable>(`/api/rates?on=${encodeURIComponent(date)}`).catch(
+      (cause: unknown) => {
+        if (cause instanceof UnauthorizedError) throw cause;
+        return null;
+      },
+    ),
 
   holidays: () => request<HolidayTable>('/api/holidays'),
 

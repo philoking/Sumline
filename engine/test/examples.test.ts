@@ -3,6 +3,7 @@ import { createEngine } from '../src/index.js';
 import {
   ALL_EXAMPLES,
   EXAMPLE_GROUPS,
+  REFERENCE_HISTORICAL_RATES,
   REFERENCE_HOLIDAYS,
   REFERENCE_NOW,
   REFERENCE_RATES,
@@ -19,6 +20,7 @@ const engine = createEngine({
   rates: REFERENCE_RATES,
   now: REFERENCE_NOW,
   holidays: REFERENCE_HOLIDAYS,
+  historicalRates: REFERENCE_HISTORICAL_RATES,
 });
 
 describe('documented examples', () => {
@@ -65,8 +67,9 @@ describe('the example set itself', () => {
     const ids = EXAMPLE_GROUPS.map((group) => group.id);
     expect(ids).toEqual(
       expect.arrayContaining([
-        'arithmetic', 'numbers', 'rounding', 'percentages', 'percentage-change',
-        'fractions', 'units', 'rates', 'currency', 'dates', 'intervals',
+        'arithmetic', 'numbers', 'rounding', 'functions', 'trigonometry',
+        'bases', 'percentages', 'percentage-change',
+        'fractions', 'units', 'rates', 'currency', 'past-rates', 'dates', 'intervals',
         'workdays', 'time', 'timecode', 'statistics', 'notes',
       ]),
     );

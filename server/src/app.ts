@@ -12,6 +12,14 @@ import {
 } from './spaces.js';
 import { RatesService, type RateFetcher } from './rates.js';
 import { HolidayService, type HolidayFetcher } from './holidays.js';
+import {
+  SESSION_COOKIE,
+  clearedSessionCookie,
+  issueToken,
+  passwordMatches,
+  sessionCookie,
+  tokenIsValid,
+} from './session.js';
 import { WELCOME_SHEET } from './welcome.js';
 
 export interface AppOptions {
@@ -29,6 +37,13 @@ export interface AppOptions {
    * space added or removed in the app is not undone by the next restart.
    */
   spaces?: Space[];
+  /**
+   * One shared password for the whole instance, or absent for no authentication.
+   *
+   * Absent is the default and changes nothing. See [`session.ts`](./session.ts)
+   * for what setting it does and does not protect.
+   */
+  password?: string;
   /** Skip the background refresh timer; tests drive refreshes by hand. */
   autoRefreshRates?: boolean;
   rateRefreshIntervalMs?: number;
@@ -76,14 +91,18 @@ function readColor(value: unknown): string | null | typeof INVALID {
  * authentication at all. Whether the value names a configured space is settled
  * by the caller, which has the configuration.
  */
-function readSpaceCookie(request: FastifyRequest): string | undefined {
+function readCookie(request: FastifyRequest, wanted: string): string | undefined {
   const header = request.headers.cookie;
   if (!header) return undefined;
   for (const part of header.split(';')) {
     const [name, ...rest] = part.trim().split('=');
-    if (name === USER_COOKIE) return decodeURIComponent(rest.join('='));
+    if (name === wanted) return decodeURIComponent(rest.join('='));
   }
   return undefined;
+}
+
+function readSpaceCookie(request: FastifyRequest): string | undefined {
+  return readCookie(request, USER_COOKIE);
 }
 
 export function buildApp(options: AppOptions): App {
@@ -174,6 +193,74 @@ export function buildApp(options: AppOptions): App {
     for (const space of spaces()) seedWelcome(space.id);
   }
 
+  /**
+   * The shared password, or null for an instance with no authentication.
+   *
+   * Whitespace-only is treated as absent: a `WEBCALC_PASSWORD=` left in a
+   * compose file should not lock everyone out with a password nobody can type.
+   */
+  const password = options.password?.trim() ? options.password : null;
+
+  const signedIn = (request: FastifyRequest): boolean =>
+    password === null || tokenIsValid(password, readCookie(request, SESSION_COOKIE));
+
+  /**
+   * Paths reachable without signing in.
+   *
+   * `/api/health` stays open on purpose: the deploy workflow's gate polls it to
+   * decide whether the container actually serves, and a health check that needs
+   * a credential would report every healthy deploy as a failure. It discloses
+   * only that the app is up and which date its rates carry.
+   *
+   * Anything outside `/api/` is the built UI, which has to load before anyone
+   * can sign in — and holds no sheet data of its own.
+   */
+  const isOpen = (url: string): boolean => {
+    const path = url.split('?')[0] ?? '';
+    if (!path.startsWith('/api/')) return true;
+    return path === '/api/health' || path === '/api/session';
+  };
+
+  if (password !== null) {
+    server.addHook('onRequest', async (request, reply) => {
+      if (isOpen(request.url) || signedIn(request)) return;
+      // 401 rather than a redirect: every caller here is either fetch() from the
+      // app, which shows the password form on this status, or a script.
+      return reply.code(401).send({ error: 'This instance needs a password' });
+    });
+  }
+
+  /**
+   * Whether a password is needed, and whether this browser has given it.
+   *
+   * Open even when a password is set, because the app has to be able to ask.
+   */
+  server.get('/api/session', async (request) => ({
+    required: password !== null,
+    authenticated: signedIn(request),
+  }));
+
+  server.post<{ Body: { password?: unknown } }>(
+    '/api/session',
+    async (request, reply) => {
+      if (password === null) {
+        return { required: false, authenticated: true };
+      }
+      if (!passwordMatches(password, request.body?.password)) {
+        return reply.code(401).send({ error: 'That password does not match' });
+      }
+      return reply
+        .header('set-cookie', sessionCookie(issueToken(password)))
+        .send({ required: true, authenticated: true });
+    },
+  );
+
+  server.delete('/api/session', async (_request, reply) =>
+    reply
+      .header('set-cookie', clearedSessionCookie())
+      .send({ required: password !== null, authenticated: false }),
+  );
+
   server.get('/api/users', async (request) => ({
     users: spaces(),
     current: currentUser(request),
@@ -243,7 +330,27 @@ export function buildApp(options: AppOptions): App {
     rateDate: rates.current().date,
   }));
 
-  server.get('/api/rates', async () => rates.current());
+  /**
+   * The current rates, or `?on=YYYY-MM-DD` for a past date.
+   *
+   * 404 rather than today's table when a past date cannot be answered: the
+   * client turns that into "no rates for that date" on the line, where silently
+   * substituting the current rate would be the wrong answer wearing the right
+   * clothes.
+   */
+  server.get<{ Querystring: { on?: string } }>(
+    '/api/rates',
+    async (request, reply) => {
+      const on = request.query?.on;
+      if (on === undefined) return rates.current();
+
+      const table = await rates.historical(on);
+      if (!table) {
+        return reply.code(404).send({ error: `No exchange rates available for ${on}` });
+      }
+      return table;
+    },
+  );
 
   server.get('/api/holidays', async () => holidays.current());
 

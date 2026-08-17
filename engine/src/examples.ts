@@ -38,6 +38,21 @@ export const REFERENCE_RATES: RateTable = {
   rates: { EUR: 0.8, GBP: 0.75, JPY: 160, CAD: 1.25, AUD: 1.5, CHF: 0.9 },
 };
 
+/**
+ * A pinned past table, for the historical-conversion examples.
+ *
+ * Its `date` deliberately differs from the date the examples ask about: 1 January
+ * is a holiday, so the provider answers with the last published day before it,
+ * and the reference should show the behaviour rather than a tidied version of it.
+ */
+export const REFERENCE_HISTORICAL_RATES = {
+  '2020-01-01': {
+    base: 'USD',
+    date: '2019-12-31',
+    rates: { EUR: 0.89, GBP: 0.755, JPY: 108.6 },
+  } satisfies RateTable,
+};
+
 /** Saturday 15 August 2026, midday. */
 export const REFERENCE_NOW = new Date(2026, 7, 15, 12, 0, 0);
 
@@ -123,6 +138,73 @@ export const EXAMPLE_GROUPS: ExampleGroup[] = [
       { input: 'round(4.6)', expected: '5' },
       { input: 'ceil(4.1)', expected: '5' },
       { input: 'floor(4.9)', expected: '4' },
+    ],
+  },
+  {
+    id: 'functions',
+    title: 'Named functions and constants',
+    blurb:
+      'math.js supplies these, so they are spelled the way it spells them rather than in the natural phrasing the rest of the engine accepts.',
+    examples: [
+      { input: 'log(100, 10)', expected: '2' },
+      { input: 'log10(1000)', expected: '3' },
+      { input: 'log2(1024)', expected: '10' },
+      { input: 'exp(1)', expected: '2.718282' },
+      { input: 'nthRoot(27, 3)', expected: '3' },
+      { input: 'hypot(3, 4)', expected: '5' },
+      { input: 'abs(-5)', expected: '5' },
+      { input: 'sign(-3)', expected: '-1' },
+      { input: 'square(4)', expected: '16' },
+      { input: 'cube(3)', expected: '27' },
+      { input: '5!', expected: '120' },
+      { input: 'combinations(5, 2)', expected: '10' },
+      { input: 'permutations(5, 2)', expected: '20' },
+      { input: 'gcd(12, 18)', expected: '6' },
+      { input: 'lcm(4, 6)', expected: '12' },
+      { input: 'std(2, 4, 6)', expected: '2' },
+      { input: 'variance(2, 4, 6)', expected: '4' },
+      { input: 'e', expected: '2.718282' },
+      { input: 'tau', expected: '6.283185' },
+      { input: 'phi', expected: '1.618034' },
+    ],
+  },
+  {
+    id: 'trigonometry',
+    title: 'Trigonometry',
+    blurb:
+      'Angles are radians unless you write "deg", which is an ordinary unit here — so it converts and composes like any other.',
+    examples: [
+      { input: 'sin(30 deg)', expected: '0.5' },
+      { input: 'cos(60 deg)', expected: '0.5' },
+      { input: 'tan(45 deg)', expected: '1' },
+      { input: 'sin(90 deg)', expected: '1' },
+      { input: 'sin(pi / 2)', expected: '1' },
+      { input: 'cos(0)', expected: '1' },
+      { input: 'asin(0.5)', expected: '0.523599' },
+      { input: 'atan2(1, 1)', expected: '0.785398' },
+      { input: '45 deg in rad', expected: '0.785398 rad' },
+      { input: '90 deg to rad', expected: '1.570796 rad' },
+    ],
+  },
+  {
+    id: 'bases',
+    title: 'Number bases and bitwise operators',
+    blurb:
+      'A literal in another base reads back as a decimal; the hex, bin and oct functions write one out. Note that "255 in hex" does not work — "in" is the unit conversion word.',
+    examples: [
+      { input: 'hex(255)', expected: '0xff' },
+      { input: 'bin(5)', expected: '0b101' },
+      { input: 'oct(64)', expected: '0o100' },
+      { input: '0xff', expected: '255' },
+      { input: '0b1011', expected: '11' },
+      { input: '0o777', expected: '511' },
+      { input: '0xff + 1', expected: '256' },
+      { input: '5 & 3', expected: '1' },
+      { input: '5 | 3', expected: '7' },
+      { input: 'bitXor(5, 3)', expected: '6' },
+      { input: '5 << 2', expected: '20' },
+      { input: '20 >> 2', expected: '5' },
+      { input: '~5', expected: '-6' },
     ],
   },
   {
@@ -243,6 +325,18 @@ export const EXAMPLE_GROUPS: ExampleGroup[] = [
       { input: '100 USD in JPY', expected: '¥16,000' },
       { input: '$50 + 20%', expected: '$60.00' },
       { input: '20% of $250', expected: '$50.00' },
+    ],
+  },
+  {
+    id: 'past-rates',
+    title: 'Rates on a past date',
+    blurb:
+      'Add "on <date>" to convert at that day’s published rate instead of today’s. A weekend or a holiday uses the last published day before it.',
+    note: 'Answers use a pinned table for 1 January 2020, not real history.',
+    examples: [
+      { input: '100 USD in EUR on 2020-01-01', expected: '€89.00' },
+      { input: '$100 in GBP on 2020-01-01', expected: '£75.50' },
+      { input: '1,000 USD in JPY on 2020-01-01', expected: '¥108,600' },
     ],
   },
   {

@@ -12,6 +12,9 @@ services:
     environment:
       # Date maths resolves in this zone. Overridable from ~/webcalc/.env.
       TZ: ${TZ:-America/Los_Angeles}
+      # One shared password for the whole instance, set in ~/webcalc/.env so it
+      # never reaches the repository. Empty means no authentication.
+      WEBCALC_PASSWORD: ${WEBCALC_PASSWORD:-}
     volumes:
       - webcalc-data:/data
     healthcheck:

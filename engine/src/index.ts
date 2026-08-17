@@ -10,8 +10,10 @@ export { SYMBOL_TO_CODE, CODE_TO_SYMBOL } from './currencies.js';
 export type {
   Engine,
   EngineOptions,
+  HistoricalRates,
   LineKind,
   LineResult,
+  NumberRegion,
   RateTable,
 } from './types.js';
 export {

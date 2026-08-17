@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
-import type { Folder, SheetSummary } from './api';
+import type { Folder, SheetMatch, SheetSummary } from './api';
 import { SHEET_COLORS, colorClass, colorLabel } from './colors';
 
 /**
@@ -104,6 +104,28 @@ export interface SidebarProps {
   onEmptyTrash(): void;
 }
 
+/**
+ * The matching line of a search result, with the search term marked.
+ *
+ * The offsets come from the server, which found the match — recomputing them
+ * here against the query would be a second implementation of the same search,
+ * and the two would disagree on the first line that contains the term twice.
+ */
+function Snippet({ match }: { match: SheetMatch }) {
+  const before = match.text.slice(0, match.at);
+  const hit = match.text.slice(match.at, match.at + match.length);
+  const after = match.text.slice(match.at + match.length);
+  return (
+    <span className="sheet-match">
+      {match.truncated && '…'}
+      {before}
+      <mark>{hit}</mark>
+      {after}
+      {match.truncated && '…'}
+    </span>
+  );
+}
+
 /** Moves one entry of a list to another index, returning a new list. */
 function movedTo<T>(items: readonly T[], from: number, to: number): T[] {
   const next = [...items];
@@ -163,6 +185,25 @@ export function Sidebar(props: SidebarProps) {
 
   const folderName = (id: string | null) =>
     folders.find((folder) => folder.id === id)?.name ?? null;
+
+  /**
+   * The right-hand half of a row's meta line.
+   *
+   * Length is the useful fact about a sheet you are browsing. While searching it
+   * is not: the tree is flattened, so the row has to place itself instead —
+   * which line matched, and which folder it lives in.
+   */
+  const detail = (sheet: SheetSummary) => {
+    const folder = query !== '' && !viewingTrash ? folderName(sheet.folderId) : null;
+    const parts = [sheet.match && `line ${sheet.match.line}`, folder].filter(
+      (part): part is string => typeof part === 'string',
+    );
+    return parts.length > 0 ? (
+      <span className="in-folder-note">{parts.join(' · ')}</span>
+    ) : (
+      <span>{sheet.lines === 1 ? '1 line' : `${sheet.lines} lines`}</span>
+    );
+  };
 
   /**
    * The row being dragged and the gap it would drop into.
@@ -263,15 +304,13 @@ export function Sidebar(props: SidebarProps) {
       >
         <button type="button" className="sheet-link" onClick={() => onSelect(sheet.id)}>
           <span className="sheet-name">{sheet.title}</span>
+          {/* Quoting the matching line is what tells a search result apart from
+              its neighbours: a title match and a body match otherwise look
+              identical, and the only way to tell was to open the sheet. */}
+          {sheet.match && <Snippet match={sheet.match} />}
           <span className="sheet-meta">
             <span>{formatTime(sheet.updatedAt)}</span>
-            {/* While searching the tree is gone, so the row has to say where
-                the sheet actually lives or the result is unplaceable. */}
-            {query !== '' && !viewingTrash && folderName(sheet.folderId) ? (
-              <span className="in-folder-note">{folderName(sheet.folderId)}</span>
-            ) : (
-              <span>{sheet.lines === 1 ? '1 line' : `${sheet.lines} lines`}</span>
-            )}
+            {detail(sheet)}
           </span>
         </button>
         <span className="sheet-actions">

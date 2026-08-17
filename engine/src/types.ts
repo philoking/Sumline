@@ -1,6 +1,8 @@
+import type { HistoricalRates } from './historical.js';
 import type { NumberRegion } from './numberFormat.js';
 
 export type { NumberRegion };
+export type { HistoricalRates };
 
 /** A snapshot of exchange rates, expressed as "how many X per one `base`". */
 export interface RateTable {
@@ -37,6 +39,14 @@ export interface LineResult {
 
 export interface EngineOptions {
   rates?: RateTable;
+  /**
+   * Past rate tables by ISO date, for `100 USD in EUR on 2020-01-01`.
+   *
+   * Supplied by the host rather than fetched here, because evaluation is
+   * synchronous and fetching is not. `ratesNeeded` reports which dates a sheet
+   * is asking about so the host knows what to go and get.
+   */
+  historicalRates?: HistoricalRates;
   /** Overrides "now" so date math is testable. */
   now?: Date;
   /** Which convention number literals follow. Defaults to North America. */
@@ -62,6 +72,15 @@ export type Statistic = 'total' | 'average' | 'count' | 'median';
 
 export interface Engine {
   evaluate(source: string | string[]): LineResult[];
+  /**
+   * The ISO dates this sheet asks for past exchange rates on.
+   *
+   * The host fetches these and passes them back as `historicalRates`; until it
+   * does, those lines answer nothing rather than erroring. Reported by the
+   * engine because recognising the request means parsing the line, and a second
+   * implementation in the host would disagree about what counts as one.
+   */
+  ratesNeeded(source: string | string[]): string[];
   /**
    * The running total of every value line in a sheet, formatted for display.
    * Directive lines are excluded so a `sum` in the sheet is not counted twice.

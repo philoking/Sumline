@@ -7,6 +7,7 @@ import {
   Timespan,
 } from './temporal/types.js';
 import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
+import { convertAt, parseHistoricalConversion } from './historical.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, type MathContext } from './mathInstance.js';
 import { preprocess, stripOuterParens } from './preprocess.js';
@@ -18,27 +19,58 @@ export function createEngine(options: EngineOptions = {}): Engine {
     options.rates,
     new Set(options.holidays ?? []),
     options.fps ?? 24,
+    options.historicalRates ?? {},
   );
   const currencies = [...ctx.currencies].sort();
-  const base: FormatContext = {
+
+  /**
+   * The one clock, read once per call.
+   *
+   * `options.now` pins it for tests and for the reference table; without it
+   * every call reads the wall clock. This used to be read twice — freshly for
+   * evaluation, and once at construction for the `FormatContext` — so on a tab
+   * left open for hours `today` was computed against one instant and rendered
+   * against another. Anything that formats relative to now ("Tomorrow at 9:00
+   * am") or infers a year from proximity disagreed with the value it was
+   * describing.
+   */
+  const readClock = (): Date => options.now ?? new Date();
+
+  /** A formatting context bound to a single instant. */
+  const contextAt = (now: Date): FormatContext => ({
     currencies: ctx.currencies,
-    now: options.now ?? new Date(),
+    now,
     region: options.region ?? 'north-america',
     largeNumberNotation: options.largeNumberNotation ?? true,
-  };
+  });
 
   return {
     currencies,
     rateDate: options.rates?.date ?? null,
     evaluate(source) {
       const lines = Array.isArray(source) ? source : source.split('\n');
-      return evaluateLines(
-        lines,
-        ctx,
-        options.now ?? new Date(),
-        base,
-        options.globals,
-      );
+      const now = readClock();
+      return evaluateLines(lines, ctx, now, contextAt(now), options.globals);
+    },
+    ratesNeeded(source) {
+      const lines = Array.isArray(source) ? source : source.split('\n');
+      const now = readClock();
+      const region = options.region ?? 'north-america';
+      const dates = new Set<string>();
+      for (const raw of lines) {
+        // The line is classified first so a commented-out or labelled request is
+        // read the same way evaluation will read it, rather than the host
+        // fetching rates for a line that is never going to convert anything.
+        const line = classify(raw ?? '', (word) => isKnownWord(ctx, EMPTY_SHEET, word));
+        if (line.kind !== 'expression' && line.kind !== 'assignment') continue;
+        const wanted = parseHistoricalConversion(line.body, {
+          region,
+          currencies: ctx.currencies,
+          now,
+        });
+        if (wanted) dates.add(wanted.on);
+      }
+      return [...dates];
     },
     total(results) {
       return this.summary(results, 'total');
@@ -50,7 +82,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
         .filter(isAddable);
       if (values.length === 0) return '';
       const figure = reduceValues(ctx, values, statistic);
-      return figure === undefined ? '' : formatValue(figure, base);
+      return figure === undefined ? '' : formatValue(figure, contextAt(readClock()));
     },
   };
 }
@@ -99,6 +131,20 @@ function addAll(ctx: MathContext, values: unknown[]): unknown {
     return undefined;
   }
 }
+
+/**
+ * A sheet state with nothing declared in it.
+ *
+ * `ratesNeeded` classifies lines without evaluating them, so no variable has
+ * been bound yet and there is nothing for `isKnownWord` to find beyond units and
+ * currencies — which is all a currency conversion needs it to recognise.
+ */
+const EMPTY_SHEET: SheetState = {
+  scope: {},
+  aliases: new Map(),
+  section: [],
+  tagged: new Map(),
+};
 
 /** Mutable state threaded down the sheet as each line is evaluated. */
 interface SheetState {
@@ -292,6 +338,14 @@ function compute(
   const options = { now, holidays: ctx.holidays, fps: ctx.fps };
   const source = resolveTemporalGroups(stripOuterParens(body), options);
 
+  /*
+   * Before the temporal gate, because a conversion at a named date reads as
+   * temporal — `on 2020-01-01` is a date by any measure — and the temporal rules
+   * would claim the line and answer with the date rather than the money.
+   */
+  const historical = convertHistorically(source, ctx, now, fmt);
+  if (historical) return historical;
+
   // Dates, times and durations never reach math.js; the gate keeps ordinary
   // arithmetic out of this branch.
   if (looksTemporal(source)) {
@@ -340,6 +394,51 @@ function compute(
       }
     }
     return { output: '', error: cleanError(error) };
+  }
+}
+
+/**
+ * Converts money at a date the line named, or returns null if it is not one.
+ *
+ * The three states of a requested date are the whole reason this returns a
+ * `Computed` rather than a value:
+ *
+ *  - not fetched yet — an empty answer and no error, so a line does not flash
+ *    red for the moment between being typed and its rates arriving;
+ *  - fetched and unavailable — an error naming the date, because falling back to
+ *    today's rate is exactly the silent wrongness this feature exists to remove;
+ *  - fetched — an ordinary money value, so it totals and converts like any other.
+ */
+function convertHistorically(
+  source: string,
+  ctx: MathContext,
+  now: Date,
+  fmt: FormatContext,
+): Computed | null {
+  const wanted = parseHistoricalConversion(source, {
+    region: fmt.region,
+    currencies: ctx.currencies,
+    now,
+  });
+  if (!wanted) return null;
+
+  if (!(wanted.on in ctx.historicalRates)) return { output: '' };
+
+  const table = ctx.historicalRates[wanted.on];
+  if (!table) {
+    return { output: '', error: `No exchange rates available for ${wanted.on}` };
+  }
+
+  const converted = convertAt(wanted, table);
+  if ('error' in converted) return { output: '', error: converted.error };
+
+  // Handed back as a math.js unit so it behaves like every other money value:
+  // it feeds the running total, and a later line can convert or scale it.
+  try {
+    const value = ctx.math.unit(converted.amount, converted.code);
+    return { value, output: formatValue(value, fmt) };
+  } catch {
+    return { output: '', error: `Cannot express an amount in ${converted.code}` };
   }
 }
 

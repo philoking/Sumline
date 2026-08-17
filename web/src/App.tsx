@@ -9,10 +9,13 @@ import {
   type Settings,
   type Sheet,
   type SheetSummary,
+  type Session,
   type Statistic,
   type User,
+  UnauthorizedError,
 } from './api';
 import { Editor } from './Editor';
+import { Login } from './Login';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
 import { SpaceSettings } from './SpaceSettings';
@@ -30,6 +33,13 @@ export function App() {
   const browser = useMemo(clientIdentity, []);
   const theme = useTheme();
 
+  /**
+   * Whether a password is wanted, and whether this browser has given it.
+   *
+   * Null until the answer is known, so neither the app nor the password form is
+   * flashed on screen before we know which one belongs there.
+   */
+  const [session, setSession] = useState<Session | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   /** Which space we are working in. Null until the first load settles. */
   const [space, setSpace] = useState<string | null>(null);
@@ -97,11 +107,11 @@ export function App() {
   // and cannot disagree between the panel and the sheets.
   const activeGlobals = settings.effectiveGlobals ?? settings.globals;
 
-  const { engine, rates, holidays } = useEngine({
+  const { engine, rates, holidays, needRates } = useEngine({
     largeNumberNotation: siNotation,
     ...(activeGlobals && { globals: activeGlobals }),
   });
-  const results = useResults(engine, content);
+  const results = useResults(engine, content, needRates);
   const summary = useMemo(
     () => engine.summary(results, statistic),
     [engine, results, statistic],
@@ -145,6 +155,15 @@ export function App() {
   // for, falling back to the one this tab had open.
   useEffect(() => {
     void (async () => {
+      // The gate comes first. Everything below would 401 on a locked instance,
+      // and a burst of failed requests is a worse way to discover that a
+      // password is wanted than simply asking.
+      const current = await api
+        .session()
+        .catch(() => ({ required: false, authenticated: true }) as Session);
+      setSession(current);
+      if (current.required && !current.authenticated) return;
+
       const [loaded, folderList, people] = await Promise.all([
         api.settings().catch(() => ({}) as Settings),
         api.listFolders().catch(() => [] as Folder[]),
@@ -186,6 +205,12 @@ export function App() {
         setSheets(await api.listSheets());
         setActiveId(created.id);
       } catch (cause) {
+        // A session that aged out mid-load is not a failure to report; it is a
+        // password to ask for again.
+        if (cause instanceof UnauthorizedError) {
+          setSession({ required: true, authenticated: false });
+          return;
+        }
         setError(describe(cause));
       }
     })();
@@ -494,6 +519,16 @@ export function App() {
     void persistSettings({ statistic: next });
   };
 
+  // Nothing decided yet: neither the app nor the form is the right thing to show.
+  if (session === null) return null;
+
+  // A reload rather than re-running the loader, for the same reason switching
+  // space reloads: signing in changes what every request returns, and starting
+  // clean is more trustworthy than unwinding a half-loaded app.
+  if (session.required && !session.authenticated) {
+    return <Login onSignedIn={() => window.location.reload()} />;
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -757,6 +792,28 @@ export function App() {
                       {managingSpaces ? 'Done' : 'Rename or remove…'}
                     </button>
                   </li>
+                  {/* Only on an instance that asked for a password — elsewhere
+                      there is nothing to sign out of. */}
+                  {session.required && (
+                    <>
+                      <li className="menu-separator" role="separator" />
+                      <li>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            void api
+                              .signOut()
+                              .catch(() => undefined)
+                              .then(() => window.location.reload());
+                          }}
+                        >
+                          <span className="tick" />
+                          Sign out
+                        </button>
+                      </li>
+                    </>
+                  )}
                 </ul>
               </>
             )}

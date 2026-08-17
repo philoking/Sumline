@@ -5,6 +5,7 @@ import {
   type MathJsInstance,
 } from 'mathjs';
 import { RESERVED_CODES } from './currencies.js';
+import type { HistoricalRates } from './historical.js';
 import { registerValueTypes } from './values.js';
 import type { RateTable } from './types.js';
 
@@ -16,6 +17,14 @@ export interface MathContext {
   holidays: ReadonlySet<string>;
   /** Default frame rate for timecodes that do not name one. */
   fps: number;
+  /**
+   * Past rate tables by ISO date.
+   *
+   * Reference data the evaluator consults, like `holidays` — not something
+   * math.js knows about. Registering a unit set per date would mean a math.js
+   * instance per date; see [`historical.ts`](./historical.ts).
+   */
+  historicalRates: HistoricalRates;
 }
 
 /**
@@ -30,6 +39,7 @@ export function createMathContext(
   rates?: RateTable,
   holidays: ReadonlySet<string> = new Set(),
   fps = 24,
+  historicalRates: HistoricalRates = {},
 ): MathContext {
   // `all` is typed as optionally undefined by mathjs, but is always populated.
   const math = create(all as FactoryFunctionMap, {
@@ -43,7 +53,7 @@ export function createMathContext(
   // mixed-currency sum answers in, so the set must already be populated.
   registerValueTypes(math, currencies);
 
-  return { math, currencies, holidays, fps };
+  return { math, currencies, holidays, fps, historicalRates };
 }
 
 function registerCurrencies(

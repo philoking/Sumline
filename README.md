@@ -87,6 +87,51 @@ and underscores group digits everywhere.
 `to N dp` is cosmetic — totals and line references still use the unrounded value. `to nearest N`
 genuinely changes the number.
 
+### Functions and constants
+
+These come from math.js, so they are spelled the way it spells them rather than in the natural
+phrasing the rest of the engine accepts.
+
+| You type | You get |
+| --- | --- |
+| `log(100, 10)`, `log10(1000)`, `log2(1024)` | `2`, `3`, `10` |
+| `exp(1)` | `2.718282` |
+| `nthRoot(27, 3)`, `hypot(3, 4)` | `3`, `5` |
+| `abs(-5)`, `sign(-3)` | `5`, `-1` |
+| `square(4)`, `cube(3)` | `16`, `27` |
+| `5!`, `combinations(5, 2)`, `permutations(5, 2)` | `120`, `10`, `20` |
+| `gcd(12, 18)`, `lcm(4, 6)` | `6`, `12` |
+| `std(2, 4, 6)`, `variance(2, 4, 6)` | `2`, `4` |
+| `e`, `tau`, `phi` | the constants |
+
+### Trigonometry
+
+Angles are radians unless you write `deg`, which is an ordinary unit here — so it converts and
+composes like any other.
+
+| You type | You get |
+| --- | --- |
+| `sin(30 deg)`, `cos(60 deg)` | `0.5` |
+| `tan(45 deg)` | `1` |
+| `sin(pi / 2)` | `1` |
+| `asin(0.5)` | `0.523599` |
+| `atan2(1, 1)` | `0.785398` |
+| `45 deg in rad` | `0.785398 rad` |
+
+### Number bases and bitwise operators
+
+| You type | You get |
+| --- | --- |
+| `hex(255)`, `bin(5)`, `oct(64)` | `0xff`, `0b101`, `0o100` |
+| `0xff`, `0b1011`, `0o777` | `255`, `11`, `511` |
+| `0xff + 1` | `256` |
+| `5 & 3`, `5 \| 3`, `bitXor(5, 3)` | `1`, `7`, `6` |
+| `5 << 2`, `20 >> 2` | `20`, `5` |
+| `~5` | `-6` |
+
+A literal in another base reads back as a decimal; `hex`, `bin` and `oct` write one out. `255 in hex`
+does **not** work — `in` is the unit-conversion word, so that line reads as inches.
+
 ### Percentages
 
 | You type | You get |
@@ -160,6 +205,27 @@ Mixed currencies answer in the **last** one named, matching Soulver. Rates come 
 [Frankfurter](https://frankfurter.dev/) (European Central Bank data, no API key), refreshed on
 start and every 12 hours and cached to disk. A container with no internet access falls back to
 the rates bundled in the image and marks them stale in the header.
+
+#### On a past date
+
+| You type | You get |
+| --- | --- |
+| `100 USD in EUR on 2020-01-01` | that day's rate, not today's |
+| `$100 in GBP on 1 January 2020` | the same, written differently |
+| `1,000 USD in JPY on 1/1/2020` | any date form the engine reads |
+
+Add `on <date>` to a conversion and it uses the rate published that day. Every date form the
+[Dates](#dates) section lists works here.
+
+A weekend or a public holiday has no published rate, so the last day before it is used — which is
+why `on 2020-01-01` answers with 31 December 2019 data. Each date is fetched once and kept for
+good, since a past rate never changes; a date already asked about therefore keeps working with no
+network at all.
+
+**A date that cannot be answered says so** rather than quietly falling back to today's rate. With
+no network and no cached copy, the line reports `No exchange rates available for 2020-01-01`. This
+is the one place the app prefers a blank answer to a plausible one: converting a 2019 invoice at
+this morning's rate, silently, is the mistake worth going out of the way to avoid.
 
 ### Dates
 
@@ -428,8 +494,9 @@ Everywhere value says so and names the value it displaced; the Everywhere variab
 copies the value in as the space's own. Nothing about which value wins is hidden.
 
 Two things worth knowing. The panel edits the space you are working in — to change another one's
-own variables, switch to it first. And **Everywhere** reaches past your space, in an app with no
-passwords, so anyone who can open it can change those.
+own variables, switch to it first. And **Everywhere** reaches past your space, so on an instance with
+no password anyone who can open it can change those — which is the main thing
+[`WEBCALC_PASSWORD`](#the-password-if-you-want-one) exists to close.
 
 Both scopes can also be set through the API, which is worth knowing for scripting an instance:
 
@@ -573,8 +640,28 @@ The lock is advisory — the real protection is a version check on every save. I
 while you were editing, the save is refused and you're shown both versions to choose between,
 rather than one of them being silently lost.
 
-There is no authentication. Run it on a trusted network, or behind a reverse proxy that handles
-auth.
+### The password, if you want one
+
+By default there is **no authentication**: anyone who can reach the port can read and edit every
+sheet in every space. That remains the default, and for a trusted LAN it is the right one.
+
+Setting `WEBCALC_PASSWORD` turns on one shared password for the whole instance:
+
+```bash
+WEBCALC_PASSWORD='something long' docker compose up -d
+```
+
+The app then asks for it before showing anything, and remembers the answer in a cookie for 30 days.
+**Sign out** appears in the space menu. There are still no accounts — this is a door, not a login:
+it says whether you may look at the sheets, while a space still only says which ones you are looking
+at. Changing the password signs every browser out, since the password is what signs the cookie.
+
+Two things it deliberately does not do. `/api/health` stays open, because the deploy's health gate
+polls it and a check that needed a credential would fail every good deploy. And the cookie is not
+marked `Secure`, because a self-hosted instance is usually reached over plain HTTP and marking it
+would make signing in impossible there — so on plain HTTP the password crosses the network in the
+clear. This raises the bar from "anyone who can reach the port" to "anyone who knows the password";
+for more than that, put it behind a reverse proxy that terminates TLS and handles auth itself.
 
 ## What's deliberately not here
 
@@ -584,7 +671,7 @@ oversight:
 | Not included | Why |
 | --- | --- |
 | Sales tax, compound interest, loan repayments, inflation | Out of scope for how this instance is used. |
-| Conditionals, number bases, bitwise operators, degree-mode trigonometry | Same. Worth knowing if that changes: math.js already returns `hex(256)` as `0x100` and parses `0x9F31`, so most of it is formatting rather than new maths. |
+| Conditionals and booleans | Branching would make a sheet something you cannot read top to bottom and trust. A bare comparison does answer — `3 > 2` shows `true` — but it is not documented or tested, and is not promised. |
 | Live stock prices, weather, knowledge lookups | Every usable provider needs an API key, which would compromise the guarantee that the container works with no internet access. |
 | Trip planning (time points) | Soulver marks these outside the text. Sheets here are plain text — the property that makes copy, export, search and conflict-diffing work — so it would have needed invented syntax. |
 
@@ -602,14 +689,14 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 695 engine tests, 149 server tests
+npm test        # 759 engine tests, 187 server tests, 13 web tests
 npm run build   # build all three workspaces
 ```
 
 | Workspace | What it is |
 | --- | --- |
 | [engine/](engine/) | The calculation engine. Pure TypeScript, no DOM or Node APIs, covered by a golden table of `input → answer` cases in [engine/test/](engine/test/). |
-| [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. |
+| [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. Its tests cover the editor's *state* logic — CodeMirror keeps that separate from the view, so they run headlessly with no jsdom. |
 | [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, and static hosting of the built UI. |
 
 ### How the engine fits together
@@ -623,6 +710,7 @@ what they need:
 | [`values.ts`](engine/src/values.ts) | Percentages, multipliers and rates as real types. `15%` reduced to `0.15` forgets it was a percentage, so `10% + 20%` could not answer `30%`. Also holds the unit-precedence rules — a bare number adopting the unit beside it, and mixed currencies answering in the last one named. |
 | [`temporal/`](engine/src/temporal/) | Dates, clock times, durations, zones and timecode. math.js has no calendar type at all, so these are recognised and evaluated before the expression parser is reached. |
 | [`numberFormat.ts`](engine/src/numberFormat.ts) | Region conventions and large-number notation, on both input and output. |
+| [`historical.ts`](engine/src/historical.ts) | Converting money at a past date. Currency units are registered per math.js instance, so a table per date would mean an *instance* per date — too expensive to build per line. A dated conversion is self-contained, so it is done arithmetically instead. Evaluation is synchronous and fetching is not, so the engine reports which dates a sheet wants through `ratesNeeded` and the host supplies them. |
 
 If you're adding syntax, the rewriters live in
 [`preprocess.ts`](engine/src/preprocess.ts) and every phrasing needs a case in the golden table.
@@ -680,6 +768,7 @@ app on an empty database.**
 | `TZ` | `UTC` | Timezone for date calculations |
 | `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
 | `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
+| `WEBCALC_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
 
 ## Acknowledgement
 
