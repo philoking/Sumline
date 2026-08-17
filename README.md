@@ -765,6 +765,35 @@ The banner names the **space** holding the lock rather than the browser — "Wor
 sheet" — which is the useful thing to know when the other tab is your own, and reads as a person
 when the spaces happen to be people.
 
+### Everything is live
+
+Nothing here waits for you to act. Each browser holds an event stream open to the server, and the
+server says what changed as it changes:
+
+- A sheet created, renamed, coloured, moved, trashed or restored anywhere appears in **everyone's**
+  sidebar in the same space.
+- Opening a sheet someone else has open puts the read-only banner up in *their* browser's terms
+  straight away — and takes it down again the moment they close the tab, rather than at the next
+  thing you tried to do.
+- A read-only view **follows along** as the other person types, instead of showing the sheet as it
+  stood when you opened it.
+- The rate date in the corner updates when the server refreshes its rates, including when a failed
+  refresh turns them stale.
+
+A browser that has the sheet open but not the lock also watches for the lock to lapse, which is the
+case nothing can announce: a tab that crashes, sleeps or loses its network never gets to say it has
+let go, and the lock simply ages out.
+
+The stream carries notice, not data. An event says *what* moved and each browser refetches through
+the same endpoints it always used, so there is no second path by which a sheet can arrive. Missing
+events therefore costs freshness rather than correctness — and a browser that reconnects is told to
+re-read everything rather than trying to replay a gap it cannot see the edges of.
+
+If a proxy in front of the instance buffers responses, the stream will connect and then deliver
+nothing. The app notices that — it waits for messages, not for a socket — and falls back to asking
+on a timer, which is how it behaved before any of this. `/api/events` sets `X-Accel-Buffering: no`,
+which nginx reads; if yours needs something else, `proxy_buffering off` for that path does it.
+
 ### Links to a sheet
 
 The address bar stays at `/` while you work. Which sheet is open is remembered per tab, so two

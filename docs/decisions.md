@@ -23,6 +23,26 @@ and the formatter can print a boolean. That is *reachable* rather than supported
 [Reachable but not supported](#reachable-but-not-supported) below. Branching is the thing being
 declined, and a comparison is the first step towards it.
 
+### Two people typing into one sheet at once
+
+The app is live — the sheet list, the lock banner and the rate date all update as things happen,
+and a read-only view follows the editor's typing keystroke by keystroke. It stops there. One
+browser holds the sheet and the others read it, rather than every browser merging edits into a
+shared document.
+
+That boundary is where the cost changes shape rather than degree. Notice is a message saying what
+moved, which each browser answers by refetching through the endpoints it already uses; a browser
+that misses one is late, never wrong. Merging concurrent edits means CRDTs or operational
+transforms, a per-character change log, and a second definition of what a sheet *is* that has to
+agree with the plain text every other feature here depends on — copy, export, search, diffing the
+conflict panel. A sheet is a working note, usually written by one person; a lock plus a version
+check is honest about that, and the conflict panel already covers the case where two people did
+write at once.
+
+Server-sent events rather than a WebSocket for the same reason: every message goes one way, the
+browser has a well-tested client for them with reconnection and backoff built in, and the
+alternative would be a dependency and a protocol upgrade in order to send strictly less.
+
 ### Natural-language maths phrases beyond what is already supported
 
 The phrasings the engine accepts are the ones with worked examples in Soulver's own documentation.

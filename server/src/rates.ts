@@ -75,6 +75,15 @@ export interface RatesServiceOptions {
   base?: string;
   refreshIntervalMs?: number;
   log?: { info(msg: string): void; warn(msg: string): void };
+  /**
+   * Called when the table people are shown actually changed.
+   *
+   * Only on a change, not on every refresh: the timer runs twice a day and
+   * usually finds the same published date, and a browser has nothing to do
+   * about a refresh that moved nothing. A failed refresh does count, because
+   * it turns the corner of the app from a date into a staleness warning.
+   */
+  onUpdate?: (table: RateTable) => void;
 }
 
 /**
@@ -102,6 +111,7 @@ export class RatesService {
   async refresh(): Promise<RateTable> {
     const base = this.options.base ?? DEFAULT_BASE;
     const fetcher = this.options.fetcher ?? fetchFromFrankfurter;
+    const before = this.table;
     try {
       const fresh = await fetcher(base);
       this.options.store.saveRates(base, fresh);
@@ -113,6 +123,9 @@ export class RatesService {
         `Could not refresh exchange rates (${reason}); using rates from ${this.table.date}`,
       );
       this.table = { ...this.table, stale: true };
+    }
+    if (this.table.date !== before.date || !this.table.stale !== !before.stale) {
+      this.options.onUpdate?.(this.table);
     }
     return this.table;
   }

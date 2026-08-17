@@ -56,6 +56,20 @@ export function useEngine(options: EngineOptions) {
    */
   const [history, setHistory] = useState<HistoricalRates>({});
 
+  /**
+   * Re-reads the current rate table.
+   *
+   * Exposed because the server refreshes on its own timer — twice a day, or
+   * after a failed fetch turns the table stale — and the corner of the app that
+   * shows which day the rates come from was otherwise as old as the page load.
+   * The past-date tables are deliberately not re-read: a published rate for a
+   * day gone by does not change.
+   */
+  const refreshRates = useCallback(async () => {
+    const table = await api.rates().catch(() => null);
+    if (table) setRates(table);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     // Optional enrichment: without rates there is no currency conversion.
@@ -118,7 +132,7 @@ export function useEngine(options: EngineOptions) {
     );
   }, []);
 
-  return { engine, rates, holidays, needRates };
+  return { engine, rates, holidays, needRates, refreshRates };
 }
 
 /**

@@ -40,6 +40,7 @@ import { useDialog } from './useDialog';
 import { SpaceSettings } from './SpaceSettings';
 import { GlobalSettings } from './GlobalSettings';
 import { useEngine, useResults } from './useEngine';
+import { useLive, type LiveEvent } from './live';
 import { useTheme } from './useTheme';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
@@ -47,6 +48,36 @@ type Status = 'idle' | 'unsaved' | 'saving' | 'saved' | 'readonly' | 'error';
 
 const AUTOSAVE_DELAY_MS = 800;
 const LOCK_HEARTBEAT_MS = 15_000;
+
+/**
+ * How long a lock is assumed to last until the server says otherwise.
+ *
+ * The server's own default, and replaced by the `ttlMs` it reports with every
+ * grant — because it is configurable there and a browser that guessed short
+ * would ask about a lock that is still perfectly alive.
+ */
+const LOCK_TTL_GUESS_MS = 45_000;
+
+/**
+ * How long the app waits before acting on a change the server announced.
+ *
+ * Long enough that a burst — someone typing, whose sheet autosaves about once a
+ * second — costs one refetch of the list rather than one per save, and short
+ * enough that a rename in another browser lands while you are still looking at
+ * the row it changed.
+ */
+const LIVE_SETTLE_MS = 400;
+
+/**
+ * How often the app asks, when the event stream is not answering.
+ *
+ * Slower than the stream is instant, and slower than the lock heartbeat, on the
+ * grounds that this is the degraded path: a proxy buffering the stream should
+ * cost freshness rather than the feature. Sheets still refresh on every action
+ * this browser takes, exactly as they did before any of this existed.
+ */
+const FALLBACK_POLL_MS = 30_000;
+
 const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
 
 export function App() {
@@ -148,7 +179,7 @@ export function App() {
   // engineOptions.ts for why that is not a spread written inline here.
   const engineOptions = useMemo(() => engineOptionsFrom(settings), [settings]);
 
-  const { engine, rates, holidays, needRates } = useEngine(engineOptions);
+  const { engine, rates, holidays, needRates, refreshRates } = useEngine(engineOptions);
   const results = useResults(engine, content, needRates);
   const summary = useMemo(
     () => engine.summary(results, statistic, { countVariables, countReferenced }),
@@ -340,6 +371,7 @@ export function App() {
 
         const result = await api.acquireLock(activeId, identity.id, identity.name);
         if (cancelled) return;
+        lockTtl.current = result.ttlMs;
         setLock({ granted: result.granted, holder: result.lock });
         setStatus(result.granted ? 'idle' : 'readonly');
       } catch (cause) {
@@ -354,18 +386,6 @@ export function App() {
     };
   }, [activeId, space, identity.id, identity.name, openSheet]);
 
-  // Hold the lock while this tab is the editor.
-  useEffect(() => {
-    if (!activeId || !lock.granted) return;
-    const timer = setInterval(() => {
-      void api
-        .acquireLock(activeId, identity.id, identity.name)
-        .then((result) => setLock({ granted: result.granted, holder: result.lock }))
-        .catch(() => undefined);
-    }, LOCK_HEARTBEAT_MS);
-    return () => clearInterval(timer);
-  }, [activeId, lock.granted, identity.id, identity.name]);
-
   useEffect(() => {
     const release = () => {
       if (!activeId) return;
@@ -375,6 +395,218 @@ export function App() {
     window.addEventListener('pagehide', release);
     return () => window.removeEventListener('pagehide', release);
   }, [activeId, identity.id]);
+
+  /**
+   * Which sheet is open, readable from a callback that has already resolved.
+   *
+   * The live handlers below start requests and act on what comes back, by which
+   * time the selection may have moved on — and applying an answer about the
+   * previous sheet to the current one is worse than not answering at all.
+   */
+  const activeRef = useRef<string | null>(null);
+  activeRef.current = activeId;
+
+  /** How long the server says a lock lasts, as of the last one it granted. */
+  const lockTtl = useRef(LOCK_TTL_GUESS_MS);
+
+  /**
+   * Refetches the sidebar, coalescing a burst into one round trip.
+   *
+   * The server announces every save, and a sheet being typed into saves about
+   * once a second — so without this, every other browser in the space would
+   * reload the list once a second for the length of someone else's sentence.
+   */
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshListSoon = useCallback(() => {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => {
+      settle.current = null;
+      void refreshSheets().catch(() => undefined);
+      void api.listFolders().then(setFolders).catch(() => undefined);
+    }, LIVE_SETTLE_MS);
+  }, [refreshSheets]);
+
+  useEffect(
+    () => () => {
+      if (settle.current) clearTimeout(settle.current);
+    },
+    [],
+  );
+
+  /**
+   * Believes what the server says about who is editing the open sheet.
+   *
+   * Nobody holding it is not a neutral fact to note. This browser has the sheet
+   * on screen and is sitting read-only in front of it, so a lock that has just
+   * been let go is claimed — which is what turns "another browser is editing
+   * this sheet" back into an editable sheet the moment the other tab closes,
+   * rather than at the next thing you tried to do.
+   */
+  const applyLockHolder = useCallback(
+    (sheetId: string, holder: Lock | null) => {
+      if (sheetId !== activeRef.current) return;
+      if (holder === null) {
+        void api
+          .acquireLock(sheetId, identity.id, identity.name)
+          .then((result) => {
+            if (sheetId !== activeRef.current) return;
+            lockTtl.current = result.ttlMs;
+            setLock({ granted: result.granted, holder: result.lock });
+            if (result.granted) setStatus('idle');
+          })
+          .catch(() => undefined);
+        return;
+      }
+      const mine = holder.clientId === identity.id;
+      setLock({ granted: mine, holder });
+      if (!mine) setStatus('readonly');
+    },
+    [identity.id, identity.name],
+  );
+
+  /**
+   * What each announcement from the server means for what is on screen.
+   *
+   * Rebuilt every render, which is why `useLive` reads it through a ref: it has
+   * to close over the sheet that is open and whether this browser holds its
+   * lock, and neither is worth reopening the stream over.
+   */
+  const onLive = (event: LiveEvent) => {
+    switch (event.type) {
+      case 'hello':
+        /*
+         * A stream that has just connected may be one that reconnected, and a
+         * reconnect cannot know what it missed — the server keeps no log to
+         * replay. So everything visible is re-read rather than any attempt made
+         * to work out the size of the gap.
+         */
+        refreshListSoon();
+        void api.settings().then(setSettings).catch(() => undefined);
+        void refreshRates();
+        if (activeId) {
+          void api
+            .getSheet(activeId)
+            .then((sheet) => applyLockHolder(sheet.id, sheet.lock ?? null))
+            .catch(() => undefined);
+        }
+        break;
+
+      case 'list':
+        if (event.owner === space) refreshListSoon();
+        break;
+
+      case 'sheet': {
+        if (event.id !== activeId) break;
+        // Holding the lock means this is our own save coming back, or an edit
+        // that got past the lock — and the version check on the next save is
+        // what covers the second case, with the conflict panel behind it.
+        if (lock.granted) break;
+        // Reading along as someone else writes. Never over unsaved text: a tab
+        // that lost the lock mid-sentence still has that sentence in the box,
+        // and it has nowhere else to be.
+        if (content !== savedContent.current) break;
+        void openSheet(event.id).catch(() => undefined);
+        break;
+      }
+
+      case 'lock':
+        applyLockHolder(event.sheetId, event.holder);
+        break;
+
+      case 'rates':
+        void refreshRates();
+        break;
+
+      case 'settings':
+        // A change to the instance-wide tier arrives with a null owner and
+        // resolves into this space's effective values, so both are worth
+        // re-reading here.
+        if (event.owner === null || event.owner === space) {
+          void api.settings().then(setSettings).catch(() => undefined);
+        }
+        break;
+    }
+  };
+
+  // Not opened until the gate is settled and passed: on a locked instance the
+  // stream is one more request to 401, and it is the one request that would
+  // retry forever.
+  const live = useLive(
+    session !== null && (!session.required || session.authenticated),
+    onLive,
+  );
+
+  /*
+   * The fallback the stream is allowed to fail into.
+   *
+   * A proxy that buffers responses accepts the connection and then holds every
+   * event until it ends, which for this stream is never — so `live` is false
+   * whenever nothing has arrived recently, whatever the socket thinks. Asking
+   * on a timer is slower than being told and still much better than the app's
+   * previous answer, which was to find out when you happened to act.
+   */
+  useEffect(() => {
+    if (live) return;
+    const timer = setInterval(refreshListSoon, FALLBACK_POLL_MS);
+    return () => clearInterval(timer);
+  }, [live, refreshListSoon]);
+
+  /*
+   * Hold the lock while this tab is the editor — and, when the event stream is
+   * not flowing, watch for it while this tab is not.
+   *
+   * Holding it means renewing it before it lapses, always: the stream can say
+   * that someone else has taken the lock, but nothing can renew it on this
+   * browser's behalf. *Not* holding it is the case that had no poll at all,
+   * which is why a banner about a tab closed ten minutes ago stayed up until
+   * you tried to type. The stream now answers that in a moment, so this runs
+   * only as its fallback.
+   */
+  useEffect(() => {
+    if (!activeId) return;
+    if (!lock.granted && live) return;
+    const timer = setInterval(() => {
+      void api
+        .acquireLock(activeId, identity.id, identity.name)
+        .then((result) => {
+          lockTtl.current = result.ttlMs;
+          setLock({ granted: result.granted, holder: result.lock });
+        })
+        .catch(() => undefined);
+    }, LOCK_HEARTBEAT_MS);
+    return () => clearInterval(timer);
+  }, [activeId, lock.granted, live, identity.id, identity.name]);
+
+  /*
+   * Ask again at the moment the lock being waited on would have lapsed.
+   *
+   * A tab that closes properly says so, and the stream passes that straight on
+   * — which is what makes the read-only banner clear itself in a moment rather
+   * than at the next thing you tried to do. A tab that crashes, sleeps or loses
+   * its network says nothing at all, and then the only thing that frees the
+   * sheet is the lock ageing out, quietly, in the store, with nobody to tell.
+   *
+   * So a read-only tab asks once, timed to that expiry, rather than polling.
+   * If the holder is still there the answer carries a fresh lock and this
+   * schedules itself again; if it is gone, the sheet becomes editable here.
+   */
+  useEffect(() => {
+    if (!activeId || lock.granted || !lock.holder) return;
+    const timer = setTimeout(() => {
+      void api
+        .acquireLock(activeId, identity.id, identity.name)
+        .then((result) => {
+          if (activeId !== activeRef.current) return;
+          lockTtl.current = result.ttlMs;
+          setLock({ granted: result.granted, holder: result.lock });
+          if (result.granted) setStatus('idle');
+        })
+        .catch(() => undefined);
+      // A margin over the stated life, so a lock renewed a moment before it
+      // lapsed is not asked about in the gap between the two.
+    }, lockTtl.current + 2_000);
+    return () => clearTimeout(timer);
+  }, [activeId, lock.granted, lock.holder, identity.id, identity.name]);
 
   const save = useCallback(
     async (
@@ -534,6 +766,7 @@ export function App() {
     try {
       const result = await api.acquireLock(activeId, identity.id, identity.name, true);
       await openSheet(activeId);
+      lockTtl.current = result.ttlMs;
       setLock({ granted: result.granted, holder: result.lock });
       setStatus('idle');
     } catch (cause) {

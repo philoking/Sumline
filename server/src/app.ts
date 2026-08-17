@@ -13,6 +13,7 @@ import {
 } from './spaces.js';
 import { RatesService, type RateFetcher } from './rates.js';
 import { HolidayService, type HolidayFetcher } from './holidays.js';
+import { Events, frame } from './events.js';
 import {
   SESSION_COOKIE,
   clearedSessionCookie,
@@ -51,6 +52,8 @@ export interface AppOptions {
   lockTtlMs?: number;
   logger?: boolean;
   seedWelcomeSheet?: boolean;
+  /** How often an idle event stream sends a beat. Tests turn this down. */
+  eventHeartbeatMs?: number;
 }
 
 export interface App {
@@ -58,9 +61,20 @@ export interface App {
   store: Store;
   rates: RatesService;
   holidays: HolidayService;
+  events: Events;
 }
 
 const DEFAULT_LOCK_TTL_MS = 45_000;
+
+/**
+ * How often an idle event stream sends a beat down the wire.
+ *
+ * Well under the minute most proxies and load balancers give an idle response
+ * before closing it, and well under the point at which a phone's radio has
+ * quietly dropped the connection without telling either end. The client reads
+ * the same beats as proof the stream is still flowing — see `STALE_MS` there.
+ */
+const EVENT_HEARTBEAT_MS = 20_000;
 
 /**
  * The longest sheet `POST /api/evaluate` will take in one call.
@@ -237,12 +251,16 @@ export function buildApp(options: AppOptions): App {
 
   const lockTtlMs = options.lockTtlMs ?? DEFAULT_LOCK_TTL_MS;
 
+  const events = new Events();
+
   const rates = new RatesService({
     store,
     ...(options.rateFetcher && { fetcher: options.rateFetcher }),
     ...(options.rateRefreshIntervalMs !== undefined && {
       refreshIntervalMs: options.rateRefreshIntervalMs,
     }),
+    onUpdate: (table) =>
+      events.emit({ type: 'rates', date: table.date, stale: table.stale === true }),
     log: {
       info: (msg) => server.log.info(msg),
       warn: (msg) => server.log.warn(msg),
@@ -403,6 +421,74 @@ export function buildApp(options: AppOptions): App {
   }));
 
   /**
+   * What changed, as it changes.
+   *
+   * The app was entirely poll-driven before this: the sheet list refreshed only
+   * when *this* browser altered something, and the lock banner was as old as the
+   * last 15-second heartbeat. So a second person opening your sheet, or renaming
+   * one in the list, was invisible until you happened to act.
+   *
+   * Server-sent events rather than a socket because every message here goes one
+   * way. The browser already has a well-tested client for them with reconnection
+   * and backoff built in, and the alternative would be a dependency and a
+   * protocol upgrade to send strictly less.
+   *
+   * The stream carries notice, not data — see `LiveEvent`. A client that misses
+   * some is not left inconsistent, only late, and the `hello` it gets on every
+   * connect tells it to resync.
+   */
+  server.get('/api/events', (request, reply) => {
+    // Fastify must not try to send its own reply down a socket we are about to
+    // hold open for the life of the tab.
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      // nginx buffers a proxied response by default, which for a stream that
+      // never ends means holding every event forever. This is the header it
+      // reads to leave one alone; the client's staleness check is what catches
+      // the proxies that have no such header.
+      'x-accel-buffering': 'no',
+    });
+
+    const write = (chunk: string): void => {
+      if (!reply.raw.writableEnded) reply.raw.write(chunk);
+    };
+
+    // Slower than the browser's own three-second default. A server that has
+    // gone away is usually gone for longer than that, and a room of tabs each
+    // retrying three times a second is a denial of service with extra steps.
+    write('retry: 5000\n\n');
+
+    const beat = setInterval(
+      () => write(frame({ type: 'beat' })),
+      options.eventHeartbeatMs ?? EVENT_HEARTBEAT_MS,
+    );
+    beat.unref?.();
+
+    const unsubscribe = events.subscribe({
+      // Fixed at connect time, which is correct: switching space reloads the
+      // app, and a reload is a new stream.
+      owner: currentUser(request),
+      send: (event) => write(frame(event)),
+      close: () => reply.raw.end(),
+    });
+
+    const stop = (): void => {
+      clearInterval(beat);
+      unsubscribe();
+    };
+    request.raw.on('close', stop);
+    reply.raw.on('close', stop);
+
+    write(frame({ type: 'hello', rateDate: rates.current().date }));
+  });
+
+  /** Says a space's sheet and folder list has moved. */
+  const listChanged = (owner: UserId): void => events.emit({ type: 'list', owner });
+
+  /**
    * The current rates, or `?on=YYYY-MM-DD` for a past date.
    *
    * 404 rather than today's table when a past date cannot be answered: the
@@ -505,6 +591,7 @@ export function buildApp(options: AppOptions): App {
 
       const owner = currentUser(request);
       store.saveSettings(owner, changes);
+      events.emit({ type: 'settings', owner });
       return settingsFor(owner);
     },
   );
@@ -541,6 +628,9 @@ export function buildApp(options: AppOptions): App {
       // a region instance-wide should not require sending the variables too.
       if (globals === undefined && Object.keys(wide).length > 0) {
         store.saveSharedSettings(wide);
+        // Null owner: this tier is inherited by every space, so every stream
+        // hears about it rather than only the one that made the change.
+        events.emit({ type: 'settings', owner: null });
         return { ...wide };
       }
       // Arrays are objects, and an array would land as globals named "0", "1"
@@ -559,6 +649,7 @@ export function buildApp(options: AppOptions): App {
         cleaned[name.trim()] = value;
       }
       store.saveSharedSettings({ ...wide, globals: cleaned });
+      events.emit({ type: 'settings', owner: null });
       return { ...wide, globals: cleaned };
     },
   );
@@ -641,8 +732,11 @@ export function buildApp(options: AppOptions): App {
   server.post<{ Body: { name?: string } }>('/api/folders', async (request, reply) => {
     const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
     if (!name) return reply.code(400).send({ error: 'name is required' });
+    const owner = currentUser(request);
     reply.code(201);
-    return store.createFolder(currentUser(request), name);
+    const folder = store.createFolder(owner, name);
+    listChanged(owner);
+    return folder;
   });
 
   server.put<{ Params: { id: string }; Body: { name?: string } }>(
@@ -650,9 +744,11 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
       if (!name) return reply.code(400).send({ error: 'name is required' });
-      if (!store.renameFolder(request.params.id, name, currentUser(request))) {
+      const owner = currentUser(request);
+      if (!store.renameFolder(request.params.id, name, owner)) {
         return reply.code(404).send({ error: 'Folder not found' });
       }
+      listChanged(owner);
       return { id: request.params.id, name };
     },
   );
@@ -662,9 +758,11 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const color = readColor(request.body?.color);
       if (color === INVALID) return reply.code(400).send({ error: 'Unusable colour' });
-      if (!store.setFolderColor(request.params.id, color, currentUser(request))) {
+      const owner = currentUser(request);
+      if (!store.setFolderColor(request.params.id, color, owner)) {
         return reply.code(404).send({ error: 'Folder not found' });
       }
+      listChanged(owner);
       return { id: request.params.id, color };
     },
   );
@@ -672,9 +770,11 @@ export function buildApp(options: AppOptions): App {
   server.delete<{ Params: { id: string } }>(
     '/api/folders/:id',
     async (request, reply) => {
-      if (!store.deleteFolder(request.params.id, currentUser(request))) {
+      const owner = currentUser(request);
+      if (!store.deleteFolder(request.params.id, owner)) {
         return reply.code(404).send({ error: 'Folder not found' });
       }
+      listChanged(owner);
       // The folder's sheets are not deleted with it — they return to the top
       // level, because losing notes to a folder tidy-up would be indefensible.
       return { deleted: true };
@@ -720,22 +820,32 @@ export function buildApp(options: AppOptions): App {
       return reply.code(400).send({ error: 'Nothing to reorder' });
     }
     store.saveSettings(owner, { sheetOrder: 'manual' });
+    listChanged(owner);
+    // The reorder changed a setting on its way through, and a second browser in
+    // this space has to hear about that too or its sidebar goes on offering to
+    // sort by recent while the list is arranged by hand.
+    events.emit({ type: 'settings', owner });
     return { ordered: true };
   });
 
   server.post<{ Params: { id: string } }>(
     '/api/sheets/:id/restore',
     async (request, reply) => {
-      if (!store.restoreSheet(request.params.id, currentUser(request))) {
+      const owner = currentUser(request);
+      if (!store.restoreSheet(request.params.id, owner)) {
         return reply.code(404).send({ error: 'Sheet not found' });
       }
+      listChanged(owner);
       return { restored: true };
     },
   );
 
-  server.delete('/api/trash', async (request) => ({
-    purged: store.emptyTrash(currentUser(request)),
-  }));
+  server.delete('/api/trash', async (request) => {
+    const owner = currentUser(request);
+    const purged = store.emptyTrash(owner);
+    if (purged > 0) listChanged(owner);
+    return { purged };
+  });
 
   server.post<{ Body: { title?: string; content?: string; folderId?: string | null } }>(
     '/api/sheets',
@@ -746,12 +856,14 @@ export function buildApp(options: AppOptions): App {
       const rawTitle = request.body?.title;
       const rawContent = request.body?.content;
       const title = (typeof rawTitle === 'string' ? rawTitle : '').trim() || 'Untitled';
+      const owner = currentUser(request);
       const sheet = store.createSheet(
-        currentUser(request),
+        owner,
         title,
         typeof rawContent === 'string' ? rawContent : '',
         typeof request.body?.folderId === 'string' ? request.body.folderId : null,
       );
+      listChanged(owner);
       reply.code(201);
       return sheet;
     },
@@ -798,7 +910,12 @@ export function buildApp(options: AppOptions): App {
       folderId?: string | null;
     };
   }>('/api/sheets/:id', async (request, reply) => {
-    if (!store.getSheet(request.params.id)) {
+    // Kept, not discarded: the owner is the sheet's own rather than the
+    // caller's, so an edit made through a share link tells the list the sheet
+    // actually belongs to instead of the list the editor happens to be looking
+    // at — which does not hold it.
+    const existing = store.getSheet(request.params.id);
+    if (!existing) {
       return reply.code(404).send({ error: 'Sheet not found' });
     }
     try {
@@ -806,7 +923,15 @@ export function buildApp(options: AppOptions): App {
       if (typeof request.body?.title === 'string') changes.title = request.body.title;
       if (typeof request.body?.content === 'string') changes.content = request.body.content;
       if (request.body?.folderId !== undefined) changes.folderId = request.body.folderId;
-      return store.updateSheet(request.params.id, changes, request.body?.version);
+      const saved = store.updateSheet(request.params.id, changes, request.body?.version);
+      events.emit({
+        type: 'sheet',
+        id: saved.id,
+        owner: existing.owner,
+        version: saved.version,
+      });
+      listChanged(existing.owner);
+      return saved;
     } catch (error) {
       if (error instanceof VersionConflictError) {
         // Hand back the server's copy so the client can show what it would
@@ -824,9 +949,11 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const color = readColor(request.body?.color);
       if (color === INVALID) return reply.code(400).send({ error: 'Unusable colour' });
-      if (!store.setSheetColor(request.params.id, color)) {
+      const sheet = store.getSheet(request.params.id);
+      if (!sheet || !store.setSheetColor(request.params.id, color)) {
         return reply.code(404).send({ error: 'Sheet not found' });
       }
+      listChanged(sheet.owner);
       return { id: request.params.id, color };
     },
   );
@@ -841,11 +968,19 @@ export function buildApp(options: AppOptions): App {
       // share link reports 404 here rather than being deleted out from under
       // the person it belongs to.
       const owner = currentUser(request);
+      const held = store.getLock(request.params.id) !== null;
       const removed =
         request.query?.purge === '1'
           ? store.deleteSheet(request.params.id, owner)
           : store.trashSheet(request.params.id, owner);
       if (!removed) return reply.code(404).send({ error: 'Sheet not found' });
+      listChanged(owner);
+      // Both paths drop the lock in the store, so a browser sitting on this
+      // sheet read-only is told rather than left with a banner about someone
+      // editing a sheet that is now in the trash.
+      if (held) {
+        events.emit({ type: 'lock', sheetId: request.params.id, holder: null });
+      }
       return { deleted: true };
     },
   );
@@ -860,6 +995,7 @@ export function buildApp(options: AppOptions): App {
       return reply.code(404).send({ error: 'Sheet not found' });
     }
 
+    const before = store.getLock(request.params.id);
     const result = store.acquireLock(
       request.params.id,
       clientId,
@@ -867,6 +1003,12 @@ export function buildApp(options: AppOptions): App {
       lockTtlMs,
       request.body?.force === true,
     );
+    // Only when the holder actually changed hands. This endpoint is also the
+    // heartbeat, called every fifteen seconds by whoever is editing, and a
+    // broadcast on each of those would be a stream of "still the same person".
+    if (result.granted && before?.clientId !== result.lock.clientId) {
+      events.emit({ type: 'lock', sheetId: request.params.id, holder: result.lock });
+    }
     return { granted: result.granted, lock: result.lock, ttlMs: lockTtlMs };
   });
 
@@ -875,7 +1017,14 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const clientId = request.query?.clientId;
       if (!clientId) return reply.code(400).send({ error: 'clientId is required' });
+      const before = store.getLock(request.params.id);
       store.releaseLock(request.params.id, clientId);
+      // Silent unless this really was the holder letting go — every tab that
+      // closes calls this for the sheet it had open, whether or not it was the
+      // one editing, and the sheet is free either way.
+      if (before?.clientId === clientId) {
+        events.emit({ type: 'lock', sheetId: request.params.id, holder: null });
+      }
       return reply.code(204).send();
     },
   );
@@ -897,11 +1046,22 @@ export function buildApp(options: AppOptions): App {
     holidays.start();
   }
 
+  /*
+   * `preClose`, not `onClose`, and that distinction is the whole point of the
+   * hook: `onClose` runs *after* Fastify has stopped the HTTP server and waited
+   * for its connections to finish. These connections are designed never to
+   * finish, so a shutdown would sit there until the last tab was closed — which
+   * in a test run means a suite that hangs rather than a server that stops.
+   */
+  server.addHook('preClose', async () => {
+    events.closeAll();
+  });
+
   server.addHook('onClose', async () => {
     rates.stop();
     holidays.stop();
     store.close();
   });
 
-  return { server, store, rates, holidays };
+  return { server, store, rates, holidays, events };
 }
