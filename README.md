@@ -441,6 +441,12 @@ button in the toolbar leaves variable lines out, for a sheet that declares a few
 then works with them — where counting the declarations reads high by exactly the sum of the
 things the answer was built from.
 
+**Select more than one line** and the same figure appears beside the selection, for those lines
+alone. It follows whichever statistic the corner is set to, so the two never disagree about what
+"the figure" means, and the corner keeps showing the whole sheet — the point is to read one
+against the other. Selecting inside a single line shows nothing: that line's answer is already
+sitting beside it.
+
 ### Sheets
 
 Sheets can be searched by title or content, and are moved to a **trash** when deleted rather

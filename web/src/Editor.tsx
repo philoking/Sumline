@@ -2,6 +2,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -49,6 +50,16 @@ export interface EditorProps {
   reveal: number | null;
   /** Called once `reveal` has been acted on, so the app can clear it. */
   onRevealed(): void;
+  /**
+   * The figure for a run of lines, asked for when a selection covers more than
+   * one. Returns null when those lines add up to nothing worth showing.
+   *
+   * A callback rather than the engine itself, because which statistic is being
+   * shown and whether variable lines count towards it are the app's business —
+   * and the selection figure has to answer the same question the corner does or
+   * the two would disagree about what "the figure" means.
+   */
+  summarise(from: number, to: number): { label: string; value: string } | null;
   ref?: Ref<EditorHandle>;
 }
 
@@ -69,6 +80,41 @@ interface PopoverAt {
   line: number;
   x: number;
   y: number;
+}
+
+/** The run of lines a selection covers. */
+interface Span {
+  from: number;
+  to: number;
+}
+
+/**
+ * The lines a selection covers, or null when there is no useful question.
+ *
+ * A selection inside one line is not worth answering — the answer to that line
+ * is already sitting beside it — so this reports only runs of two or more.
+ *
+ * Dragging to the start of the next line is the ordinary way to select whole
+ * lines, and it leaves the selection technically touching a line none of whose
+ * text is in it. That line is dropped, or selecting three lines by dragging
+ * through them would report four.
+ */
+function selectionSpan(view: EditorView): Span | null {
+  const { from, to, empty } = view.state.selection.main;
+  if (empty) return null;
+
+  const first = view.state.doc.lineAt(from).number;
+  const lastLine = view.state.doc.lineAt(to);
+  const last = to === lastLine.from && lastLine.number > first
+    ? lastLine.number - 1
+    : lastLine.number;
+
+  return last > first ? { from: first, to: last } : null;
+}
+
+function sameSpan(a: Span | null, b: Span | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.from === b.from && a.to === b.to;
 }
 
 /**
@@ -391,6 +437,7 @@ export function Editor({
   onChange,
   reveal,
   onRevealed,
+  summarise,
   ref,
 }: EditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -411,6 +458,15 @@ export function Editor({
    * Tab key — see `tabStop`.
    */
   const [activeLine, setActiveLine] = useState(1);
+  /**
+   * The selected run of lines, and where to float its figure.
+   *
+   * Two pieces rather than one so that scrolling, which moves the figure,
+   * does not also look like the selection changing and send the sheet's
+   * statistic through the engine again on every frame.
+   */
+  const [span, setSpan] = useState<Span | null>(null);
+  const [spot, setSpot] = useState<{ top: number; left: number } | null>(null);
 
   onChangeRef.current = onChange;
   onRevealedRef.current = onRevealed;
@@ -439,6 +495,42 @@ export function Editor({
       next.push({ line: number, top: coords.top - hostTop, height: block.height });
     }
     setBoxes(next);
+
+    // The floating figure is placed in the same pass as the answers, so it
+    // follows the sheet when it scrolls or the layout reflows rather than
+    // hanging where the selection used to be on screen.
+    const selected = selectionSpan(view);
+    setSpan((previous) => (sameSpan(previous, selected) ? previous : selected));
+    if (!selected) {
+      setSpot(null);
+      return;
+    }
+
+    const caret = view.coordsAtPos(view.state.selection.main.head);
+    if (!caret) {
+      setSpot(null);
+      return;
+    }
+    /*
+     * Beside the end of the selection rather than below it.
+     *
+     * Below looks tidier until you try it: the line under a selection is the
+     * one you are about to extend onto, and covering it is the one thing this
+     * must not do. Sheets leave the right of the text column empty, so sitting
+     * on the same line as the selection's end usually covers nothing at all.
+     */
+    const textWidth =
+      editorHostRef.current?.getBoundingClientRect().width ?? host.clientWidth;
+    const hostLeft = host.getBoundingClientRect().left;
+    const top = Math.round(caret.top - hostTop + 4);
+    const left = Math.round(
+      Math.max(0, Math.min(caret.left - hostLeft + 14, textWidth - 150)),
+    );
+    setSpot((previous) =>
+      previous && previous.top === top && previous.left === left
+        ? previous
+        : { top, left },
+    );
   });
 
   useLayoutEffect(() => {
@@ -484,6 +576,9 @@ export function Editor({
               // this costs a render per line moved between, not per keystroke.
               const { head } = update.state.selection.main;
               setActiveLine(update.state.doc.lineAt(head).number);
+              // Selecting changes neither the document nor the geometry, so
+              // nothing else here would notice a selection being dragged.
+              requestAnimationFrame(() => measure.current());
             }
             // The find panel opening or closing takes a strip of height off
             // the top of the sheet, which moves every line down the screen
@@ -638,6 +733,13 @@ export function Editor({
   };
 
   const menuResult = menu ? results[menu.line - 1] : undefined;
+
+  // Recomputed when the selection moves or the answers change, not when the
+  // sheet is merely scrolled — see the two pieces of state above.
+  const figure = useMemo(
+    () => (span ? summarise(span.from, span.to) : null),
+    [span, summarise],
+  );
 
   /*
    * One tab stop for the whole column, on the line the caret is sitting on.
@@ -807,6 +909,17 @@ export function Editor({
           );
         })}
       </div>
+
+      {/* The same figure the corner shows, asked of part of the sheet. It never
+          takes the pointer: it floats over the text you are selecting, and
+          swallowing a click there would be worse than not being there. */}
+      {span && spot && figure && (
+        <div className="selection-figure" style={{ top: spot.top, left: spot.left }}>
+          <span className="selection-figure-label">{figure.label}</span>
+          <span className="selection-figure-value">{figure.value}</span>
+          <span className="selection-figure-lines">{span.to - span.from + 1} lines</span>
+        </div>
+      )}
 
       {errorAt && (
         <>

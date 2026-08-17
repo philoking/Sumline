@@ -1234,6 +1234,54 @@ button.danger-button:disabled {
   line-height: 1.5;
 }
 
+/* ---- the figure for a selection ---- */
+
+/* Floats beside what is selected rather than replacing the corner, so the
+   whole-sheet figure stays put and the two can be read against each other. */
+.selection-figure {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 22%);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  white-space: nowrap;
+  /* It sits over the text being selected; taking the pointer there would be
+     worse than not being there at all. */
+  pointer-events: none;
+}
+
+.selection-figure-label {
+  color: var(--muted);
+}
+
+.selection-figure-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.selection-figure-lines {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.selection-figure-lines::before {
+  content: '· ';
+}
+
+@media print {
+  .selection-figure {
+    display: none !important;
+  }
+}
+
 /* ---- the sheet total ---- */
 
 .total {

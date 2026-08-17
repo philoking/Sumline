@@ -132,6 +132,28 @@ export function App() {
     [engine, results, statistic, countVariables],
   );
 
+  /**
+   * The figure for a run of selected lines.
+   *
+   * Runs through the same `summary` call the corner uses, with the same
+   * statistic and the same rule about variable lines, so selecting the whole
+   * sheet gives the number already in the corner rather than a second opinion
+   * about what "the figure" means.
+   */
+  const summariseLines = useCallback(
+    (from: number, to: number) => {
+      const value = engine.summary(results.slice(from - 1, to), statistic, {
+        countVariables,
+      });
+      if (!value) return null;
+      return {
+        label: statistic === 'total' ? 'Total' : capitalise(statistic),
+        value,
+      };
+    },
+    [engine, results, statistic, countVariables],
+  );
+
   /** The content the server last confirmed, so we never save a no-op. */
   const savedContent = useRef('');
 
@@ -1125,6 +1147,7 @@ export function App() {
               results={results}
               readOnly={!lock.granted}
               reveal={reveal}
+              summarise={summariseLines}
               onChange={setContent}
               onRevealed={() => setReveal(null)}
             />
