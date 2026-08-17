@@ -35,10 +35,26 @@ export interface MathContext {
  * free. The instance is disposable: refreshing rates means building a new one,
  * which keeps the engine free of mutable global state.
  */
+export const DEFAULT_FPS = 24;
+
+/**
+ * Coerces a frame rate arriving from outside the engine.
+ *
+ * Everything that reads a timecode divides by this, so zero, a negative and NaN
+ * all have to be refused rather than trusted: `fps = 0` turns every timecode
+ * into a parse error, and a negative one answers with negative frames. Like the
+ * region, it is a stored setting that an API caller can write by hand.
+ */
+export function toFps(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_FPS;
+}
+
 export function createMathContext(
   rates?: RateTable,
   holidays: ReadonlySet<string> = new Set(),
-  fps = 24,
+  fps: number = DEFAULT_FPS,
   historicalRates: HistoricalRates = {},
 ): MathContext {
   // `all` is typed as optionally undefined by mathjs, but is always populated.
@@ -53,7 +69,7 @@ export function createMathContext(
   // mixed-currency sum answers in, so the set must already be populated.
   registerValueTypes(math, currencies);
 
-  return { math, currencies, holidays, fps, historicalRates };
+  return { math, currencies, holidays, fps: toFps(fps), historicalRates };
 }
 
 function registerCurrencies(

@@ -27,11 +27,9 @@ docker compose up -d --build
 Open <http://localhost:8422>. Sheets are stored in the `webcalc-data` volume and survive
 restarts and rebuilds.
 
-Set `TZ` so date maths resolves in your own timezone:
-
-```bash
-TZ=America/New_York docker compose up -d
-```
+Date maths resolves in **your browser's** timezone, not the container's, so `today` is your
+today wherever the instance is hosted. Nothing needs setting for that. See
+[Time zones and the clock](#time-zones-and-the-clock) if you want the detail.
 
 ## Syntax
 
@@ -70,8 +68,20 @@ Large plain numbers are abbreviated with SI-style symbols (`k`, `M`, `G`, `T`) a
 the way Soulver does. Currency is always written out in full. The toggle in the top bar turns
 abbreviation off if you'd rather see every digit.
 
-Number conventions follow a region setting — `1.234,56` is read correctly under Western Europe,
-and underscores group digits everywhere.
+Number conventions follow a **region**, set per space in Space settings:
+
+| Region | Reads and writes |
+| --- | --- |
+| North America (default) | `1,234.56` |
+| Western Europe | `1.234,56` |
+| Eastern Europe | `1 234,56` |
+
+Underscores group digits in every region, so `1_000_000` works wherever you are.
+
+The region decides how a sheet is **read**, not only how its answers look. `1.234 + 1` is
+`1.235` under Western Europe and `2.234` under North America — so changing it changes what
+sheets you have already written compute, which is why it belongs to a space rather than to a
+browser.
 
 ### Rounding
 
@@ -260,8 +270,13 @@ European day.month.year.
 | `today + 5 business days` | `Fri 21 Aug 2026` |
 
 Public holidays are excluded. The list comes from [Nager.Date](https://date.nager.at/), refreshed
-weekly and cached, with `HOLIDAY_COUNTRY` selecting the country. With no network it falls back to
-a small bundled set of fixed-date holidays.
+weekly and cached. With no network it falls back to a small bundled set of fixed-date holidays.
+
+**Each space picks its own country** in Space settings — a two-letter code like `DE` — so a space
+per client can do workday maths against that client's calendar. `HOLIDAY_COUNTRY` sets the default
+for spaces that have not chosen. The panel reports how many holidays actually loaded, because a
+code the provider does not cover would otherwise show up much later as workday maths quietly
+counting a holiday.
 
 ### Clock times, timespans and timecode
 
@@ -282,6 +297,9 @@ a small bundled set of fixed-date holidays.
 A laptime needs two colons and a timecode three, which is how they are told apart from a clock
 time. The compact `3h 5m 10s` form needs at least two components, so a lone `5m` stays five metres.
 
+A timecode that names no frame rate uses the space's default, which is 24 unless Space settings
+says otherwise. Writing `@ 30 fps` on the line still wins.
+
 ### Time zones
 
 | You type | You get |
@@ -297,6 +315,22 @@ Cities, countries, IATA airport codes, US abbreviations (`PST`, `eastern time`) 
 all work. The place-name table is bundled so this keeps working offline; conversion itself uses
 the platform's own timezone database.
 
+#### Time zones and the clock
+
+Anything that means "here" — `today`, `now`, `4pm`, `current timestamp`, and the offset in
+`as iso8601` — resolves in **the browser's** timezone. Evaluation runs entirely client-side, so
+the machine hosting the container never enters into it.
+
+That is usually what you want, and it is why nothing needs configuring: two people in different
+countries reading the same shared instance each get their own `today`, and a laptop that travels
+follows along by itself.
+
+It also means the container's `TZ` does **not** decide date maths, whatever it is set to. It sets
+the container's own clock — log timestamps, and which years of public holidays get fetched — and
+nothing else. A space cannot currently pin a timezone of its own; if you need one client's sheets
+to resolve in that client's zone regardless of who is reading them, name the zone in the line
+(`6pm Sydney`), which works today.
+
 ### Timestamps
 
 | You type | You get |
@@ -308,7 +342,7 @@ the platform's own timezone database.
 | `April 1, 2019 3:30pm as iso8601` | `2019-04-01T15:30:00-07:00` |
 
 Timestamps are absolute but the dates they render as are not: both the time shown and the offset
-written by `as iso8601` follow the container's `TZ`. The examples above assume
+written by `as iso8601` follow **the browser's** timezone. The examples above assume a reader in
 `America/Los_Angeles`.
 
 ### Statistics
@@ -461,6 +495,36 @@ doesn't do, because the same line is a passing test. Adding one to the docs mean
 
 From the ⤓ menu: copy with answers, or download as text, Markdown or CSV. **Print / save as PDF**
 uses a print stylesheet that lays the answer column beside the text on paper.
+
+### Space settings
+
+Behind the initial in the top bar. A space carries three things beyond its sheets:
+
+| Setting | What it does |
+| --- | --- |
+| **Numbers** | The [region](#numbers-and-notation) its sheets are written in. Changes how they are read, not just how answers look. |
+| **Timecode** | The frame rate a timecode assumes when it names none. |
+| **Public holidays** | The [country](#workdays) whose calendar `workdays` leaves out. |
+| **Variables** | Globals every sheet can use — the section below. |
+
+The first three are per space rather than per browser, because they change what a sheet
+*computes*: two browsers open on the same space must not disagree about what `1.234` means. That
+is the opposite of the theme, which is per browser precisely because it changes nothing.
+
+A space's **timezone** is deliberately not on that list — date maths follows the reader's browser
+instead, which is explained under [Time zones and the clock](#time-zones-and-the-clock).
+
+They can be set through the API too:
+
+```bash
+curl -X PUT http://localhost:8422/api/settings \
+  -H 'content-type: application/json' -H 'cookie: webcalc_user=work' \
+  -d '{"region": "western-europe", "fps": 30, "holidayCountry": "DE"}'
+```
+
+A region the server does not recognise is refused if it is not shaped like a region name at all,
+and otherwise falls back to the default — the list of regions lives in the engine, and the server
+keeps no second copy of it to drift out of step.
 
 ### Global variables
 
@@ -765,8 +829,8 @@ app on an empty database.**
 | `HOST` | `0.0.0.0` | Bind address |
 | `DATA_DIR` | `/data` | Directory holding `webcalc.db` |
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
-| `TZ` | `UTC` | Timezone for date calculations |
-| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
+| `TZ` | `UTC` | The **container's** clock: log timestamps, and which years of public holidays get fetched. It does **not** decide how sheets do date maths — that follows the reader's browser. See [Time zones and the clock](#time-zones-and-the-clock). |
+| `HOLIDAY_COUNTRY` | `US` | Default ISO country code for public holidays. A space can [choose its own](#workdays), which wins. |
 | `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
 | `WEBCALC_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
 

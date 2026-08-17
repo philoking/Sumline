@@ -1,5 +1,21 @@
 import { useEffect, useState } from 'react';
-import type { User } from './api';
+import type { NumberRegion, User } from './api';
+
+/**
+ * The regions, each labelled with what it actually does to a number.
+ *
+ * The sample is the label rather than a note beside it, because "Western Europe"
+ * on its own does not tell anyone whether their `1.234` is a thousand or a
+ * fraction — which is the entire question this setting answers.
+ */
+const REGIONS: Array<{ id: NumberRegion; label: string }> = [
+  { id: 'north-america', label: 'North America — 1,234.56' },
+  { id: 'western-europe', label: 'Western Europe — 1.234,56' },
+  { id: 'eastern-europe', label: 'Eastern Europe — 1 234,56' },
+];
+
+const DEFAULT_REGION: NumberRegion = 'north-america';
+const DEFAULT_FPS = 24;
 
 /** One editable global. A list, not a map, so a half-typed row can exist. */
 interface Row {
@@ -17,11 +33,22 @@ export interface SpaceSettingsProps {
   sharedGlobals: Record<string, string>;
   /** False when this is the only space, which cannot be removed. */
   canRemove: boolean;
+  /** This space's number convention, or undefined for the engine's default. */
+  region: NumberRegion | undefined;
+  /** Default frame rate for timecodes, or undefined for the engine's default. */
+  fps: number | undefined;
+  /** This space's holiday country, or undefined for the instance default. */
+  holidayCountry: string | undefined;
+  /** The country and holiday count actually in force, as the server reports it. */
+  holidays: { country: string; count: number } | null;
   /** Shows what an expression works out to, for the preview beside each row. */
   preview(expression: string): string;
   onRename(name: string): void;
   onSaveGlobals(globals: Record<string, string>): void;
   onSaveSharedGlobals(globals: Record<string, string>): void;
+  onSaveRegion(region: NumberRegion): void;
+  onSaveFps(fps: number): void;
+  onSaveHolidayCountry(country: string): void;
   onRemove(): void;
   onClose(): void;
 }
@@ -182,12 +209,18 @@ function GlobalsEditor({
  * right in one space and wrong in another, with nothing on screen saying why.
  */
 export function SpaceSettings(props: SpaceSettingsProps) {
-  const { open, space, globals, sharedGlobals, canRemove, preview } = props;
+  const { open, space, globals, sharedGlobals, canRemove, region, fps, preview } = props;
+  const { holidayCountry, holidays } = props;
   const { onRename, onSaveGlobals, onSaveSharedGlobals, onRemove, onClose } = props;
+  const { onSaveRegion, onSaveFps, onSaveHolidayCountry } = props;
 
   const [name, setName] = useState(space.name);
   const [spaceRows, setSpaceRows] = useState<Row[]>(() => toRows(globals));
   const [sharedRows, setSharedRows] = useState<Row[]>(() => toRows(sharedGlobals));
+  // Held as text so the field can be empty mid-edit without snapping to a
+  // number the moment a digit is deleted.
+  const [fpsText, setFpsText] = useState(String(fps ?? DEFAULT_FPS));
+  const [countryText, setCountryText] = useState(holidayCountry ?? '');
 
   // Reset whenever the panel opens, so a cancelled edit is not still sitting
   // there the next time it is opened.
@@ -196,7 +229,9 @@ export function SpaceSettings(props: SpaceSettingsProps) {
     setName(space.name);
     setSpaceRows(toRows(globals));
     setSharedRows(toRows(sharedGlobals));
-  }, [open, space.name, space.id, globals, sharedGlobals]);
+    setFpsText(String(fps ?? DEFAULT_FPS));
+    setCountryText(holidayCountry ?? '');
+  }, [open, space.name, space.id, globals, sharedGlobals, fps, holidayCountry]);
 
   if (!open) return null;
 
@@ -245,6 +280,100 @@ export function SpaceSettings(props: SpaceSettingsProps) {
               Renaming changes only what is shown. Every sheet stays where it is,
               because they are filed under this space’s id (<code>{space.id}</code>),
               not its name.
+            </p>
+          </section>
+
+          <section className="reference-group">
+            <h3>Numbers</h3>
+            <p className="reference-blurb">
+              Which convention this space’s sheets are written in.
+            </p>
+            <select
+              className="setting-select"
+              value={region ?? DEFAULT_REGION}
+              aria-label="Number region"
+              onChange={(event) => onSaveRegion(event.target.value as NumberRegion)}
+            >
+              {REGIONS.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+            {/* Said plainly because it is not a display preference. Someone
+                expecting this to restyle answers would otherwise find their
+                existing sheets quietly computing different numbers. */}
+            <p className="reference-note">
+              This changes how sheets are <strong>read</strong>, not just how
+              answers look. Under Western Europe a <code>1.234</code> you have
+              already typed means one thousand two hundred and thirty-four, and
+              under North America it means one and a bit.
+            </p>
+
+            <h3>Timecode</h3>
+            <p className="reference-blurb">
+              The frame rate assumed by a timecode that does not name one.
+              Writing <code>@ 30 fps</code> on a line still wins.
+            </p>
+            <input
+              className="setting-input"
+              type="number"
+              min="1"
+              max="1000"
+              value={fpsText}
+              aria-label="Default frame rate"
+              onChange={(event) => setFpsText(event.target.value)}
+              onBlur={() => {
+                const next = Number(fpsText);
+                // A blank or nonsense entry returns to what is stored rather
+                // than saving something the engine would only refuse.
+                if (!Number.isFinite(next) || next <= 0 || next > 1000) {
+                  setFpsText(String(fps ?? DEFAULT_FPS));
+                  return;
+                }
+                if (next !== (fps ?? DEFAULT_FPS)) onSaveFps(next);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+                if (event.key === 'Escape') setFpsText(String(fps ?? DEFAULT_FPS));
+              }}
+            />
+
+            <h3>Public holidays</h3>
+            <p className="reference-blurb">
+              Which country’s holidays <code>workdays</code> leaves out. A
+              two-letter code — <code>US</code>, <code>GB</code>, <code>DE</code>.
+            </p>
+            <input
+              className="setting-input"
+              value={countryText}
+              placeholder="US"
+              maxLength={2}
+              aria-label="Holiday country"
+              onChange={(event) => setCountryText(event.target.value.toUpperCase())}
+              onBlur={() => {
+                const next = countryText.trim().toUpperCase();
+                if (!/^[A-Z]{2}$/.test(next)) {
+                  setCountryText(holidayCountry ?? '');
+                  return;
+                }
+                if (next !== holidayCountry) onSaveHolidayCountry(next);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+                if (event.key === 'Escape') setCountryText(holidayCountry ?? '');
+              }}
+            />
+            {/* What is actually loaded, not what was asked for. A code the
+                provider does not cover otherwise fails silently and shows up
+                much later as workday maths that counts a holiday. */}
+            <p className="reference-note">
+              {holidays === null
+                ? 'Holidays have not loaded yet.'
+                : holidays.count === 0
+                  ? `No holidays loaded for ${holidays.country} — workdays will count weekends only.`
+                  : `${holidays.count} holidays loaded for ${holidays.country}.`}
+              {holidayCountry === undefined && ' This is the instance default.'}
             </p>
           </section>
 

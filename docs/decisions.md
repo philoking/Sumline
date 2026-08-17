@@ -63,6 +63,33 @@ morning's rate is not roughly true, it is wrong, so a date that cannot be fetche
 rather than filled in. It is the one place in the app that prefers a blank answer to a plausible
 one.
 
+### A timezone per space
+
+Number region, frame rate and holiday country are all per space, because each changes what a sheet
+computes. Timezone is the obvious fourth and is deliberately not there.
+
+The premise it would rest on turns out to be false. `TZ` was documented as "the timezone for date
+calculations", and it is not: evaluation runs entirely in the browser, so `today`, `now`, `4pm` and
+the offset in `as iso8601` all resolve in **the reader's** timezone and the container's clock never
+enters into it. `TZ` sets log timestamps and which years of holidays get fetched. The documentation
+has been corrected.
+
+That default is also the right one nearly always — two people in different countries reading one
+shared instance each get their own `today`, and a laptop that travels follows along. What a per-space
+setting would add is the ability to *override* that, so one client's sheets resolve in that client's
+zone no matter who opens them.
+
+Doing it correctly is a real piece of work rather than another setting. The temporal layer reasons in
+local wall-clock time throughout — `startOfDay`, `addDays`, `addMonths`, `weekNumber` and the date
+parser all use a `Date`'s local fields — so computing in a chosen zone means making that arithmetic
+zone-aware, with daylight-saving transitions to get right in each of them. The tempting shortcut of
+shifting the clock so local fields read as the target zone breaks three things quietly: `current
+timestamp`, `X to timestamp`, and the zone offsets used by conversions, all of which need the true
+instant.
+
+Naming the zone in the line (`6pm Sydney`, `time in Paris`) works today and covers most of what this
+would be used for.
+
 ### A CLI, and a `POST /api/evaluate` surface
 
 This one needs no third-party provider and could be built on its own merits. It is deferred for

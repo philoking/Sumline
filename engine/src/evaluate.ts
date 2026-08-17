@@ -9,7 +9,8 @@ import {
 import { evaluateTemporal, looksTemporal } from './temporal/evaluate.js';
 import { convertAt, parseHistoricalConversion } from './historical.js';
 import { formatValue, type FormatContext } from './format.js';
-import { createMathContext, type MathContext } from './mathInstance.js';
+import { createMathContext, toFps, type MathContext } from './mathInstance.js';
+import { toNumberRegion } from './numberFormat.js';
 import { preprocess, stripOuterParens } from './preprocess.js';
 import { Labelled, Multiplier, Percentage, Rate } from './values.js';
 import type { Engine, EngineOptions, LineResult, Statistic } from './types.js';
@@ -18,9 +19,12 @@ export function createEngine(options: EngineOptions = {}): Engine {
   const ctx = createMathContext(
     options.rates,
     new Set(options.holidays ?? []),
-    options.fps ?? 24,
+    toFps(options.fps),
     options.historicalRates ?? {},
   );
+  // Coerced once here rather than at each use, so a region written by hand
+  // through the settings API cannot leave the sheet answering nothing.
+  const region = toNumberRegion(options.region);
   const currencies = [...ctx.currencies].sort();
 
   /**
@@ -40,7 +44,7 @@ export function createEngine(options: EngineOptions = {}): Engine {
   const contextAt = (now: Date): FormatContext => ({
     currencies: ctx.currencies,
     now,
-    region: options.region ?? 'north-america',
+    region,
     largeNumberNotation: options.largeNumberNotation ?? true,
   });
 
@@ -55,7 +59,6 @@ export function createEngine(options: EngineOptions = {}): Engine {
     ratesNeeded(source) {
       const lines = Array.isArray(source) ? source : source.split('\n');
       const now = readClock();
-      const region = options.region ?? 'north-america';
       const dates = new Set<string>();
       for (const raw of lines) {
         // The line is classified first so a commented-out or labelled request is

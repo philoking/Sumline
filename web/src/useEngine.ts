@@ -6,6 +6,7 @@ import {
   type RateTable,
 } from '@webcalc/engine';
 import { api, type HolidayTable } from './api';
+import type { EngineInputs } from './engineOptions';
 
 /**
  * Loads exchange rates once, then builds an engine around them.
@@ -14,10 +15,7 @@ import { api, type HolidayTable } from './api';
  * delays an answer; the engine simply starts without currency support and
  * gains it when the rates arrive.
  */
-export function useEngine(options: {
-  largeNumberNotation: boolean;
-  globals?: Record<string, string>;
-}) {
+export function useEngine(options: EngineInputs) {
   const [rates, setRates] = useState<RateTable | null>(null);
   const [holidays, setHolidays] = useState<HolidayTable | null>(null);
   /**
@@ -30,12 +28,25 @@ export function useEngine(options: {
 
   useEffect(() => {
     let cancelled = false;
-    // Both are optional enrichments: without rates there is no currency
-    // conversion, and without holidays workday maths counts weekends only.
+    // Optional enrichment: without rates there is no currency conversion.
     api
       .rates()
       .then((table) => !cancelled && setRates(table))
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /*
+   * Refetched when the space's country changes, not just on mount. The endpoint
+   * answers according to that setting, so a stale fetch would leave the sheet
+   * doing workday maths against the country the space used to be in — and would
+   * only correct itself on a reload.
+   */
+  const holidayCountry = options.holidayCountry;
+  useEffect(() => {
+    let cancelled = false;
     api
       .holidays()
       .then((table) => !cancelled && setHolidays(table))
@@ -43,7 +54,7 @@ export function useEngine(options: {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [holidayCountry]);
 
   const engine = useMemo(
     () =>
@@ -51,10 +62,20 @@ export function useEngine(options: {
         ...(rates && { rates }),
         ...(holidays && { holidays: holidays.dates }),
         ...(options.globals && { globals: options.globals }),
+        ...(options.region && { region: options.region }),
+        ...(options.fps !== undefined && { fps: options.fps }),
         historicalRates: history,
         largeNumberNotation: options.largeNumberNotation,
       }),
-    [rates, holidays, history, options.largeNumberNotation, options.globals],
+    [
+      rates,
+      holidays,
+      history,
+      options.largeNumberNotation,
+      options.globals,
+      options.region,
+      options.fps,
+    ],
   );
 
   /**

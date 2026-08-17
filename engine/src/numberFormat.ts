@@ -12,6 +12,28 @@ export const REGION_SEPARATORS: Record<NumberRegion, Separators> = {
   'eastern-europe': { group: ' ', decimal: ',' },
 };
 
+export const DEFAULT_REGION: NumberRegion = 'north-america';
+
+/**
+ * Coerces a region arriving from outside the engine.
+ *
+ * The region is a stored setting, and the README documents writing settings with
+ * `curl`, so an unrecognised value is a real possibility rather than something
+ * the compiler has already ruled out. It must not be passed through: nothing in
+ * `REGION_SEPARATORS` would match it, and the result is not a crash but a sheet
+ * where **every** numeric line silently answers nothing.
+ *
+ * The server validates the shape of this value but deliberately keeps no copy of
+ * the list — see `readRegion` in `server/src/app.ts`, and the same reasoning
+ * behind `readColor` beside it. So this is the one place that decides what a
+ * region name means.
+ */
+export function toNumberRegion(value: unknown): NumberRegion {
+  return typeof value === 'string' && value in REGION_SEPARATORS
+    ? (value as NumberRegion)
+    : DEFAULT_REGION;
+}
+
 /**
  * Rewrites number literals in a line into the plain `1234.56` form math.js
  * parses, according to the reader's region.

@@ -1,4 +1,6 @@
-import type { RateTable } from '@webcalc/engine';
+import type { NumberRegion, RateTable } from '@webcalc/engine';
+
+export type { NumberRegion };
 
 export interface User {
   id: string;
@@ -54,6 +56,23 @@ export type SheetOrder = 'recent' | 'manual';
 
 export interface Settings {
   statistic?: Statistic;
+  /**
+   * Which convention this space's numbers follow.
+   *
+   * Per space rather than per browser, unlike the theme: it decides what
+   * `1.234` *means*, so it changes what a sheet computes rather than only how
+   * an answer looks. Two browsers open on the same space must not disagree.
+   */
+  region?: NumberRegion;
+  /** Frame rate assumed by a timecode that does not name one. */
+  fps?: number;
+  /**
+   * ISO country code whose public holidays this space's workday maths uses.
+   *
+   * Per space for the same reason as the region: it changes what a sheet
+   * computes. Absent means the instance default from `HOLIDAY_COUNTRY`.
+   */
+  holidayCountry?: string;
   /**
    * Whether the sidebar is arranged by hand or by what changed last.
    *

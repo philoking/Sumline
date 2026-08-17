@@ -19,6 +19,7 @@ import { Login } from './Login';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
 import { SpaceSettings } from './SpaceSettings';
+import { engineOptionsFrom } from './engineOptions';
 import { useEngine, useResults } from './useEngine';
 import { useTheme } from './useTheme';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
@@ -103,14 +104,11 @@ export function App() {
   const statistic = settings.statistic ?? 'total';
   const showTotal = settings.showTotal !== false;
 
-  // The resolved view the server computed, so precedence is not decided twice
-  // and cannot disagree between the panel and the sheets.
-  const activeGlobals = settings.effectiveGlobals ?? settings.globals;
+  // Everything the engine is told, derived in one named place — see
+  // engineOptions.ts for why that is not a spread written inline here.
+  const engineOptions = useMemo(() => engineOptionsFrom(settings), [settings]);
 
-  const { engine, rates, holidays, needRates } = useEngine({
-    largeNumberNotation: siNotation,
-    ...(activeGlobals && { globals: activeGlobals }),
-  });
+  const { engine, rates, holidays, needRates } = useEngine(engineOptions);
   const results = useResults(engine, content, needRates);
   const summary = useMemo(
     () => engine.summary(results, statistic),
@@ -1048,6 +1046,12 @@ export function App() {
           globals={settings.globals ?? {}}
           sharedGlobals={settings.sharedGlobals ?? {}}
           canRemove={users.length > 1}
+          region={settings.region}
+          fps={settings.fps}
+          holidayCountry={settings.holidayCountry}
+          holidays={
+            holidays ? { country: holidays.country, count: holidays.dates.length } : null
+          }
           // One line through the same engine the sheets use, so the preview
           // cannot disagree with what a sheet would actually compute.
           preview={(expression) => engine.evaluate(expression)[0]?.output ?? ''}
@@ -1056,6 +1060,11 @@ export function App() {
             if (current) void applySpaceName(current, next);
           }}
           onSaveGlobals={(globals) => void persistSettings({ globals })}
+          onSaveRegion={(region) => void persistSettings({ region })}
+          onSaveFps={(fps) => void persistSettings({ fps })}
+          onSaveHolidayCountry={(country) =>
+            void persistSettings({ holidayCountry: country })
+          }
           onSaveSharedGlobals={(globals) => {
             // Refetched rather than merged locally: the server owns the resolved
             // view, and a space that overrides one of these must not appear to

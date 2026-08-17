@@ -11,7 +11,7 @@ import {
   type Space,
 } from './spaces.js';
 import { RatesService, type RateFetcher } from './rates.js';
-import { HolidayService, type HolidayFetcher } from './holidays.js';
+import { HolidayService, normaliseCountry, type HolidayFetcher } from './holidays.js';
 import {
   SESSION_COOKIE,
   clearedSessionCookie,
@@ -81,6 +81,33 @@ function readColor(value: unknown): string | null | typeof INVALID {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value !== 'string') return INVALID;
   return /^[a-z]{2,12}$/.test(value) ? value : INVALID;
+}
+
+/**
+ * Checks a number-region token on its way in.
+ *
+ * Shape, not membership — the same call as `readColor` above and for the same
+ * reason. The list of regions lives in the engine, which the server does not
+ * depend on at runtime, so validating membership here would mean a second copy
+ * to keep in step. An unrecognised-but-well-formed name is harmless: the engine
+ * coerces anything it does not know back to its default.
+ */
+function readRegion(value: unknown): string | typeof INVALID {
+  if (typeof value !== 'string') return INVALID;
+  return /^[a-z]{2,20}(?:-[a-z]{2,20})?$/.test(value) ? value : INVALID;
+}
+
+/**
+ * Checks a default frame rate on its way in.
+ *
+ * Everything that reads a timecode divides by this, so it has to be a positive
+ * finite number. The bound is generous rather than principled: it exists to
+ * reject a typo, not to have an opinion about cinematography.
+ */
+function readFps(value: unknown): number | typeof INVALID {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1000
+    ? value
+    : INVALID;
 }
 
 /**
@@ -352,7 +379,17 @@ export function buildApp(options: AppOptions): App {
     },
   );
 
-  server.get('/api/holidays', async () => holidays.current());
+  /**
+   * The public holidays that apply in the caller's space.
+   *
+   * Scoped by the space cookie like the settings it reads, so a space per client
+   * can keep its own country's calendar — the workday maths in a sheet is only
+   * as right as the holidays behind it.
+   */
+  server.get('/api/holidays', async (request) => {
+    const country = store.getSettings(currentUser(request))['holidayCountry'];
+    return country === undefined ? holidays.current() : holidays.for(country);
+  });
 
 /**
    * A space's settings, plus the tier above it and the two resolved together.
@@ -376,16 +413,45 @@ export function buildApp(options: AppOptions): App {
 
   server.get('/api/settings', async (request) => settingsFor(currentUser(request)));
 
-  server.put<{ Body: Record<string, unknown> }>('/api/settings', async (request) => {
-    // Dropped rather than stored. A client that echoed a GET response back would
-    // otherwise write the merged view into the space, silently promoting every
-    // inherited value into one of its own — and then a change to the shared tier
-    // would stop reaching it.
-    const { sharedGlobals: _s, effectiveGlobals: _e, ...changes } = request.body ?? {};
-    const owner = currentUser(request);
-    store.saveSettings(owner, changes);
-    return settingsFor(owner);
-  });
+  server.put<{ Body: Record<string, unknown> }>(
+    '/api/settings',
+    async (request, reply) => {
+      // Dropped rather than stored. A client that echoed a GET response back
+      // would otherwise write the merged view into the space, silently promoting
+      // every inherited value into one of its own — and then a change to the
+      // shared tier would stop reaching it.
+      const { sharedGlobals: _s, effectiveGlobals: _e, ...changes } = request.body ?? {};
+
+      /*
+       * Only the two settings that change what a sheet *computes* are checked.
+       * The rest of this store stays free-form, as it has always been: they are
+       * display preferences, and a nonsense value costs a wrong-looking toggle
+       * rather than a sheet full of missing answers.
+       */
+      if ('region' in changes && readRegion(changes['region']) === INVALID) {
+        return reply.code(400).send({ error: 'region must be a name like western-europe' });
+      }
+      if ('fps' in changes && readFps(changes['fps']) === INVALID) {
+        return reply.code(400).send({ error: 'fps must be a positive number' });
+      }
+      if ('holidayCountry' in changes) {
+        const country = normaliseCountry(changes['holidayCountry']);
+        if (!country) {
+          return reply
+            .code(400)
+            .send({ error: 'holidayCountry must be a two-letter code like DE' });
+        }
+        // Stored in the shape the provider and the cache both use, so a space
+        // that wrote `de` and one that wrote `DE` share a table rather than
+        // fetching the same calendar twice under two keys.
+        changes['holidayCountry'] = country;
+      }
+
+      const owner = currentUser(request);
+      store.saveSettings(owner, changes);
+      return settingsFor(owner);
+    },
+  );
 
   /**
    * The globals that apply in every space.

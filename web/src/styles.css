@@ -412,6 +412,38 @@ button.ghost:hover {
   border-color: var(--accent);
 }
 
+/* The region picker and the frame rate. Same shape as the name field, so the
+   panel reads as one form rather than three unrelated controls. */
+.setting-select,
+.setting-input {
+  width: 100%;
+  padding: 6px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* The samples in the region labels only line up in a monospaced figure, and
+   lining them up is what makes the three options comparable at a glance. */
+.setting-select {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A frame rate is two or three digits; a full-width box would suggest
+   otherwise. */
+.setting-input {
+  width: 7em;
+}
+
+.setting-select:focus,
+.setting-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 /* .reference-note is pulled up by design, to tuck under a paragraph. Under a
    form field that negative margin closes the gap entirely. */
 .space-settings .reference-note {
