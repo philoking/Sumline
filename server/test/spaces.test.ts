@@ -4,16 +4,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { buildApp, type App } from '../src/app.js';
-import { DEFAULT_USER, Store } from '../src/db.js';
+import { Store } from '../src/db.js';
+import type { Space } from '../src/spaces.js';
 
 let app: App;
 
-function build(seed = false): App {
+/** The two people these tests are about, configured rather than compiled in. */
+const PEOPLE: Space[] = [
+  { id: 'jason', name: 'Jason' },
+  { id: 'kim', name: 'Kim' },
+];
+
+/** The space pre-user rows are adopted into: the first one configured. */
+const DEFAULT_USER = PEOPLE[0]!.id;
+
+function build(seed = false, spaces: Space[] = PEOPLE): App {
   return buildApp({
     dbPath: ':memory:',
     staticRoot: null,
     autoRefreshRates: false,
     seedWelcomeSheet: seed,
+    spaces,
   });
 }
 
@@ -284,13 +295,13 @@ describe('seeding and migration', () => {
       .run('statistic', JSON.stringify('median'));
     legacy.close();
 
-    const first = new Store(path);
+    const first = new Store(path, DEFAULT_USER);
     expect(first.getSettings(DEFAULT_USER)).toEqual({ statistic: 'median' });
     // A preference changed after the migration must survive the next start.
     first.saveSettings(DEFAULT_USER, { statistic: 'count' });
     first.close();
 
-    const second = new Store(path);
+    const second = new Store(path, DEFAULT_USER);
     expect(second.getSettings(DEFAULT_USER)).toEqual({ statistic: 'count' });
     expect(second.getSettings('kim')).toEqual({});
     second.close();
@@ -310,7 +321,7 @@ describe('seeding and migration', () => {
     legacy.prepare('INSERT INTO folders VALUES (?, ?, 0)').run('f1', 'Work');
     legacy.close();
 
-    const store = new Store(path);
+    const store = new Store(path, DEFAULT_USER);
     expect(store.listFolders(DEFAULT_USER).map((f) => f.name)).toEqual(['Work']);
     expect(store.listFolders('kim')).toEqual([]);
     store.close();

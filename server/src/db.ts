@@ -2,33 +2,18 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { FALLBACK_SPACE, type Space } from './spaces.js';
 
 /**
- * Who can be using the app.
+ * The space a row belongs to.
  *
- * There are no passwords: this is a space to work in, not a security boundary,
- * and anyone who can reach the app can be anyone. That matches an instance
- * with no authentication at all on a trusted network. Adding a third person is
- * one entry here.
+ * A plain string rather than a union of known ids: who has a space is read
+ * from configuration at startup (see [`spaces.ts`](./spaces.ts)), so there is
+ * no set of them for the compiler to know about. The store treats an owner as
+ * an opaque tag and never asks whether it is one of the configured spaces —
+ * that check belongs to the layer that has the configuration.
  */
-export const USERS = [
-  { id: 'jason', name: 'Jason' },
-  { id: 'kim', name: 'Kim' },
-] as const;
-
-export type UserId = (typeof USERS)[number]['id'];
-
-/** The space sheets predating the user model belong to. */
-export const DEFAULT_USER: UserId = 'jason';
-
-export function isUser(value: unknown): value is UserId {
-  return USERS.some((user) => user.id === value);
-}
-
-/** Resolves any untrusted value to a real user, falling back to the default. */
-export function toUser(value: unknown): UserId {
-  return isUser(value) ? value : DEFAULT_USER;
-}
+export type UserId = string;
 
 export interface Sheet {
   id: string;
@@ -185,6 +170,18 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (owner, key)
 );
 
+-- Who has a space, in the order the switcher lists them.
+--
+-- Rows rather than configuration, so a space can be added from the app without
+-- a redeploy. SPACES seeds this table on an instance that has none and is
+-- ignored once it does — otherwise a space added in the app would vanish on
+-- the next restart, or a person removed in the app would come back.
+CREATE TABLE IF NOT EXISTS spaces (
+  id       TEXT PRIMARY KEY,
+  name     TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0
+);
+
 -- Every slug a sheet has ever been shared under, not just its current one, so
 -- renaming a shared sheet does not break a link already sent to someone.
 CREATE TABLE IF NOT EXISTS sheet_slugs (
@@ -205,8 +202,18 @@ export class VersionConflictError extends Error {
 
 export class Store {
   private readonly db: DatabaseSync;
+  /** The space rows that predate the owner column are adopted into. */
+  private readonly defaultOwner: string;
 
-  constructor(path: string) {
+  constructor(path: string, defaultOwner: string = FALLBACK_SPACE.id) {
+    // Interpolated into a DEFAULT clause below, where a bound parameter is not
+    // allowed. Every id reaching here has been through deriveSpaceId, and this
+    // re-checks rather than trusting the caller, because the consequence of a
+    // stray quote in DDL is worse than a startup failure.
+    if (!/^[a-z0-9-]+$/.test(defaultOwner)) {
+      throw new Error(`Unusable space id: ${JSON.stringify(defaultOwner)}`);
+    }
+    this.defaultOwner = defaultOwner;
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL');
@@ -231,9 +238,107 @@ export class Store {
     this.addColumn('sheets', 'slug', 'TEXT');
     // Everything that existed before there were spaces belongs to the default
     // one, so nobody opens the app to find their sheets gone.
-    this.addColumn('sheets', 'owner', `TEXT NOT NULL DEFAULT '${DEFAULT_USER}'`);
-    this.addColumn('folders', 'owner', `TEXT NOT NULL DEFAULT '${DEFAULT_USER}'`);
+    //
+    // The default is fixed when the column is added and no later configuration
+    // change rewrites it — which is correct, since it describes who owned the
+    // data at the moment spaces arrived, not who is configured today.
+    const owner = `TEXT NOT NULL DEFAULT '${this.defaultOwner}'`;
+    this.addColumn('sheets', 'owner', owner);
+    this.addColumn('folders', 'owner', owner);
     this.adoptPreUserSettings();
+  }
+
+  /** Who has a space, in switcher order. */
+  listSpaces(): Space[] {
+    const rows = this.db
+      .prepare('SELECT id, name FROM spaces ORDER BY position, id')
+      .all() as unknown as Space[];
+    return rows.map((row) => ({ id: row.id, name: row.name }));
+  }
+
+  /**
+   * Fills an empty space table, and does nothing to one that has rows.
+   *
+   * The guard is what makes `SPACES` a seed rather than an instruction: a
+   * space added in the app must survive the next restart, and a person removed
+   * in the app must not reappear because the variable still names them.
+   */
+  seedSpaces(spaces: readonly Space[]): boolean {
+    if (spaces.length === 0) return false;
+    const existing = this.db.prepare('SELECT 1 FROM spaces LIMIT 1').get();
+    if (existing) return false;
+    const insert = this.db.prepare(
+      'INSERT INTO spaces (id, name, position) VALUES (?, ?, ?)',
+    );
+    spaces.forEach((space, index) => insert.run(space.id, space.name, index));
+    return true;
+  }
+
+  /** Adds a space. Null when the id is taken, which the caller reports as a conflict. */
+  createSpace(id: string, name: string): Space | null {
+    const taken = this.db.prepare('SELECT 1 FROM spaces WHERE id = ?').get(id);
+    if (taken) return null;
+    const row = this.db
+      .prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM spaces')
+      .get() as unknown as { next: number };
+    this.db
+      .prepare('INSERT INTO spaces (id, name, position) VALUES (?, ?, ?)')
+      .run(id, name, row.next);
+    return { id, name };
+  }
+
+  /**
+   * Changes the name shown, never the id.
+   *
+   * The id is stamped on every sheet, folder and setting, so renaming someone
+   * has to leave it alone or the rename would read as a deletion.
+   */
+  renameSpace(id: string, name: string): boolean {
+    const result = this.db
+      .prepare('UPDATE spaces SET name = ? WHERE id = ?')
+      .run(name, id);
+    return result.changes > 0;
+  }
+
+  /**
+   * Removes a space, leaving everything it owns in place.
+   *
+   * Deliberately not a cascade. Sheets keep their owner id and become
+   * unreachable rather than destroyed, so a person removed by mistake is
+   * restored by adding them back under the same id.
+   */
+  deleteSpace(id: string): boolean {
+    const result = this.db.prepare('DELETE FROM spaces WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
+  /** How much a space would take out of sight if it were removed. */
+  countOwned(owner: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT (SELECT COUNT(*) FROM sheets WHERE owner = ?)
+              + (SELECT COUNT(*) FROM folders WHERE owner = ?) AS total`,
+      )
+      .get(owner, owner) as unknown as { total: number };
+    return row.total;
+  }
+
+  /**
+   * Every space id the database actually holds data for.
+   *
+   * Read from the rows rather than from the space table, so the caller can
+   * tell whether the spaces that exist account for what is stored.
+   */
+  owners(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT owner FROM sheets
+         UNION SELECT owner FROM folders
+         UNION SELECT owner FROM user_settings
+         ORDER BY owner`,
+      )
+      .all() as unknown as Array<{ owner: string }>;
+    return rows.map((row) => row.owner).filter(Boolean);
   }
 
   /**
@@ -247,14 +352,14 @@ export class Store {
   private adoptPreUserSettings(): void {
     const already = this.db
       .prepare('SELECT 1 FROM user_settings WHERE owner = ? LIMIT 1')
-      .get(DEFAULT_USER);
+      .get(this.defaultOwner);
     if (already) return;
     this.db
       .prepare(
         `INSERT INTO user_settings (owner, key, value)
          SELECT ?, key, value FROM settings`,
       )
-      .run(DEFAULT_USER);
+      .run(this.defaultOwner);
   }
 
   private addColumn(table: string, column: string, definition: string): void {
@@ -655,7 +760,7 @@ function toSheet(row: SheetRow): Sheet {
     title: row.title,
     content: row.content,
     version: row.version,
-    owner: toUser(row.owner),
+    owner: row.owner,
     folderId: row.folder_id ?? null,
     deletedAt: row.deleted_at ?? null,
     createdAt: row.created_at,
@@ -669,7 +774,7 @@ function toSummary(row: Omit<SheetRow, 'content'> & { lines: number }): SheetSum
     title: row.title,
     version: row.version,
     lines: row.lines,
-    owner: toUser(row.owner),
+    owner: row.owner,
     folderId: row.folder_id ?? null,
     deletedAt: row.deleted_at ?? null,
     createdAt: row.created_at,

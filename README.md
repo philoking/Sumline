@@ -364,14 +364,40 @@ A sheet can use them like any other variable, and can shadow one by declaring th
 Each person has their own space: their own sheets, folders, trash, settings and global
 variables. The initial at the right-hand end of the top bar shows whose space you are in;
 clicking it offers the others. The choice is kept in a cookie, so a machine stays on whoever
-used it last. Every space gets its own Welcome sheet the first time the server starts.
+used it last. Every space gets its own Welcome sheet when it is created.
 
 **This is not a login.** There are no passwords, and anyone who can reach the app can switch to
 any space — the same footing as an instance with no authentication at all. It exists to keep two
 people's sheets from piling up in one list, not to keep anyone out.
 
-The people are defined in `USERS` in [server/src/db.ts](server/src/db.ts); adding a third is one
-entry. Sheets that existed before spaces belong to the first user listed.
+### Adding and removing people
+
+From the space menu: **Add space…** creates one, and **Rename or remove…** turns the list into
+an editable one. There is no limit on how many there are, and a fresh instance starts as a
+one-person app called "Me" rather than assuming a second person exists.
+
+`SPACES` **seeds** an instance that has none, which is the only thing it does — spaces then live
+in the database, so one added in the app is not undone by the next deploy, and one removed does
+not come back because the variable still names them:
+
+```bash
+SPACES="Jason,Kim"                   # ids derived from the names
+SPACES="jason:Jason,kim:Kimberley"   # ids stated outright
+```
+
+Every sheet, folder and setting is stamped with a space's **id**, not its name, which is why the
+two are separable. Renaming someone in the app changes only what is displayed. The `id:Name`
+form matters when seeding an instance whose database already uses particular ids.
+
+**Removing a space keeps its sheets.** They are not deleted — no space owns them any more, so
+they drop out of every list, and adding a space back under the same id shows them again. The
+app says how many went out of sight when you remove one, and the server logs any owner id it
+finds with no space at startup. The last space cannot be removed, since every request has to
+resolve to one.
+
+Sheets that existed before spaces belong to the first space the instance ever had. An instance
+upgraded from a version without them adopts the ids already stamped on its data, so nobody opens
+the app to find their sheets gone.
 
 A share link crosses spaces — that is the point of it. Opening someone else's link shows their
 sheet, marked with a badge saying whose it is, and you can edit it under the usual lock. What
@@ -439,7 +465,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 467 engine tests, 40 server tests
+npm test        # 695 engine tests, 116 server tests
 npm run build   # build all three workspaces
 ```
 
@@ -502,6 +528,7 @@ app on an empty database.**
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
 | `TZ` | `UTC` | Timezone for date calculations |
 | `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
+| `SPACES` | one space, "Me" | Seeds [the people who get a space](#adding-and-removing-people) on an instance that has none. Ignored once it has any — they are managed in the app after that. |
 
 ## Acknowledgement
 

@@ -51,6 +51,8 @@ export function App() {
   const [conflict, setConflict] = useState<Sheet | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  /** Something worth saying that is not a failure — see removeSpace. */
+  const [notice, setNotice] = useState<string | null>(null);
   // Closed by default on a phone, where it would otherwise cover the sheet.
   // The same breakpoint the stylesheet uses to turn it into an overlay.
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -59,6 +61,8 @@ export function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [share, setShare] = useState<{ url: string; copied: boolean } | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  /** Turns the space list into an editable one, rather than a second menu. */
+  const [managingSpaces, setManagingSpaces] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
     () => new URLSearchParams(window.location.search).has('help'),
@@ -334,6 +338,68 @@ export function App() {
     }
   };
 
+  const addSpace = async () => {
+    const name = window.prompt('Name for the new space');
+    if (name === null || name.trim() === '') return;
+    try {
+      const created = await api.createSpace(name.trim());
+      setUsers((current) => [...current, created]);
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  };
+
+  const renameSpace = async (user: User) => {
+    const next = window.prompt('Rename space', user.name);
+    if (next === null || next.trim() === '' || next.trim() === user.name) return;
+    try {
+      const renamed = await api.renameSpace(user.id, next.trim());
+      setUsers((current) =>
+        current.map((entry) => (entry.id === user.id ? renamed : entry)),
+      );
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  };
+
+  /**
+   * Removes a space after saying plainly what happens to its sheets.
+   *
+   * They are kept, not deleted, and adding the space back under the same name
+   * brings them into view again — so both the confirmation and what follows
+   * say that, rather than the usual "cannot be undone", which would be untrue
+   * and would make this feel more dangerous than it is.
+   *
+   * How much is affected is only known server-side: the sheet list here holds
+   * the current space's sheets and nobody else's, so the count comes back with
+   * the deletion rather than being guessed at beforehand.
+   */
+  const removeSpace = async (user: User) => {
+    const warning =
+      `Remove the space “${user.name}”? Any sheets in it are kept, but stay ` +
+      `hidden until a space is added back under the same name.`;
+    if (!window.confirm(warning)) return;
+    try {
+      const { hidden } = await api.deleteSpace(user.id);
+      if (hidden > 0) {
+        setNotice(
+          `“${user.name}” is gone from the switcher. ${hidden} ${
+            hidden === 1 ? 'sheet or folder is' : 'sheets and folders are'
+          } still stored, and adding “${user.name}” back will show them again.`,
+        );
+      }
+      if (user.id === space) {
+        // Staying on a space that no longer exists would show someone else's
+        // sheets under this person's name until the next reload.
+        window.location.reload();
+        return;
+      }
+      setUsers((current) => current.filter((entry) => entry.id !== user.id));
+    } catch (cause) {
+      setError(describe(cause));
+    }
+  };
+
   const renameSheet = async (sheet: SheetSummary) => {
     const next = window.prompt('Rename sheet', sheet.title);
     if (next === null || next.trim() === '' || next === sheet.title) return;
@@ -557,16 +623,15 @@ export function App() {
         >
           ▤
         </button>
-        {/* Only worth showing when there is a choice to make, so a one-person
-            instance is not asked to pick itself. */}
-        {users.length > 1 && (
+        {/* Shown even for one person, since this is where a second is added. */}
+        {users.length > 0 && (
           <div className="menu-anchor">
             <button
               type="button"
               className="user-chip"
               onClick={() => setUserMenuOpen((open) => !open)}
               title={`Working as ${currentUserName} — click to change`}
-              aria-label={`Working as ${currentUserName}. Change who is using the app.`}
+              aria-label={`Working as ${currentUserName}. Change or manage spaces.`}
               aria-haspopup="menu"
               aria-expanded={userMenuOpen}
             >
@@ -574,14 +639,21 @@ export function App() {
             </button>
             {userMenuOpen && (
               <>
-                <div className="menu-backdrop" onClick={() => setUserMenuOpen(false)} />
+                <div
+                  className="menu-backdrop"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setManagingSpaces(false);
+                  }}
+                />
                 <ul className="answer-menu user-menu" role="menu">
                   {users.map((user) => (
-                    <li key={user.id}>
+                    <li key={user.id} className={managingSpaces ? 'space-row' : undefined}>
                       <button
                         type="button"
-                        role="menuitemradio"
-                        aria-checked={user.id === space}
+                        role={managingSpaces ? 'menuitem' : 'menuitemradio'}
+                        {...(managingSpaces ? {} : { 'aria-checked': user.id === space })}
+                        disabled={managingSpaces}
                         onClick={() => {
                           setUserMenuOpen(false);
                           if (user.id === space) return;
@@ -593,11 +665,67 @@ export function App() {
                           window.location.reload();
                         }}
                       >
-                        <span className="tick">{user.id === space ? '✓' : ''}</span>
+                        <span className="tick">
+                          {!managingSpaces && user.id === space ? '✓' : ''}
+                        </span>
                         {user.name}
                       </button>
+                      {managingSpaces && (
+                        <span className="space-actions">
+                          <button
+                            type="button"
+                            className="ghost"
+                            title={`Rename ${user.name}`}
+                            aria-label={`Rename ${user.name}`}
+                            onClick={() => void renameSpace(user)}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost"
+                            title={
+                              users.length > 1
+                                ? `Remove ${user.name}`
+                                : 'The last space cannot be removed'
+                            }
+                            aria-label={`Remove ${user.name}`}
+                            disabled={users.length <= 1}
+                            onClick={() => void removeSpace(user)}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
                     </li>
                   ))}
+
+                  <li className="menu-separator" role="separator" />
+
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setManagingSpaces(false);
+                        void addSpace();
+                      }}
+                    >
+                      <span className="tick" />
+                      Add space…
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => setManagingSpaces((managing) => !managing)}
+                    >
+                      <span className="tick" />
+                      {managingSpaces ? 'Done' : 'Rename or remove…'}
+                    </button>
+                  </li>
                 </ul>
               </>
             )}
@@ -609,6 +737,15 @@ export function App() {
         <div className="banner banner-error">
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {notice && (
+        <div className="banner">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)}>
             Dismiss
           </button>
         </div>

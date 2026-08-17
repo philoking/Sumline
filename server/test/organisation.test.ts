@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { buildApp, type App } from '../src/app.js';
-import { DEFAULT_USER, Store, deriveTitle } from '../src/db.js';
+import { Store, deriveTitle } from '../src/db.js';
+import { FALLBACK_SPACE } from '../src/spaces.js';
 import type { SheetSummary } from '../src/db.js';
 
 let app: App;
@@ -223,13 +224,13 @@ describe('schema migration', () => {
     legacy.close();
 
     const store = new Store(path);
-    const sheets = store.listSheets(DEFAULT_USER);
+    const sheets = store.listSheets(FALLBACK_SPACE.id);
     expect(sheets.map((s) => s.title)).toEqual(['Existing']);
     expect(sheets[0]?.folderId).toBeNull();
     expect(store.getSheet('old-1')?.content).toBe('kept');
     // Sheets predating the user model land in the default space rather than
     // in none, which would hide them from everyone.
-    expect(sheets[0]?.owner).toBe(DEFAULT_USER);
+    expect(sheets[0]?.owner).toBe(FALLBACK_SPACE.id);
     store.close();
 
     rmSync(dir, { recursive: true, force: true });

@@ -719,6 +719,46 @@ button.ghost:hover {
   color: var(--muted);
 }
 
+/* While managing, the row stops being a target for switching and becomes a
+   name with its own controls, so the two modes cannot be mistaken. */
+.space-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.space-row > button {
+  flex: 1;
+  min-width: 0;
+}
+
+.space-row > button:disabled {
+  cursor: default;
+  background: none;
+}
+
+.space-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.space-actions button {
+  width: auto;
+  padding: 4px 6px;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.space-actions button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.space-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+}
+
 /* Wider than the export menu: a share link has to be readable to be trusted,
    and on plain HTTP it is also what gets copied by hand. */
 .share-menu {

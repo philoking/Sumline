@@ -1,7 +1,15 @@
 import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { Store, USERS, VersionConflictError, toUser, type UserId } from './db.js';
+import { Store, VersionConflictError, type UserId } from './db.js';
+import {
+  FALLBACK_SPACE,
+  deriveSpaceId,
+  orphanedOwners,
+  resolveSpace,
+  spacesFromOwners,
+  type Space,
+} from './spaces.js';
 import { RatesService, type RateFetcher } from './rates.js';
 import { HolidayService, type HolidayFetcher } from './holidays.js';
 import { WELCOME_SHEET } from './welcome.js';
@@ -14,6 +22,13 @@ export interface AppOptions {
   holidayFetcher?: HolidayFetcher;
   /** ISO country code whose public holidays apply to workday maths. */
   holidayCountry?: string;
+  /**
+   * Who gets a space on an instance that has none yet.
+   *
+   * A seed, not an override: an instance with spaces already keeps them, so a
+   * space added or removed in the app is not undone by the next restart.
+   */
+  spaces?: Space[];
   /** Skip the background refresh timer; tests drive refreshes by hand. */
   autoRefreshRates?: boolean;
   rateRefreshIntervalMs?: number;
@@ -35,27 +50,81 @@ const DEFAULT_LOCK_TTL_MS = 45_000;
 export const USER_COOKIE = 'webcalc_user';
 
 /**
- * Reads the current space from the request.
+ * Reads the space cookie off a request, without judging it.
  *
  * The cookie is set by the client and carries no signature, which is the point
  * — switching space is a preference, not a login, on an app that has no
- * authentication at all. Anything unrecognised falls back to the default user
- * rather than erroring, so a stale or hand-edited cookie cannot lock anyone
- * out of their sheets.
+ * authentication at all. Whether the value names a configured space is settled
+ * by the caller, which has the configuration.
  */
-function currentUser(request: FastifyRequest): UserId {
+function readSpaceCookie(request: FastifyRequest): string | undefined {
   const header = request.headers.cookie;
-  if (!header) return toUser(undefined);
+  if (!header) return undefined;
   for (const part of header.split(';')) {
     const [name, ...rest] = part.trim().split('=');
-    if (name === USER_COOKIE) return toUser(decodeURIComponent(rest.join('=')));
+    if (name === USER_COOKIE) return decodeURIComponent(rest.join('='));
   }
-  return toUser(undefined);
+  return undefined;
 }
 
 export function buildApp(options: AppOptions): App {
   const server = Fastify({ logger: options.logger ?? false });
-  const store = new Store(options.dbPath);
+
+  // The store is opened before the spaces are settled because an unconfigured
+  // instance takes its spaces from what the database already owns. Only the
+  // DEFAULT clause for a freshly added owner column needs a value this early,
+  // and on a database old enough to need that clause there is nothing to adopt.
+  const store = new Store(
+    options.dbPath,
+    (options.spaces?.[0] ?? FALLBACK_SPACE).id,
+  );
+
+  /**
+   * Fills the space table on an instance that has none.
+   *
+   * `SPACES` first, then the ids already stamped on the data — so upgrading an
+   * instance that has been running with spaces does not hide everyone's sheets
+   * behind a default that owns nothing — and a single generic space for one
+   * that is genuinely empty. Runs once: after this the table is the authority
+   * and spaces are added and removed through the API.
+   */
+  store.seedSpaces(
+    options.spaces ?? spacesFromOwners(store.owners()) ?? [FALLBACK_SPACE],
+  );
+
+  // Read per request rather than captured, because spaces are now editable
+  // while the server is running.
+  const spaces = (): Space[] => store.listSpaces();
+
+  // The data is intact — every list is filtered by owner and no space asks for
+  // these ids — so this says how to get it back rather than merely reporting a
+  // count. Reachable when a space is removed while it still owns sheets.
+  const orphans = orphanedOwners(spaces(), store.owners());
+  if (orphans.length > 0) {
+    server.log.warn(
+      `${orphans.length} owner id(s) hold sheets but have no space: ` +
+        `${orphans.join(', ')}. Those sheets are stored but not shown. ` +
+        `Add a space back under the same id to see them again.`,
+    );
+  }
+
+  /**
+   * The space this request is working in.
+   *
+   * Anything unrecognised resolves to the first space rather than erroring, so
+   * a stale or hand-edited cookie — or one naming a space since removed —
+   * cannot lock anyone out of the app.
+   */
+  const currentUser = (request: FastifyRequest): UserId =>
+    resolveSpace(spaces(), readSpaceCookie(request));
+
+  /** Gives a new space the sheet that explains the syntax, as startup does. */
+  const seedWelcome = (id: string): void => {
+    if (options.seedWelcomeSheet === false) return;
+    if (store.listSheets(id).length > 0) return;
+    store.createSheet(id, 'Welcome', WELCOME_SHEET);
+  };
+
   const lockTtlMs = options.lockTtlMs ?? DEFAULT_LOCK_TTL_MS;
 
   const rates = new RatesService({
@@ -83,17 +152,72 @@ export function buildApp(options: AppOptions): App {
   // Seeded per space rather than per instance, so whoever opens the app second
   // still meets the sheet that explains the syntax instead of a blank page.
   if (options.seedWelcomeSheet !== false) {
-    for (const user of USERS) {
-      if (store.listSheets(user.id).length === 0) {
-        store.createSheet(user.id, 'Welcome', WELCOME_SHEET);
-      }
-    }
+    for (const space of spaces()) seedWelcome(space.id);
   }
 
   server.get('/api/users', async (request) => ({
-    users: USERS.map((user) => ({ ...user })),
+    users: spaces(),
     current: currentUser(request),
   }));
+
+  /**
+   * Adds a space.
+   *
+   * The id is derived from the name unless one is given outright, which is how
+   * a space can be created to match owner ids already in the database — the
+   * way sheets belonging to a removed person are brought back.
+   */
+  server.post<{ Body: { name?: unknown; id?: unknown } }>(
+    '/api/spaces',
+    async (request, reply) => {
+      const name = typeof request.body?.name === 'string' ? request.body.name.trim() : '';
+      if (!name) return reply.code(400).send({ error: 'A space needs a name' });
+
+      const given = typeof request.body?.id === 'string' ? request.body.id : name;
+      const id = deriveSpaceId(given);
+      if (!id) {
+        return reply.code(400).send({ error: `No usable id in ${JSON.stringify(given)}` });
+      }
+
+      const created = store.createSpace(id, name);
+      if (!created) return reply.code(409).send({ error: `Space ${id} already exists` });
+
+      // An id matching existing owners is a restoration, and its sheets are
+      // already there — seeding a Welcome sheet over them would be noise.
+      seedWelcome(id);
+      return reply.code(201).send(created);
+    },
+  );
+
+  server.patch<{ Params: { id: string }; Body: { name?: unknown } }>(
+    '/api/spaces/:id',
+    async (request, reply) => {
+      const name = typeof request.body?.name === 'string' ? request.body.name.trim() : '';
+      if (!name) return reply.code(400).send({ error: 'A space needs a name' });
+      if (!store.renameSpace(request.params.id, name)) {
+        return reply.code(404).send({ error: 'No such space' });
+      }
+      return { id: request.params.id, name };
+    },
+  );
+
+  /**
+   * Removes a space without touching what it owns.
+   *
+   * Refused for the last one: an instance with no spaces has nowhere to put
+   * the next sheet, and every request would resolve to a space that does not
+   * exist. The reply reports how much went out of sight so the client can say
+   * so rather than implying the sheets were deleted.
+   */
+  server.delete<{ Params: { id: string } }>('/api/spaces/:id', async (request, reply) => {
+    const { id } = request.params;
+    if (spaces().length <= 1) {
+      return reply.code(409).send({ error: 'The last space cannot be removed' });
+    }
+    const hidden = store.countOwned(id);
+    if (!store.deleteSpace(id)) return reply.code(404).send({ error: 'No such space' });
+    return { deleted: true, hidden };
+  });
 
   server.get('/api/health', async () => ({
     status: 'ok',

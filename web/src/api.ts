@@ -158,6 +158,32 @@ export const api = {
   /** The people who can use this instance, and whose space we are in now. */
   users: () => request<{ users: User[]; current: string }>('/api/users'),
 
+  /** Adds a space. The id comes from the name unless one is given. */
+  createSpace: (name: string, id?: string) =>
+    request<User>('/api/spaces', {
+      method: 'POST',
+      body: JSON.stringify(id ? { name, id } : { name }),
+    }),
+
+  /** Changes the name shown. The id, and so the sheets, are untouched. */
+  renameSpace: (id: string, name: string) =>
+    request<User>(`/api/spaces/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
+  /**
+   * Removes a space, leaving its sheets in the database.
+   *
+   * `hidden` counts what went out of sight, so the caller can say what
+   * happened rather than implying the work was destroyed.
+   */
+  deleteSpace: (id: string) =>
+    request<{ deleted: boolean; hidden: number }>(
+      `/api/spaces/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
   /** Mints (or returns) the slug this sheet is shared under. */
   shareSheet: (id: string) =>
     request<{ slug: string }>(`/api/sheets/${id}/share`, { method: 'POST' }),
