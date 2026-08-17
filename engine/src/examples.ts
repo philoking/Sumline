@@ -284,6 +284,9 @@ export const EXAMPLE_GROUPS: ExampleGroup[] = [
       { input: '20 °C in °F', expected: '68 °F' },
       { input: '3 cups in ml', expected: '709.7647095 ml' },
       { input: '2 hours + 45 minutes', expected: '2.75 hours' },
+      // A conversion at the end of a line covers the whole line, not the token
+      // it happens to sit beside.
+      { input: '100 km * 2 in miles', expected: '124.274238447 miles' },
       { input: '300 + 20 km', expected: '320 km' },
       { input: '12 widgets + 15 widgets', expected: '27 widgets' },
       { input: '1km + 1,000m', expected: '2 km' },

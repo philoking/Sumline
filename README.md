@@ -185,8 +185,14 @@ A percentage is a real value, so it survives arithmetic. Order matters and is no
 | `km m` | `1,000 m` |
 | `300 + 20 km` | `320 km` |
 | `1km + 1,000m` | `2 km` |
+| `100 km * 2 in miles` | `124.274238 miles` |
 
 A bare number takes on the unit beside it, which Soulver calls unit assimilation.
+
+A conversion at the end of a line applies to the whole line, so `100 km * 2 in miles` converts the
+product rather than the `2`. Arithmetic written *after* a conversion is the other way round —
+`100 km in miles * 2` reads the `miles * 2` as the target and is refused, because there is no
+reading of it that is obviously the one you meant. Bracket that case: `(100 km in miles) * 2`.
 
 ### Rates
 

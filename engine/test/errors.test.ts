@@ -128,6 +128,29 @@ describe('error messages in the app’s own voice', () => {
     expect(line('foo(3)').error).toBe('No function called foo');
   });
 
+  /*
+   * Arithmetic *after* a conversion is the one shape precedence still decides
+   * against the writer: `in` takes `EUR * 2` as its target. math.js reports
+   * that its right-hand operand carries a value, which is true of its own
+   * internals and says nothing about the mistake that was made.
+   *
+   * The mirrored form needs no message at all — a trailing conversion is bound
+   * to the whole line by `rewriteConversions` and simply answers.
+   */
+  it('explains a conversion that swallowed the rest of the line', () => {
+    const expected =
+      'A conversion takes everything after it as the unit — ' +
+      'bracket the part being converted, as in (100 USD in EUR) * 2';
+    expect(line('100 USD in EUR * 2').error).toBe(expected);
+    expect(line('100 km in miles * 2').error).toBe(expected);
+    expect(line('2 hours in minutes * 3').error).toBe(expected);
+  });
+
+  it('has nothing to explain when the conversion trails', () => {
+    expect(line('100 USD * 2 in EUR').error).toBeUndefined();
+    expect(line('100 km * 2 in miles').error).toBeUndefined();
+  });
+
   it('leaves the parser’s own plain English alone', () => {
     expect(line('5 +').error).toBe('Unexpected end of expression');
   });

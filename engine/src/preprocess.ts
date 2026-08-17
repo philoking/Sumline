@@ -542,6 +542,34 @@ function rewriteConversions(s: string, ctx: PreprocessContext): string {
     return `1 ${pair[1]} to ${pair[2]}`;
   }
 
+  /*
+   * A trailing conversion applies to the whole line: `100 km * 2 in miles`.
+   *
+   * math.js binds `in` tighter than `*`, so unbracketed this reads as
+   * `100 km * (2 in miles)` — and because a bare number takes the unit
+   * happily, the answer comes back as `200 km in miles` with nothing flagged.
+   * A reader skimming the column has no reason to doubt it. That is the whole
+   * reason this rule exists: the failure is silent, and silently wrong is
+   * worse here than refused.
+   *
+   * This is not a special case so much as the sibling nobody wrote. Every
+   * other trailing conversion in this file — `as %`, `as a fraction`,
+   * `in scientific notation`, `as a number`, `in km/h` — is anchored to the
+   * whole line already. Plain unit conversion was the one form left falling
+   * through to math.js's precedence, which is why it was the one that lied.
+   *
+   * Anchoring to the end is also what makes the lazy left side pick the *last*
+   * conversion keyword, so `10 km in miles to feet` converts twice rather than
+   * reading `miles to feet` as a unit name.
+   *
+   * Gated on the target actually being a unit, which is what keeps `5 in
+   * stock` and `3 apples in a basket` as the prose they are.
+   */
+  const trailing = /^(.+?)\s+(?:in|to|as)\s+([A-Za-zµ°]+)\s*$/i.exec(s);
+  if (trailing && unitish(trailing[2]!)) {
+    return `(${trailing[1]}) to ${trailing[2]}`;
+  }
+
   return s;
 }
 

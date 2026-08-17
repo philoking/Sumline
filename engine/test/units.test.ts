@@ -26,6 +26,68 @@ describe('units', () => {
     expect(answer('2 cup to ml')).toContain('ml');
   });
 
+  /*
+   * A trailing conversion covers the whole line rather than the token before
+   * it. Written unbracketed this used to read as `100 km * (2 in miles)`, and
+   * because a bare number takes a unit happily it answered `200 km in miles`
+   * — the words echoed back, no error, and nothing to tell a reader skimming
+   * the column that the number beside them was not in miles.
+   */
+  describe('a trailing conversion applies to everything before it', () => {
+    const equivalent: Array<[string, string]> = [
+      ['100 km * 2 in miles', '(100 km * 2) in miles'],
+      ['100 km * 2 in m', '(100 km * 2) in m'],
+      ['$1000 * 2 in EUR', '($1000 * 2) in EUR'],
+      ['$1000 * 2.5 in EUR', '($1000 * 2.5) in EUR'],
+      ['2 hours * 3 in minutes', '(2 hours * 3) in minutes'],
+      ['10 km / 2 as miles', '(10 km / 2) as miles'],
+      ['5 km + 3 km to m', '(5 km + 3 km) to m'],
+    ];
+
+    for (const [written, bracketed] of equivalent) {
+      it(`${written} answers as ${bracketed}`, () => {
+        expect(answer(written)).toBe(answer(bracketed));
+      });
+    }
+
+    it('converts rather than echoing the words back', () => {
+      const result = answer('100 km * 2 in miles');
+      expect(result).not.toContain('in miles');
+      expect(result).toBe('124.274238447 miles');
+    });
+
+    it('does not leave a compound unit where a conversion was meant', () => {
+      expect(answer('$1000 * 2 in EUR')).toBe('€1,600.00');
+    });
+
+    /*
+     * Anchoring to the end of the line means the lazy left side stops at the
+     * *last* conversion keyword, so this converts twice instead of reading
+     * `miles to feet` as the name of a unit.
+     */
+    it('takes the last conversion keyword when a line has two', () => {
+      expect(answer('10 km in miles to feet')).toBe(answer('(10 km in miles) to feet'));
+    });
+
+    it('leaves a plain conversion exactly as it was', () => {
+      expect(answer('5 km in miles')).toBe('3.1068559612 miles');
+      expect(answer('100 USD in EUR')).toBe('€80.00');
+    });
+
+    /*
+     * The rule is gated on the target being a unit, which is the whole of what
+     * keeps ordinary prose out of it.
+     */
+    it('leaves prose alone when the trailing word is not a unit', () => {
+      expect(answer('5 in stock')).not.toContain('(');
+      expect(answer('12 widgets')).toBe('12 widgets');
+    });
+
+    it('still reads a trailing `in` as inches', () => {
+      expect(answer('10 cm in in')).toBe(answer('(10 cm) in in'));
+    });
+  });
+
   describe('data transfer', () => {
     const rates: Array<[string, string]> = [
       ['4 Mbps', '4 Mbps'],

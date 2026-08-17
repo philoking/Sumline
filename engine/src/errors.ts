@@ -82,6 +82,28 @@ export function describeError(error: unknown, vocabulary: Vocabulary): Explained
     return { message: `These units do not match: ${second} and ${first}` };
   }
 
+  /*
+   * "100 USD in EUR * 2" — the conversion swallowed the rest of the line.
+   *
+   * `in` binds tighter than `*`, so the target is `EUR * 2` rather than `EUR`,
+   * and math.js objects that the thing on its right already carries a value.
+   * That is a true statement about its operand and no help at all to the
+   * person who wrote the line: what they need to know is that the conversion
+   * did not end where they thought it did.
+   *
+   * The trailing form of this — `100 USD * 2 in EUR` — is not an error at all;
+   * `rewriteConversions` binds it to the whole line. Only a conversion with
+   * arithmetic *after* it reaches here, and for that one bracketing is the
+   * genuine answer rather than a workaround.
+   */
+  if (/unit with a value/.test(raw)) {
+    return {
+      message:
+        'A conversion takes everything after it as the unit — ' +
+        'bracket the part being converted, as in (100 USD in EUR) * 2',
+    };
+  }
+
   const argument = /^Unexpected type of argument in function (\w+)/.exec(raw);
   if (argument) {
     return {
