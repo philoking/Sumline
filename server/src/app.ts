@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
+import { createEngine, engineOptionsFrom, type EngineSettings } from '@webcalc/engine';
 import { Store, VersionConflictError, type UserId } from './db.js';
 import {
   FALLBACK_SPACE,
@@ -60,6 +61,15 @@ export interface App {
 }
 
 const DEFAULT_LOCK_TTL_MS = 45_000;
+
+/**
+ * The longest sheet `POST /api/evaluate` will take in one call.
+ *
+ * Generous against any sheet a person writes and mean against a script that
+ * pipes a file in by accident: evaluation is synchronous, so those lines are
+ * spent with the event loop held.
+ */
+const MAX_EVALUATE_LINES = 1_000;
 
 /** The cookie naming whose space this browser is working in. */
 export const USER_COOKIE = 'webcalc_user';
@@ -552,6 +562,77 @@ export function buildApp(options: AppOptions): App {
       return { ...wide, globals: cleaned };
     },
   );
+
+  /**
+   * Evaluates a sheet without storing one, in the caller's space.
+   *
+   * The point is not the evaluation — the engine is pure and a client could
+   * carry it — but the *space*. `day rate * 3` has to mean the same thing in a
+   * launcher, in a script and in a sheet, and the only way that holds is if the
+   * globals, region and zone come from the same place the sheet's do. So this
+   * reads the space cookie exactly as `/api/settings` does, and builds its
+   * options with the engine's own `engineOptionsFrom` rather than a second
+   * mapping that could drift from the browser's.
+   *
+   * It also does one thing the browser cannot: past rates are fetched here,
+   * so `100 USD in EUR on 2020-01-01` is answered in a single call rather than
+   * over the two round trips a synchronous engine forces on a client.
+   */
+  server.post<{ Body: { input?: unknown } }>('/api/evaluate', async (request, reply) => {
+    const input = request.body?.input;
+    const source = Array.isArray(input) ? input : typeof input === 'string' ? input : null;
+    if (source === null) {
+      return reply.code(400).send({ error: 'input must be a string or an array of lines' });
+    }
+
+    const lines = Array.isArray(source) ? source : source.split('\n');
+    if (lines.some((line) => typeof line !== 'string')) {
+      return reply.code(400).send({ error: 'input must be a string or an array of lines' });
+    }
+    /*
+     * Evaluation is synchronous and this is one process serving everybody, so a
+     * sheet long enough to take a second takes the second from every other
+     * caller too. The app's own sheets are nowhere near this; a script pasting
+     * a log file could be.
+     */
+    if (lines.length > MAX_EVALUATE_LINES) {
+      return reply
+        .code(413)
+        .send({ error: `input is limited to ${MAX_EVALUATE_LINES} lines` });
+    }
+
+    const settings = settingsFor(currentUser(request)) as EngineSettings;
+    const base = {
+      ...engineOptionsFrom(settings),
+      rates: rates.current(),
+      holidays: holidays.current().dates,
+    };
+
+    // Two passes, because the engine reports what it needs by parsing: the
+    // first says which past dates the sheet asks about, the second answers
+    // with them in hand. Skipped entirely by a sheet that names no date.
+    let engine = createEngine(base);
+    const wanted = engine.ratesNeeded(lines);
+    if (wanted.length > 0) {
+      const fetched = await Promise.all(
+        wanted.map(async (date) => [date, await rates.historical(date)] as const),
+      );
+      engine = createEngine({ ...base, historicalRates: Object.fromEntries(fetched) });
+    }
+
+    const results = engine.evaluate(lines);
+    return {
+      results: results.map((line) => ({
+        index: line.index,
+        kind: line.kind,
+        input: lines[line.index] ?? '',
+        output: line.output,
+        ...(line.error !== undefined && { error: line.error }),
+      })),
+      total: engine.total(results),
+      rateDate: engine.rateDate,
+    };
+  });
 
   server.get('/api/folders', async (request) => ({
     folders: store.listFolders(currentUser(request)),

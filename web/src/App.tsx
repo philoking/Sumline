@@ -27,7 +27,7 @@ import { Login } from './Login';
 import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
-import { DEFAULT_PRECISION } from '@webcalc/engine';
+import { DEFAULT_PRECISION, engineOptionsFrom } from '@webcalc/engine';
 import {
   DEFAULT_FONT_SIZE,
   FONT_STEP,
@@ -39,7 +39,6 @@ import { formatShortcut } from './shortcuts';
 import { useDialog } from './useDialog';
 import { SpaceSettings } from './SpaceSettings';
 import { GlobalSettings } from './GlobalSettings';
-import { engineOptionsFrom } from './engineOptions';
 import { useEngine, useResults } from './useEngine';
 import { useTheme } from './useTheme';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';

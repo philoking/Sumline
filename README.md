@@ -796,6 +796,67 @@ would make signing in impossible there — so on plain HTTP the password crosses
 clear. This raises the bar from "anyone who can reach the port" to "anyone who knows the password";
 for more than that, put it behind a reverse proxy that terminates TLS and handles auth itself.
 
+## Calculating outside the app
+
+`POST /api/evaluate` answers a line the way a sheet would, without storing a sheet:
+
+```bash
+curl -X POST localhost:8422/api/evaluate -H 'content-type: application/json' \
+  -d '{"input":"day rate * 3"}'
+```
+
+```json
+{
+  "results": [
+    { "index": 0, "kind": "expression", "input": "day rate * 3", "output": "$1,650.00" }
+  ],
+  "total": "$1,650.00",
+  "rateDate": "2026-08-14"
+}
+```
+
+`input` is either a string, which is split on newlines, or an array of lines. Every line comes back
+in order with its own answer, and a line that cannot be answered carries an `error` instead — the
+request still succeeds, because one bad line in a sheet is not a bad sheet. Up to 1,000 lines per
+call: evaluation is synchronous, so a longer one would hold the server up for everyone.
+
+**It answers in a space.** The `webcalc_user` cookie picks the space, exactly as it does everywhere
+else, and the globals, number region and time zone that apply are the ones that space's sheets
+compute with. That is the point of the endpoint rather than a detail of it — `day rate * 3` has to
+mean the same thing in a launcher, in a script and in a sheet, and it only can if all three read the
+same settings. It also fetches any past exchange rates the lines ask for, which the browser cannot
+do in one call.
+
+### The `webcalc` command
+
+The same thing from a shell, and the front end a launcher (Raycast, Alfred, Shortcuts) can call:
+
+```bash
+webcalc "5 hours 30 minutes in minutes"      # 330 minutes
+webcalc 10 km in miles                       # 6.2137119224 miles — quoting optional
+webcalc "subtotal = 480" -- "subtotal + 20%" --total
+echo "100 USD in EUR" | webcalc
+```
+
+`--` separates one line from the next, so a several-line sheet is one invocation. One line prints
+its answer bare, for `$(webcalc "…")`; several print in a column beside the lines they answer. A
+line that could not be answered goes to stderr rather than stdout, and the exit status is 1 — so a
+script can tell a wrong answer from no answer.
+
+| Variable | Meaning |
+| --- | --- |
+| `WEBCALC_URL` | Instance to ask. Default `http://localhost:8422`; `--url` overrides. |
+| `WEBCALC_SPACE` | Space whose globals apply. `--space` overrides. |
+| `WEBCALC_PASSWORD` | Sent only after the instance has asked for it with a 401. |
+
+It ships in the server workspace, so a deployed container already has it — asking itself on the
+port it listens on inside the container rather than the one the host publishes:
+
+```bash
+docker exec -e WEBCALC_URL=http://127.0.0.1:8080 webcalc \
+  node server/dist/webcalc.js "day rate * 3"
+```
+
 ## What's deliberately not here
 
 Soulver does several things WebCalc does not, and their absence is a decision rather than an
@@ -822,7 +883,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 759 engine tests, 187 server tests, 13 web tests
+npm test        # 841 engine tests, 234 server tests, 34 web tests
 npm run build   # build all three workspaces
 ```
 
@@ -830,7 +891,7 @@ npm run build   # build all three workspaces
 | --- | --- |
 | [engine/](engine/) | The calculation engine. Pure TypeScript, no DOM or Node APIs, covered by a golden table of `input → answer` cases in [engine/test/](engine/test/). |
 | [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. Its tests cover the editor's *state* logic — CodeMirror keeps that separate from the view, so they run headlessly with no jsdom. |
-| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, and static hosting of the built UI. |
+| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, static hosting of the built UI, and the [`webcalc` command](#the-webcalc-command). It runs the engine too, behind `/api/evaluate`. |
 
 ### How the engine fits together
 

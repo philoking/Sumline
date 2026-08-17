@@ -7,6 +7,8 @@ export {
 } from './temporal/types.js';
 export { DEFAULT_PRECISION, PRECISIONS, formatNumber, formatMoney } from './format.js';
 export { SYMBOL_TO_CODE, CODE_TO_SYMBOL } from './currencies.js';
+export { engineOptionsFrom } from './settings.js';
+export type { ComputedSettings, EngineSettings } from './settings.js';
 export type {
   Engine,
   EngineOptions,

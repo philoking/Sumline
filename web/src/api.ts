@@ -1,4 +1,4 @@
-import type { NumberRegion, RateTable } from '@webcalc/engine';
+import type { ComputedSettings, EngineSettings, NumberRegion, RateTable } from '@webcalc/engine';
 
 export type { NumberRegion };
 
@@ -50,17 +50,27 @@ export interface Folder {
   color: string | null;
 }
 
-/** The settings that change what a sheet computes. Missing means inherit. */
-export interface Computed {
-  region?: NumberRegion;
-  zone?: string;
-}
+/**
+ * The settings that change what a sheet computes. Missing means inherit.
+ *
+ * The engine's own, because it is the engine that has to read them: the same
+ * shape reaches `createEngine` here and on the server behind `/api/evaluate`.
+ */
+export type Computed = ComputedSettings;
 
 export type Statistic = 'total' | 'average' | 'count' | 'median';
 
 export type SheetOrder = 'recent' | 'manual';
 
-export interface Settings {
+/**
+ * A space's settings as `GET /api/settings` returns them.
+ *
+ * Extends the engine's own view of the same object: the keys that change what a
+ * sheet computes are declared there, because the engine is what reads them and
+ * the server hands it the same object. The keys below are the ones only this
+ * app cares about.
+ */
+export interface Settings extends EngineSettings {
   statistic?: Statistic;
   /**
    * Which convention this space's numbers follow.

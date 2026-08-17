@@ -63,12 +63,25 @@ morning's rate is not roughly true, it is wrong, so a date that cannot be fetche
 rather than filled in. It is the one place in the app that prefers a blank answer to a plausible
 one.
 
+## Reversed
+
 ### A CLI, and a `POST /api/evaluate` surface
 
-This one needs no third-party provider and could be built on its own merits. It is deferred for
-want of a use, not for want of a way.
+Deferred "for want of a use, not for want of a way", which was the right test — and three uses
+turned up: a launcher front end onto the same engine *and the same globals*, scripting an instance
+the way the README already documents doing with `curl`, and a deploy gate that asserts the engine
+computes rather than that the port answers. Both are now built.
 
-## Reversed
+The design question was whether `/api/evaluate` should resolve the caller's globals from the space
+cookie. It does. Otherwise `day rate * 3` means one thing in a launcher and another in a sheet,
+which is the failure the endpoint exists to prevent rather than an inconvenience of it. For the same
+reason the settings-to-options mapping moved into the engine: the browser and the server now read a
+space's settings through [the same function](../engine/src/settings.ts), because two copies of that
+mapping is two answers to what a space computes.
+
+The CLI is a client of the endpoint rather than a second host for the engine, and that follows from
+the same point. It could carry the engine — it is pure TypeScript — but then it would answer from
+nothing while a sheet answered from the space, and the launcher case would be exactly wrong.
 
 ### Number bases, bitwise operators and degree-mode trigonometry
 

@@ -63,7 +63,7 @@ jobs:
           docker compose -p webcalc -f docker-compose.prod.yml up -d
           docker image prune -f
 
-      - name: Smoke test
+      - name: Wait for the app to serve
         # A container that starts is not the same as an app that serves. Fail
         # the run loudly, with logs, rather than reporting a broken deploy green.
         run: |
@@ -78,3 +78,65 @@ jobs:
           echo "WebCalc did not become healthy within 60s."
           docker logs --tail 50 webcalc || true
           exit 1
+
+      - name: Smoke test the engine
+        # `/api/health` is equally true of a container serving a broken engine:
+        # it reports that the process is up and which date its rates carry, and
+        # nothing at all about whether a sheet would answer. This asks the
+        # deployed engine an actual question and checks the actual answer.
+        #
+        # The password, when the instance has one, lives in the same ~/webcalc/.env
+        # the compose file reads — on this host, since this runner is on it.
+        # Without signing in the request would 401 and this would test the guard
+        # rather than the engine.
+        #
+        # No `jq`: this step is the last gate on every deploy, so it depends on
+        # nothing the runner might not have. The response shape is fixed and
+        # this file is the only reader of it.
+        run: |
+          set -e
+          BASE=http://127.0.0.1:8422
+          JAR=$(mktemp)
+          trap 'rm -f "$JAR"' EXIT
+
+          ENV_FILE="$HOME/webcalc/.env"
+          PASSWORD=""
+          if [ -f "$ENV_FILE" ]; then
+            PASSWORD=$(sed -n 's/^WEBCALC_PASSWORD=//p' "$ENV_FILE" | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")
+          fi
+          if [ -n "$PASSWORD" ]; then
+            ESCAPED=$(printf '%s' "$PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+            curl -fsS -c "$JAR" -X POST "$BASE/api/session" \
+              -H 'content-type: application/json' \
+              -d "{\"password\":\"$ESCAPED\"}" > /dev/null
+          fi
+
+          # Currency exercises the rate table as well as the arithmetic, and a
+          # unit conversion reaches parts of the engine a plain sum does not.
+          BODY='{"input":["2 + 2 * 10","10 km in miles","100 USD in EUR"]}'
+          # Captured whole first, so a 401 or a 500 is reported as itself rather
+          # than as an empty answer to the arithmetic.
+          if ! RESPONSE=$(curl -fsS -b "$JAR" -X POST "$BASE/api/evaluate" \
+            -H 'content-type: application/json' -d "$BODY"); then
+            echo "The deployed instance would not answer /api/evaluate."
+            echo "If it has a password, check WEBCALC_PASSWORD in $ENV_FILE."
+            docker logs --tail 50 webcalc || true
+            exit 1
+          fi
+
+          ANSWERS=$(printf '%s' "$RESPONSE" | grep -o '"output":"[^"]*"' | sed 's/"output":"//;s/"$//')
+          echo "$ANSWERS"
+          FIRST=$(echo "$ANSWERS" | sed -n 1p)
+          if [ "$FIRST" != "22" ]; then
+            echo "The deployed engine answered '$FIRST' rather than 22."
+            docker logs --tail 50 webcalc || true
+            exit 1
+          fi
+          # The other two depend on the live rates and on the instance's region,
+          # so what is checked is that they were answered at all.
+          if [ "$(echo "$ANSWERS" | sed -n '2p;3p' | grep -c .)" != "2" ]; then
+            echo "The deployed engine left a conversion unanswered."
+            docker logs --tail 50 webcalc || true
+            exit 1
+          fi
+          echo "The deployed engine computes."

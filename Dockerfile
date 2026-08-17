@@ -42,6 +42,11 @@ COPY server/package.json server/package.json
 COPY web/package.json web/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 
+# The engine is a runtime dependency of the server, not only of the browser:
+# `POST /api/evaluate` evaluates in this process. `npm ci` links the workspace
+# into node_modules, but the link points at a directory that has no `dist`
+# until this line puts one there.
+COPY --from=build /app/engine/dist engine/dist
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 
