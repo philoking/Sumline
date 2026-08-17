@@ -19,7 +19,7 @@
     "dev:server": "npm run dev -w @webcalc/server",
     "dev:web": "npm run dev -w @webcalc/web",
     "start": "npm run start -w @webcalc/server",
-    "test": "npm run test -w @webcalc/engine && npm run test -w @webcalc/server",
+    "test": "npm run test -w @webcalc/engine && npm run test -w @webcalc/server && npm run test -w @webcalc/web",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

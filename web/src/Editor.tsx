@@ -13,6 +13,8 @@ import {
 import { defaultKeymap, history, historyKeymap, toggleComment } from '@codemirror/commands';
 import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
 import type { LineResult } from '@webcalc/engine';
+import { isCommentLine, isHeadingLine } from './lines';
+import { keepReferencesPointing, replacingDocument } from './references';
 
 export interface EditorProps {
   value: string;
@@ -125,15 +127,25 @@ function unlinkReferences(view: EditorView): boolean {
 
 /** The rendered answer of the line a reference points at. */
 let answersForUnlink: LineResult[] = [];
+
+/**
+ * A line's last answer, as a number a sheet can read back.
+ *
+ * The separators and currency symbols are stripped because the result is
+ * substituted into the text as an operand, not shown as an answer.
+ */
+function frozenValue(target: number): string | null {
+  const output = answersForUnlink[target - 1]?.output;
+  return output ? output.replace(/[,$€£¥]/g, '') : null;
+}
+
 function resolveReference(
   _view: EditorView,
   currentLine: number,
   token: string,
 ): string | null {
   const numbered = /line\s*(\d+)/i.exec(token);
-  const target = numbered ? Number(numbered[1]) : currentLine - 1;
-  const output = answersForUnlink[target - 1]?.output;
-  return output ? output.replace(/[,$€£¥]/g, '') : null;
+  return frozenValue(numbered ? Number(numbered[1]) : currentLine - 1);
 }
 
 /** Variable names already declared in the sheet, offered as completions. */
@@ -163,9 +175,9 @@ function buildLineDecorations(view: EditorView): DecorationSet {
   for (const { from, to } of view.visibleRanges) {
     for (let pos = from; pos <= to; ) {
       const line = view.state.doc.lineAt(pos);
-      if (/^\s*#{1,6}\s/.test(line.text) || /^\s*[-=]{3,}\s*$/.test(line.text)) {
+      if (isHeadingLine(line.text)) {
         builder.add(line.from, line.from, HEADING_LINE);
-      } else if (/^\s*\/\//.test(line.text)) {
+      } else if (isCommentLine(line.text)) {
         builder.add(line.from, line.from, COMMENT_LINE);
       }
       pos = line.to + 1;
@@ -173,6 +185,7 @@ function buildLineDecorations(view: EditorView): DecorationSet {
   }
   return builder.finish();
 }
+
 
 const sheetHighlighting = ViewPlugin.fromClass(
   class {
@@ -251,6 +264,7 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
           ]),
           autocompletion({ override: [completeNames], icons: false }),
           lineNumbers(),
+          keepReferencesPointing(frozenValue),
           sheetHighlighting,
           EditorView.lineWrapping,
           cmPlaceholder('Start typing. Try: 20% of 250'),
@@ -282,6 +296,10 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
 
   // Adopt content that changed outside the editor (switching sheets, or
   // reloading after a conflict) without disturbing an in-progress edit.
+  //
+  // Annotated so the reference renumbering sits this out: the outgoing and
+  // incoming documents are unrelated, and mapping line numbers between them
+  // would rewrite the arriving sheet.
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -290,6 +308,7 @@ export function Editor({ value, results, readOnly, onChange }: EditorProps) {
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
       selection: { anchor: Math.min(view.state.selection.main.anchor, value.length) },
+      annotations: replacingDocument.of(true),
     });
   }, [value]);
 
