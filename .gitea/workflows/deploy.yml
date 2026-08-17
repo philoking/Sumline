@@ -1,11 +1,15 @@
 name: Deploy
 
-# Runs on the self-hosted act_runner ON Shuri (label `shuri`). Tests, builds and
-# deploys locally with docker compose — no registry, no SSH.
+# Gitea Actions, deploying to the machine the runner is on. Tests, builds and
+# brings the stack up locally with docker compose — no registry, no SSH.
 #
-# Deploy layout on Shuri:
+# This file is specific to one instance and nothing else depends on it. To use
+# it, point `runs-on:` at your own self-hosted runner's label; to deploy some
+# other way, delete it. GitHub and GitLab ignore `.gitea/` entirely.
+#
+# Deploy layout on the target host:
 #   ~/webcalc/docker-compose.prod.yml   copied here by this workflow
-#   ~/webcalc/.env                      optional, sets TZ
+#   ~/webcalc/.env                      optional, sets TZ and SPACES
 #   volume webcalc_webcalc-data         the sheets database; never renamed
 #
 # The compose project name is pinned with `-p webcalc` so the volume keeps its
@@ -22,7 +26,7 @@ on:
   workflow_dispatch:
 
 # Two pushes landing within a run of each other would otherwise put two
-# deploys on Shuri at once, both running `compose up -d` against the same
+# deploys on the host at once, both running `compose up -d` against the same
 # container and the same sheets volume. `cancel-in-progress: false` protects
 # the deploy that is already running rather than interrupting it part-way.
 concurrency:
@@ -31,6 +35,8 @@ concurrency:
 
 jobs:
   deploy:
+    # The label of the self-hosted runner on the machine being deployed to.
+    # Replace with your own.
     runs-on: shuri
     steps:
       - name: Checkout
@@ -40,7 +46,7 @@ jobs:
         # The `test` stage runs the engine and server suites inside the image,
         # so this needs no Node on the host. A failure here stops the deploy.
         #
-        # --network=host: build RUN steps use Shuri's resolver. The default
+        # --network=host: build RUN steps use the host's resolver. The default
         # container DNS drops npm's burst of tarball fetches (EAI_AGAIN).
         run: docker build --network=host --target test -t webcalc:test .
 

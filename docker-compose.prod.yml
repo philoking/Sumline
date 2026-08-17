@@ -1,4 +1,4 @@
-# Deployment compose file, used by .gitea/workflows/deploy.yml on Shuri.
+# Deployment compose file, used by .gitea/workflows/deploy.yml.
 #
 # Unlike docker-compose.yml this has no `build:` stanza — the runner builds the
 # image and this file only runs it, so the deploy directory holds no source.

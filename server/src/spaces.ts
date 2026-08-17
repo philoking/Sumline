@@ -40,11 +40,11 @@ export function deriveSpaceId(name: string): string {
 /**
  * Reads the `SPACES` setting.
  *
- * Two forms, comma separated: `Jason` takes its id from the name, and
- * `jason:Jason` states the id outright. The second exists so a person can be
- * renamed without their sheets going with the old id — every sheet, folder and
- * setting is stamped with the id, so a derived id changing is the difference
- * between renaming someone and replacing them.
+ * Two forms, comma separated: `Ada` takes its id from the name, and `ada:Ada`
+ * states the id outright. The second exists so a person can be renamed without
+ * their sheets going with the old id — every sheet, folder and setting is
+ * stamped with the id, so a derived id changing is the difference between
+ * renaming someone and replacing them.
  *
  * Returns null rather than a default when nothing usable is configured, so the
  * caller can tell "unset" from "set to one space" and fall back to whatever
@@ -84,8 +84,8 @@ export function parseSpaces(raw: string | undefined | null): Space[] | null {
  * open on what looks like an empty database, which is the worst way for a
  * configuration default to announce itself.
  *
- * Names are the id title-cased, which is right for `jason` and merely tidy for
- * an id that was never a name. Setting `SPACES` replaces the guess.
+ * Names are the id title-cased, which is right for a name-derived id and merely
+ * tidy for one that was never a name. Setting `SPACES` replaces the guess.
  */
 export function spacesFromOwners(owners: readonly string[]): Space[] | null {
   const spaces = owners

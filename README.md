@@ -19,7 +19,7 @@ sum #home                          $180.50
 ## Quick start
 
 ```bash
-git clone https://gitea.pkprivate.net/philoking/WebCalc.git webcalc
+git clone <this-repository> webcalc
 cd webcalc
 docker compose up -d --build
 ```
@@ -398,45 +398,84 @@ uses a print stylesheet that lays the answer column beside the text on paper.
 
 ### Global variables
 
-Variables available to every sheet, set through `PUT /api/settings`:
+Variables available to every sheet in a space. There is no screen for these — they are set
+through the API:
 
 ```bash
 curl -X PUT http://localhost:8422/api/settings \
   -H 'content-type: application/json' \
+  -H 'cookie: webcalc_user=work' \
   -d '{"globals": {"day rate": "$550", "vat": "20%"}}'
 ```
 
 A sheet can use them like any other variable, and can shadow one by declaring the same name.
 
+**The cookie decides which space you are writing to**, and it is not optional on an instance with
+more than one: without it the request resolves to whichever space is listed first, so globals meant
+for `school` land in `work` and nothing reports a problem. `webcalc_user` takes a space **id** —
+the lowercase, dashed form of its name, which is what `SPACES="Work,Personal"` derives and what
+the switcher sets in your browser.
+
+That is what makes the same name mean different things in different places:
+
+```bash
+# day rate is $550 when working, $120 when teaching
+curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
+  -H 'cookie: webcalc_user=consulting' -d '{"globals": {"day rate": "$550"}}'
+curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
+  -H 'cookie: webcalc_user=teaching'   -d '{"globals": {"day rate": "$120"}}'
+```
+
+Read them back the same way, which is the quickest way to check a global landed where you meant
+it to:
+
+```bash
+curl localhost:8422/api/settings -H 'cookie: webcalc_user=teaching'
+```
+
+A `PUT` merges at the top level only — sending `statistic` leaves `globals` untouched — but
+`globals` is a single value, so **sending it replaces every variable in it**. `{"globals": {"day
+rate": "$600"}}` on a space that also had a `vat` leaves that space with no `vat` at all. Send the
+whole set each time, or read it back first and edit what you get.
+
 ## Spaces
 
-Each person has their own space: their own sheets, folders, trash, settings and global
-variables. The initial at the right-hand end of the top bar shows whose space you are in;
-clicking it offers the others. The choice is kept in a cookie, so a machine stays on whoever
-used it last. Every space gets its own Welcome sheet when it is created.
+A space is a separate set of sheets, with its own folders, trash, settings and global variables.
+Nothing about it says a space has to be a person.
+
+Two people sharing an instance is the obvious use, but one person with several spaces is just as
+reasonable — **Work** and **Personal**, a space per client, a space per project, or one for
+school and one for everything else. What a space gives you is a clean list and its own global
+variables: a `day rate` that means one thing in Consulting and another in Teaching, without the
+two ever seeing each other's sheets.
+
+The initial at the right-hand end of the top bar shows which space you are in; clicking it offers
+the others. The choice is kept in a cookie, so a browser stays where it was last left. Every
+space gets its own Welcome sheet when it is created.
 
 **This is not a login.** There are no passwords, and anyone who can reach the app can switch to
-any space — the same footing as an instance with no authentication at all. It exists to keep two
-people's sheets from piling up in one list, not to keep anyone out.
+any space — the same footing as an instance with no authentication at all. Spaces keep unrelated
+sheets from piling up in one list; they do not keep anyone out.
 
-### Adding and removing people
+### Adding and removing spaces
 
 From the space menu: **Add space…** creates one, and **Rename or remove…** turns the list into
-an editable one. There is no limit on how many there are, and a fresh instance starts as a
-one-person app called "Me" rather than assuming a second person exists.
+an editable one. There is no limit on how many there are, and a fresh instance starts with a
+single space called "Me" rather than assuming there is a second.
 
 `SPACES` **seeds** an instance that has none, which is the only thing it does — spaces then live
 in the database, so one added in the app is not undone by the next deploy, and one removed does
 not come back because the variable still names them:
 
 ```bash
-SPACES="Jason,Kim"                   # ids derived from the names
-SPACES="jason:Jason,kim:Kimberley"   # ids stated outright
+SPACES="Work,Personal"             # ids derived from the names
+SPACES="ada:Ada,grace:Dr Hopper"   # ids stated outright
 ```
 
 Every sheet, folder and setting is stamped with a space's **id**, not its name, which is why the
-two are separable. Renaming someone in the app changes only what is displayed. The `id:Name`
-form matters when seeding an instance whose database already uses particular ids.
+two are separable. Renaming a space in the app changes only what is displayed — "Work" can become
+"Consulting" without a single sheet moving. The `id:Name` form matters when seeding an instance
+whose database already uses particular ids.
 
 **Removing a space keeps its sheets.** They are not deleted — no space owns them any more, so
 they drop out of every list, and adding a space back under the same id shows them again. The
@@ -445,21 +484,24 @@ finds with no space at startup. The last space cannot be removed, since every re
 resolve to one.
 
 Sheets that existed before spaces belong to the first space the instance ever had. An instance
-upgraded from a version without them adopts the ids already stamped on its data, so nobody opens
-the app to find their sheets gone.
+upgraded from a version without them adopts the ids already stamped on its data, so nothing opens
+on an empty-looking list.
 
-A share link crosses spaces — that is the point of it. Opening someone else's link shows their
-sheet, marked with a badge saying whose it is, and you can edit it under the usual lock. What
-you cannot do from the other side is destroy it: trashing, purging, restoring, and renaming or
-deleting a folder are refused unless the thing is yours, so following a link never puts you one
-mis-click from deleting work that is not.
+A share link crosses spaces — that is the point of it. Following a link into another space shows
+that sheet, badged with the space it came from, and you can edit it under the usual lock. What
+you cannot do from outside is destroy it: trashing, purging, restoring, and renaming or deleting
+a folder are refused unless the thing belongs to the space you are in, so following a link never
+puts you one mis-click from deleting something you were only visiting.
 
 ## Sharing and concurrent editing
 
-Sheets live on the server, so any browser on your network sees the same set of *your* sheets.
-When you open a sheet your browser takes a short-lived editing lock; anyone else who opens it
-gets a read-only view naming who has it, plus a **Take over editing** button. With spaces in
-play that banner names the person — "Kim is editing this sheet" — rather than their browser.
+Sheets live on the server, so every browser reaching the same space sees the same sheets. When
+you open one your browser takes a short-lived editing lock; anything else that opens it gets a
+read-only view plus a **Take over editing** button.
+
+The banner names the **space** holding the lock rather than the browser — "Work is editing this
+sheet" — which is the useful thing to know when the other tab is your own, and reads as a person
+when the spaces happen to be people.
 
 ### Links to a sheet
 
@@ -501,7 +543,8 @@ oversight:
 | Live stock prices, weather, knowledge lookups | Every usable provider needs an API key, which would compromise the guarantee that the container works with no internet access. |
 | Trip planning (time points) | Soulver marks these outside the text. Sheets here are plain text — the property that makes copy, export, search and conflict-diffing work — so it would have needed invented syntax. |
 
-Each has a closed milestone in the repository recording the reasoning.
+Each is recorded in [docs/decisions.md](docs/decisions.md), which also separates the ones that
+were **declined** from the ones merely **deferred**.
 
 The same principle explains a design choice you'll notice in the app: per-line formatting is
 written **into** the line (`1/3 to 2 dp`, `100,000 in full`) rather than stored against it.
@@ -548,15 +591,29 @@ the same line is a passing test — so adding to the documentation means adding 
 
 ## Deployment
 
-Pushing to `main` deploys automatically via [Gitea Actions](.gitea/workflows/deploy.yml). The
-job runs on a self-hosted runner on the target host, so there is no registry and no SSH:
+The simplest deployment is the [Quick start](#quick-start) above: `docker compose up -d --build`
+on whatever machine should host it. Everything below describes one *particular* way of automating
+that, kept in the repository because it is what this project was built against — not because it
+is the way you have to do it.
+
+### The bundled pipeline
+
+[`.gitea/workflows/deploy.yml`](.gitea/workflows/deploy.yml) deploys on every push to `main`. It
+is written for [Gitea Actions](https://docs.gitea.com/usage/actions/overview) with a **self-hosted
+runner on the target host itself**, which is why there is no registry and no SSH anywhere in it.
+
+`runs-on:` names that runner's label. Change it to your own runner, or delete the file — nothing
+else in the project depends on it. A fork on GitHub or GitLab will ignore it entirely, since
+neither reads `.gitea/`.
+
+The four steps are worth copying whatever CI you use:
 
 1. **Test** — `docker build --target test` runs the whole suite inside the image, so the host
    needs no Node of its own and the tests run against the Node that actually ships. A failure
    here stops the deploy.
 2. **Build** — the runtime image, reusing the layers the test stage just built.
-3. **Deploy** — copies `docker-compose.prod.yml` to `~/webcalc` and brings the stack up with a
-   pinned project name.
+3. **Deploy** — copies `docker-compose.prod.yml` to the deploy directory and brings the stack up
+   with a pinned project name.
 4. **Smoke test** — polls `/api/health` and fails the run with container logs if the app doesn't
    actually serve. A container that starts isn't the same as an app that works.
 
@@ -577,7 +634,7 @@ app on an empty database.**
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
 | `TZ` | `UTC` | Timezone for date calculations |
 | `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
-| `SPACES` | one space, "Me" | Seeds [the people who get a space](#adding-and-removing-people) on an instance that has none. Ignored once it has any — they are managed in the app after that. |
+| `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
 
 ## Acknowledgement
 

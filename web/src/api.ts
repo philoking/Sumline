@@ -168,7 +168,7 @@ export const api = {
       { method: 'DELETE' },
     ),
 
-  /** The people who can use this instance, and whose space we are in now. */
+  /** Every space on this instance, and which one we are working in now. */
   users: () => request<{ users: User[]; current: string }>('/api/users'),
 
   /** Adds a space. The id comes from the name unless one is given. */

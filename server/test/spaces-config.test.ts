@@ -25,18 +25,18 @@ describe('reading the SPACES setting', () => {
   });
 
   it('derives an id from a bare name', () => {
-    expect(parseSpaces('Jason,Kim')).toEqual([
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+    expect(parseSpaces('Ada,Grace')).toEqual([
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ]);
   });
 
   it('takes an explicit id, so a rename keeps the sheets', () => {
-    // The whole point of the id form: Kim becomes Kimberley on screen while
-    // every row still says `kim`.
-    expect(parseSpaces('jason:Jason,kim:Kimberley')).toEqual([
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kimberley' },
+    // The whole point of the id form: Grace becomes Dr Hopper on screen while
+    // every row still says `grace`.
+    expect(parseSpaces('ada:Ada,grace:Dr Hopper')).toEqual([
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Dr Hopper' },
     ]);
   });
 
@@ -47,15 +47,15 @@ describe('reading the SPACES setting', () => {
   });
 
   it('tolerates spacing around the separators', () => {
-    expect(parseSpaces('  jason : Jason  ,  kim : Kim  ')).toEqual([
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+    expect(parseSpaces('  ada : Ada  ,  grace : Grace  ')).toEqual([
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ]);
   });
 
   it('normalises an id rather than refusing to start', () => {
-    expect(parseSpaces('Jason M:Jason')).toEqual([
-      { id: 'jason-m', name: 'Jason' },
+    expect(parseSpaces('Ada M:Ada')).toEqual([
+      { id: 'ada-m', name: 'Ada' },
     ]);
     expect(parseSpaces('Zoë,Ann-Marie')).toEqual([
       { id: 'zoe', name: 'Zoë' },
@@ -66,14 +66,14 @@ describe('reading the SPACES setting', () => {
   it('keeps the first of two entries sharing an id', () => {
     // Otherwise the later one would silently take over a space already full
     // of the earlier one's sheets.
-    expect(parseSpaces('jason:Jason,jason:Someone else')).toEqual([
-      { id: 'jason', name: 'Jason' },
+    expect(parseSpaces('ada:Ada,ada:Someone else')).toEqual([
+      { id: 'ada', name: 'Ada' },
     ]);
   });
 
   it('drops an entry with no usable id or no name', () => {
-    expect(parseSpaces('!!!,Kim')).toEqual([{ id: 'kim', name: 'Kim' }]);
-    expect(parseSpaces('jason:,Kim')).toEqual([{ id: 'kim', name: 'Kim' }]);
+    expect(parseSpaces('!!!,Grace')).toEqual([{ id: 'grace', name: 'Grace' }]);
+    expect(parseSpaces('ada:,Grace')).toEqual([{ id: 'grace', name: 'Grace' }]);
     expect(parseSpaces('!!!')).toBeNull();
   });
 
@@ -90,29 +90,29 @@ describe('reading the SPACES setting', () => {
 
 describe('resolving a request to a space', () => {
   const spaces: Space[] = [
-    { id: 'jason', name: 'Jason' },
-    { id: 'kim', name: 'Kim' },
+    { id: 'ada', name: 'Ada' },
+    { id: 'grace', name: 'Grace' },
   ];
 
   it('takes a configured space at its word', () => {
-    expect(resolveSpace(spaces, 'kim')).toBe('kim');
+    expect(resolveSpace(spaces, 'grace')).toBe('grace');
   });
 
   it('falls back to the first space for anything else', () => {
     // A cookie naming a space that has been removed from the configuration
     // must not error: it would lock that browser out of the whole app.
-    expect(resolveSpace(spaces, 'nobody')).toBe('jason');
-    expect(resolveSpace(spaces, undefined)).toBe('jason');
-    expect(resolveSpace(spaces, 42)).toBe('jason');
-    expect(resolveSpace([], 'kim')).toBe(FALLBACK_SPACE.id);
+    expect(resolveSpace(spaces, 'nobody')).toBe('ada');
+    expect(resolveSpace(spaces, undefined)).toBe('ada');
+    expect(resolveSpace(spaces, 42)).toBe('ada');
+    expect(resolveSpace([], 'grace')).toBe(FALLBACK_SPACE.id);
   });
 });
 
 describe('spaces the database already holds', () => {
   it('rebuilds a list from owner ids', () => {
-    expect(spacesFromOwners(['jason', 'kim'])).toEqual([
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+    expect(spacesFromOwners(['ada', 'grace'])).toEqual([
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ]);
     expect(spacesFromOwners(['ann-marie'])).toEqual([
       { id: 'ann-marie', name: 'Ann Marie' },
@@ -124,9 +124,9 @@ describe('spaces the database already holds', () => {
   });
 
   it('names the owners no configured space covers', () => {
-    const configured: Space[] = [{ id: 'jason', name: 'Jason' }];
-    expect(orphanedOwners(configured, ['jason', 'kim'])).toEqual(['kim']);
-    expect(orphanedOwners(configured, ['jason'])).toEqual([]);
+    const configured: Space[] = [{ id: 'ada', name: 'Ada' }];
+    expect(orphanedOwners(configured, ['ada', 'grace'])).toEqual(['grace']);
+    expect(orphanedOwners(configured, ['ada'])).toEqual([]);
   });
 });
 
@@ -194,12 +194,12 @@ describe('an instance with SPACES unset', () => {
     // would show an empty app over a database full of sheets.
     const dbPath = tempDb();
     const configured = build(dbPath, [
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ]);
     for (const [owner, title] of [
-      ['jason', 'Bluray sales'],
-      ['kim', 'Garden plan'],
+      ['ada', 'Bluray sales'],
+      ['grace', 'Garden plan'],
     ] as const) {
       const created = await configured.server.inject({
         method: 'POST',
@@ -216,16 +216,16 @@ describe('an instance with SPACES unset', () => {
     const users = await reopened.server.inject({ url: '/api/users' });
     expect(users.json()).toEqual({
       users: [
-        { id: 'jason', name: 'Jason' },
-        { id: 'kim', name: 'Kim' },
+        { id: 'ada', name: 'Ada' },
+        { id: 'grace', name: 'Grace' },
       ],
-      current: 'jason',
+      current: 'ada',
     });
 
     // Adoption is only worth anything if the sheets come back with it.
     const sheets = await reopened.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map(
@@ -239,21 +239,21 @@ describe('an instance with SPACES unset', () => {
     // read, and nobody has set SPACES. Falling back to one generic space here
     // would open the app on what looks like an empty database.
     const dbPath = tempDb();
-    const legacy = new Store(dbPath, 'jason');
-    legacy.createSheet('jason', 'Bluray sales', '1 + 1');
-    legacy.createSheet('kim', 'Garden plan', '2 + 2');
+    const legacy = new Store(dbPath, 'ada');
+    legacy.createSheet('ada', 'Bluray sales', '1 + 1');
+    legacy.createSheet('grace', 'Garden plan', '2 + 2');
     legacy.close();
 
     const upgraded = build(dbPath);
     const users = await upgraded.server.inject({ url: '/api/users' });
     expect((users.json() as { users: Space[] }).users).toEqual([
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ]);
 
     const sheets = await upgraded.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title),
@@ -262,7 +262,7 @@ describe('an instance with SPACES unset', () => {
 
   it('is a seed, so a restart does not undo a space added in the app', async () => {
     const dbPath = tempDb();
-    const first = build(dbPath, [{ id: 'jason', name: 'Jason' }]);
+    const first = build(dbPath, [{ id: 'ada', name: 'Ada' }]);
     const added = await first.server.inject({
       method: 'POST',
       url: '/api/spaces',
@@ -274,10 +274,10 @@ describe('an instance with SPACES unset', () => {
 
     // Restarting with the original SPACES value must not drop Ana, or every
     // space added in the app would live only until the next deploy.
-    const restarted = build(dbPath, [{ id: 'jason', name: 'Jason' }]);
+    const restarted = build(dbPath, [{ id: 'ada', name: 'Ada' }]);
     const users = await restarted.server.inject({ url: '/api/users' });
     expect((users.json() as { users: Space[] }).users).toEqual([
-      { id: 'jason', name: 'Jason' },
+      { id: 'ada', name: 'Ada' },
       { id: 'ana', name: 'Ana' },
     ]);
   });
@@ -297,8 +297,8 @@ describe('managing spaces from the app', () => {
       autoRefreshRates: false,
       seedWelcomeSheet: false,
       spaces: [
-        { id: 'jason', name: 'Jason' },
-        { id: 'kim', name: 'Kim' },
+        { id: 'ada', name: 'Ada' },
+        { id: 'grace', name: 'Grace' },
       ],
     });
   });
@@ -343,7 +343,7 @@ describe('managing spaces from the app', () => {
 
     const others = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=jason' },
+      headers: { cookie: 'webcalc_user=ada' },
     });
     expect((others.json() as { sheets: unknown[] }).sheets).toEqual([]);
   });
@@ -355,7 +355,7 @@ describe('managing spaces from the app', () => {
   });
 
   it('refuses an id that is taken', async () => {
-    const response = await addSpace({ name: 'Jason' });
+    const response = await addSpace({ name: 'Ada' });
     expect(response.statusCode).toBe(409);
     expect(await listSpaces()).toHaveLength(2);
   });
@@ -364,27 +364,27 @@ describe('managing spaces from the app', () => {
     const created = await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
       payload: { title: 'Garden plan', content: '1 + 1' },
     });
     expect(created.statusCode).toBe(201);
 
     const renamed = await app.server.inject({
       method: 'PATCH',
-      url: '/api/spaces/kim',
-      payload: { name: 'Kimberley' },
+      url: '/api/spaces/grace',
+      payload: { name: 'Dr Hopper' },
     });
     expect(renamed.statusCode).toBe(200);
     expect(await listSpaces()).toEqual([
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kimberley' },
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Dr Hopper' },
     ]);
 
     // The id is what every sheet is stamped with, so a rename must leave it
     // alone or it would read as a deletion.
     const sheets = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title),
@@ -401,7 +401,7 @@ describe('managing spaces from the app', () => {
 
     const blank = await app.server.inject({
       method: 'PATCH',
-      url: '/api/spaces/kim',
+      url: '/api/spaces/grace',
       payload: { name: '  ' },
     });
     expect(blank.statusCode).toBe(400);
@@ -411,47 +411,47 @@ describe('managing spaces from the app', () => {
     await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
       payload: { title: 'Garden plan', content: '1 + 1' },
     });
 
     const removed = await app.server.inject({
       method: 'DELETE',
-      url: '/api/spaces/kim',
+      url: '/api/spaces/grace',
     });
     expect(removed.statusCode).toBe(200);
     // The count is what lets the client say "1 sheet will be hidden" rather
     // than implying the work was destroyed.
     expect(removed.json()).toEqual({ deleted: true, hidden: 1 });
-    expect(await listSpaces()).toEqual([{ id: 'jason', name: 'Jason' }]);
+    expect(await listSpaces()).toEqual([{ id: 'ada', name: 'Ada' }]);
 
     // Her cookie now resolves to the remaining space, and the sheet is in
     // nobody's list — but it is still in the database.
     const listed = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
     });
     expect((listed.json() as { sheets: unknown[] }).sheets).toEqual([]);
-    expect(app.store.owners()).toContain('kim');
+    expect(app.store.owners()).toContain('grace');
   });
 
   it('brings the sheets back when the space is added again under its id', async () => {
     await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
       payload: { title: 'Garden plan', content: '1 + 1' },
     });
-    await app.server.inject({ method: 'DELETE', url: '/api/spaces/kim' });
+    await app.server.inject({ method: 'DELETE', url: '/api/spaces/grace' });
 
     // Restoring by id rather than by name is the whole reason the id is
     // separately settable.
-    const restored = await addSpace({ id: 'kim', name: 'Kimberley' });
+    const restored = await addSpace({ id: 'grace', name: 'Dr Hopper' });
     expect(restored.statusCode).toBe(201);
 
     const sheets = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=kim' },
+      headers: { cookie: 'webcalc_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title),
@@ -460,12 +460,12 @@ describe('managing spaces from the app', () => {
 
   it('refuses to remove the last space', async () => {
     expect(
-      (await app.server.inject({ method: 'DELETE', url: '/api/spaces/kim' })).statusCode,
+      (await app.server.inject({ method: 'DELETE', url: '/api/spaces/grace' })).statusCode,
     ).toBe(200);
     // With none left every request would resolve to a space that is not there.
-    const last = await app.server.inject({ method: 'DELETE', url: '/api/spaces/jason' });
+    const last = await app.server.inject({ method: 'DELETE', url: '/api/spaces/ada' });
     expect(last.statusCode).toBe(409);
-    expect(await listSpaces()).toEqual([{ id: 'jason', name: 'Jason' }]);
+    expect(await listSpaces()).toEqual([{ id: 'ada', name: 'Ada' }]);
   });
 
   it('reports removing a space that is not there', async () => {

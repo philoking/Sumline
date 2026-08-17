@@ -1040,6 +1040,12 @@ button.ghost:hover {
   min-width: 150px;
 }
 
+/* The menu grows to its longest item rather than wrapping one onto two lines,
+   which read as two entries. */
+.user-menu button {
+  white-space: nowrap;
+}
+
 /* A fixed-width gutter so the names line up whether ticked or not. */
 .user-menu .tick {
   display: inline-block;

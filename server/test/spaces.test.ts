@@ -11,8 +11,8 @@ let app: App;
 
 /** The two people these tests are about, configured rather than compiled in. */
 const PEOPLE: Space[] = [
-  { id: 'jason', name: 'Jason' },
-  { id: 'kim', name: 'Kim' },
+  { id: 'ada', name: 'Ada' },
+  { id: 'grace', name: 'Grace' },
 ];
 
 /** The space pre-user rows are adopted into: the first one configured. */
@@ -61,149 +61,149 @@ async function listTitles(user: string, url = '/api/sheets') {
 
 describe('separate spaces', () => {
   it('keeps each person’s sheets out of the other’s list', async () => {
-    await createSheet('jason', 'Bluray sales');
-    await createSheet('kim', 'Garden plan');
+    await createSheet('ada', 'Bluray sales');
+    await createSheet('grace', 'Garden plan');
 
-    expect(await listTitles('jason')).toEqual(['Bluray sales']);
-    expect(await listTitles('kim')).toEqual(['Garden plan']);
+    expect(await listTitles('ada')).toEqual(['Bluray sales']);
+    expect(await listTitles('grace')).toEqual(['Garden plan']);
   });
 
   it('stamps a new sheet with the space that created it', async () => {
-    const sheet = await createSheet('kim', 'Garden plan');
-    expect(sheet.owner).toBe('kim');
+    const sheet = await createSheet('grace', 'Garden plan');
+    expect(sheet.owner).toBe('grace');
   });
 
   it('keeps search inside the space', async () => {
-    await createSheet('jason', 'Budget', 'rent = 1200');
-    await createSheet('kim', 'Budget', 'rent = 1200');
-    expect(await listTitles('kim', '/api/sheets?q=rent')).toEqual(['Budget']);
-    expect(await listTitles('kim', '/api/sheets?q=rent')).toHaveLength(1);
+    await createSheet('ada', 'Budget', 'rent = 1200');
+    await createSheet('grace', 'Budget', 'rent = 1200');
+    expect(await listTitles('grace', '/api/sheets?q=rent')).toEqual(['Budget']);
+    expect(await listTitles('grace', '/api/sheets?q=rent')).toHaveLength(1);
   });
 
   it('keeps folders apart', async () => {
     await app.server.inject({
       method: 'POST',
       url: '/api/folders',
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { name: 'Work' },
     });
-    const kim = await app.server.inject({ url: '/api/folders', headers: as('kim') });
-    expect((kim.json() as { folders: unknown[] }).folders).toEqual([]);
+    const grace = await app.server.inject({ url: '/api/folders', headers: as('grace') });
+    expect((grace.json() as { folders: unknown[] }).folders).toEqual([]);
   });
 
   it('keeps trash apart', async () => {
-    const mine = await createSheet('jason', 'Mine');
-    await createSheet('kim', 'Hers');
+    const mine = await createSheet('ada', 'Mine');
+    await createSheet('grace', 'Hers');
     await app.server.inject({
       method: 'DELETE',
       url: `/api/sheets/${mine.id}`,
-      headers: as('jason'),
+      headers: as('ada'),
     });
 
-    expect(await listTitles('jason', '/api/sheets?trash=1')).toEqual(['Mine']);
-    expect(await listTitles('kim', '/api/sheets?trash=1')).toEqual([]);
+    expect(await listTitles('ada', '/api/sheets?trash=1')).toEqual(['Mine']);
+    expect(await listTitles('grace', '/api/sheets?trash=1')).toEqual([]);
 
     // Emptying one trash must not reach into the other's.
-    const hers = await createSheet('kim', 'Also hers');
+    const hers = await createSheet('grace', 'Also hers');
     await app.server.inject({
       method: 'DELETE',
       url: `/api/sheets/${hers.id}`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     const purged = await app.server.inject({
       method: 'DELETE',
       url: '/api/trash',
-      headers: as('jason'),
+      headers: as('ada'),
     });
     expect(purged.json()).toEqual({ purged: 1 });
-    expect(await listTitles('kim', '/api/sheets?trash=1')).toEqual(['Also hers']);
+    expect(await listTitles('grace', '/api/sheets?trash=1')).toEqual(['Also hers']);
   });
 
   it('keeps settings apart, including the global variables', async () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { statistic: 'median', globals: { rate: '0.2' } },
     });
-    const kim = await app.server.inject({ url: '/api/settings', headers: as('kim') });
-    expect(kim.json()).toEqual({});
+    const grace = await app.server.inject({ url: '/api/settings', headers: as('grace') });
+    expect(grace.json()).toEqual({});
   });
 });
 
 describe('crossing a space by share link', () => {
   it('resolves and opens a sheet from the other space', async () => {
-    const sheet = await createSheet('jason', 'Kitchen remodel', '1 + 1');
+    const sheet = await createSheet('ada', 'Kitchen remodel', '1 + 1');
     const share = await app.server.inject({
       method: 'POST',
       url: `/api/sheets/${sheet.id}/share`,
-      headers: as('jason'),
+      headers: as('ada'),
     });
     const { slug } = share.json() as { slug: string };
 
-    // The link is the whole point of the feature: it must work for Kim even
+    // The link is the whole point of the feature: it must work for Grace even
     // though the sheet is not in her space.
     const resolved = await app.server.inject({
       url: `/api/sheets/by-slug/${slug}`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     expect(resolved.json()).toEqual({ id: sheet.id });
 
     const opened = await app.server.inject({
       url: `/api/sheets/${sheet.id}`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     expect(opened.statusCode).toBe(200);
-    expect(opened.json()).toMatchObject({ title: 'Kitchen remodel', owner: 'jason' });
+    expect(opened.json()).toMatchObject({ title: 'Kitchen remodel', owner: 'ada' });
   });
 
   it('lets the other person edit it, and it stays where it lives', async () => {
-    const sheet = await createSheet('jason', 'Kitchen remodel', 'cabinets = 10');
+    const sheet = await createSheet('ada', 'Kitchen remodel', 'cabinets = 10');
     const saved = await app.server.inject({
       method: 'PUT',
       url: `/api/sheets/${sheet.id}`,
-      headers: as('kim'),
+      headers: as('grace'),
       payload: { content: 'cabinets = 20', version: sheet.version },
     });
     expect(saved.statusCode).toBe(200);
-    expect(saved.json()).toMatchObject({ content: 'cabinets = 20', owner: 'jason' });
-    // Editing does not move it into Kim's list.
-    expect(await listTitles('kim')).toEqual([]);
-    expect(await listTitles('jason')).toEqual(['Kitchen remodel']);
+    expect(saved.json()).toMatchObject({ content: 'cabinets = 20', owner: 'ada' });
+    // Editing does not move it into Grace's list.
+    expect(await listTitles('grace')).toEqual([]);
+    expect(await listTitles('ada')).toEqual(['Kitchen remodel']);
   });
 
   it('refuses to let the other person delete it', async () => {
-    const sheet = await createSheet('jason', 'Kitchen remodel');
+    const sheet = await createSheet('ada', 'Kitchen remodel');
 
     const trashed = await app.server.inject({
       method: 'DELETE',
       url: `/api/sheets/${sheet.id}`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     expect(trashed.statusCode).toBe(404);
 
     const purged = await app.server.inject({
       method: 'DELETE',
       url: `/api/sheets/${sheet.id}?purge=1`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     expect(purged.statusCode).toBe(404);
 
-    // Still there, still Jason's.
-    expect(await listTitles('jason')).toEqual(['Kitchen remodel']);
+    // Still there, still Ada's.
+    expect(await listTitles('ada')).toEqual(['Kitchen remodel']);
   });
 
   it('refuses to let the other person restore from a trash that is not theirs', async () => {
-    const sheet = await createSheet('jason', 'Kitchen remodel');
+    const sheet = await createSheet('ada', 'Kitchen remodel');
     await app.server.inject({
       method: 'DELETE',
       url: `/api/sheets/${sheet.id}`,
-      headers: as('jason'),
+      headers: as('ada'),
     });
     const restored = await app.server.inject({
       method: 'POST',
       url: `/api/sheets/${sheet.id}/restore`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     expect(restored.statusCode).toBe(404);
   });
@@ -212,7 +212,7 @@ describe('crossing a space by share link', () => {
     const created = await app.server.inject({
       method: 'POST',
       url: '/api/folders',
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { name: 'Work' },
     });
     const { id } = created.json() as { id: string };
@@ -220,7 +220,7 @@ describe('crossing a space by share link', () => {
     const renamed = await app.server.inject({
       method: 'PUT',
       url: `/api/folders/${id}`,
-      headers: as('kim'),
+      headers: as('grace'),
       payload: { name: 'Hijacked' },
     });
     expect(renamed.statusCode).toBe(404);
@@ -228,7 +228,7 @@ describe('crossing a space by share link', () => {
     const deleted = await app.server.inject({
       method: 'DELETE',
       url: `/api/folders/${id}`,
-      headers: as('kim'),
+      headers: as('grace'),
     });
     expect(deleted.statusCode).toBe(404);
   });
@@ -236,13 +236,13 @@ describe('crossing a space by share link', () => {
 
 describe('choosing a space', () => {
   it('lists the people and reports who the cookie says we are', async () => {
-    const response = await app.server.inject({ url: '/api/users', headers: as('kim') });
+    const response = await app.server.inject({ url: '/api/users', headers: as('grace') });
     expect(response.json()).toMatchObject({
       users: [
-        { id: 'jason', name: 'Jason' },
-        { id: 'kim', name: 'Kim' },
+        { id: 'ada', name: 'Ada' },
+        { id: 'grace', name: 'Grace' },
       ],
-      current: 'kim',
+      current: 'grace',
     });
   });
 
@@ -260,10 +260,10 @@ describe('choosing a space', () => {
   });
 
   it('reads the cookie when other cookies sit alongside it', async () => {
-    await createSheet('kim', 'Hers');
+    await createSheet('grace', 'Hers');
     const response = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'theme=dark; webcalc_user=kim; other=x' },
+      headers: { cookie: 'theme=dark; webcalc_user=grace; other=x' },
     });
     expect((response.json() as { sheets: unknown[] }).sheets).toHaveLength(1);
   });
@@ -273,12 +273,12 @@ describe('seeding and migration', () => {
   it('gives every space its own Welcome sheet', async () => {
     const seeded = build(true);
     try {
-      const jason = await seeded.server.inject({ url: '/api/sheets', headers: as('jason') });
-      const kim = await seeded.server.inject({ url: '/api/sheets', headers: as('kim') });
-      const titles = (r: typeof jason) =>
+      const ada = await seeded.server.inject({ url: '/api/sheets', headers: as('ada') });
+      const grace = await seeded.server.inject({ url: '/api/sheets', headers: as('grace') });
+      const titles = (r: typeof ada) =>
         (r.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title);
-      expect(titles(jason)).toEqual(['Welcome']);
-      expect(titles(kim)).toEqual(['Welcome']);
+      expect(titles(ada)).toEqual(['Welcome']);
+      expect(titles(grace)).toEqual(['Welcome']);
     } finally {
       await seeded.server.close();
     }
@@ -303,7 +303,7 @@ describe('seeding and migration', () => {
 
     const second = new Store(path, DEFAULT_USER);
     expect(second.getSettings(DEFAULT_USER)).toEqual({ statistic: 'count' });
-    expect(second.getSettings('kim')).toEqual({});
+    expect(second.getSettings('grace')).toEqual({});
     second.close();
 
     rmSync(dir, { recursive: true, force: true });
@@ -323,7 +323,7 @@ describe('seeding and migration', () => {
 
     const store = new Store(path, DEFAULT_USER);
     expect(store.listFolders(DEFAULT_USER).map((f) => f.name)).toEqual(['Work']);
-    expect(store.listFolders('kim')).toEqual([]);
+    expect(store.listFolders('grace')).toEqual([]);
     store.close();
 
     rmSync(dir, { recursive: true, force: true });

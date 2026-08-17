@@ -11,8 +11,8 @@ beforeEach(() => {
     autoRefreshRates: false,
     seedWelcomeSheet: false,
     spaces: [
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ],
   });
 });
@@ -33,7 +33,7 @@ const as = (user: string) => ({ cookie: `webcalc_user=${user}` });
  */
 const tick = () => new Promise((resolve) => setTimeout(resolve, 3));
 
-async function make(title: string, owner = 'jason', folderId: string | null = null) {
+async function make(title: string, owner = 'ada', folderId: string | null = null) {
   const response = await app.server.inject({
     method: 'POST',
     url: '/api/sheets',
@@ -44,19 +44,19 @@ async function make(title: string, owner = 'jason', folderId: string | null = nu
   return response.json() as Sheet;
 }
 
-async function titles(url = '/api/sheets', owner = 'jason') {
+async function titles(url = '/api/sheets', owner = 'ada') {
   const response = await app.server.inject({ url, headers: as(owner) });
   return (response.json() as { sheets: Array<{ title: string }> }).sheets.map(
     (sheet) => sheet.title,
   );
 }
 
-async function ids(url = '/api/sheets', owner = 'jason') {
+async function ids(url = '/api/sheets', owner = 'ada') {
   const response = await app.server.inject({ url, headers: as(owner) });
   return (response.json() as { sheets: Array<{ id: string }> }).sheets.map((s) => s.id);
 }
 
-const reorder = (order: string[], owner = 'jason') =>
+const reorder = (order: string[], owner = 'ada') =>
   app.server.inject({
     method: 'PUT',
     url: '/api/sheets/order',
@@ -82,7 +82,7 @@ describe('a space that never drags anything', () => {
 
     // Touching the oldest sheet floats it, which is the behaviour the default
     // has always had and must keep.
-    const { sheets } = (await app.server.inject({ url: '/api/sheets', headers: as('jason') })).json() as {
+    const { sheets } = (await app.server.inject({ url: '/api/sheets', headers: as('ada') })).json() as {
       sheets: Array<{ id: string; title: string; version: number }>;
     };
     const a = sheets.find((s) => s.title === 'A')!;
@@ -90,7 +90,7 @@ describe('a space that never drags anything', () => {
     await app.server.inject({
       method: 'PUT',
       url: `/api/sheets/${a.id}`,
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { content: 'touched', version: a.version },
     });
     expect(await titles()).toEqual(['A', 'C', 'B']);
@@ -98,7 +98,7 @@ describe('a space that never drags anything', () => {
 
   it('reports no order preference until one is made', async () => {
     await threeSheets();
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('jason') });
+    const settings = await app.server.inject({ url: '/api/settings', headers: as('ada') });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
   });
 });
@@ -118,7 +118,7 @@ describe('dragging a sheet', () => {
     await app.server.inject({
       method: 'PUT',
       url: `/api/sheets/${b.id}`,
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { content: 'edited', version: b.version },
     });
     expect(await titles()).toEqual(['A', 'C', 'B']);
@@ -127,7 +127,7 @@ describe('dragging a sheet', () => {
   it('switches the space to manual without being asked separately', async () => {
     const { a, b, c } = await threeSheets();
     await reorder([b.id, a.id, c.id]);
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('jason') });
+    const settings = await app.server.inject({ url: '/api/settings', headers: as('ada') });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBe('manual');
   });
 
@@ -149,7 +149,7 @@ describe('dragging a sheet', () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { sheetOrder: 'recent' },
     });
     expect(await titles()).toEqual(['C', 'B', 'A']);
@@ -158,7 +158,7 @@ describe('dragging a sheet', () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { sheetOrder: 'manual' },
     });
     expect(await titles()).toEqual(['A', 'B', 'C']);
@@ -181,18 +181,18 @@ describe('reordering inside a filtered view', () => {
       await app.server.inject({
         method: 'POST',
         url: '/api/folders',
-        headers: as('jason'),
+        headers: as('ada'),
         payload: { name: 'Work' },
       })
     ).json() as { id: string };
 
     const loose1 = await make('Loose one');
     await tick();
-    const inA = await make('In A', 'jason', folder.id);
+    const inA = await make('In A', 'ada', folder.id);
     await tick();
     const loose2 = await make('Loose two');
     await tick();
-    const inB = await make('In B', 'jason', folder.id);
+    const inB = await make('In B', 'ada', folder.id);
     await tick();
 
     // Arrange the whole list first, so every sheet holds a position.
@@ -218,7 +218,7 @@ describe('what a reorder refuses', () => {
       const response = await app.server.inject({
         method: 'PUT',
         url: '/api/sheets/order',
-        headers: as('jason'),
+        headers: as('ada'),
         payload: { ids: bad },
       });
       expect(response.statusCode, `should reject ${JSON.stringify(bad)}`).toBe(400);
@@ -227,14 +227,14 @@ describe('what a reorder refuses', () => {
 
   it('ignores ids belonging to another space', async () => {
     const { a, b } = await threeSheets();
-    const hers = await make('Hers', 'kim');
+    const hers = await make('Hers', 'grace');
 
-    // Kim's sheet named in Jason's reorder must not move, and must not drag
+    // Grace's sheet named in Ada's reorder must not move, and must not drag
     // one of his slots over to her.
     await reorder([a.id, hers.id, b.id]);
-    expect(await titles('/api/sheets', 'kim')).toEqual(['Hers']);
+    expect(await titles('/api/sheets', 'grace')).toEqual(['Hers']);
 
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('kim') });
+    const settings = await app.server.inject({ url: '/api/settings', headers: as('grace') });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
   });
 
@@ -258,7 +258,7 @@ describe('what a reorder refuses', () => {
 
     // Still recency, and still no preference recorded: nothing was written.
     expect(await titles()).toEqual(['C', 'B', 'A']);
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('jason') });
+    const settings = await app.server.inject({ url: '/api/settings', headers: as('ada') });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
 
     // The lasting damage of the old behaviour only showed later: positions
@@ -271,7 +271,7 @@ describe('what a reorder refuses', () => {
     await app.server.inject({
       method: 'PUT',
       url: `/api/sheets/${a.id}`,
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { content: 'touched', version: a.version },
     });
     const byRecency = await titles();
@@ -282,7 +282,7 @@ describe('what a reorder refuses', () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: as('jason'),
+      headers: as('ada'),
       payload: { sheetOrder: 'manual' },
     });
     expect(await titles()).toEqual(byRecency);
@@ -290,13 +290,13 @@ describe('what a reorder refuses', () => {
 
   it('keeps each space on its own ordering', async () => {
     const { a, b, c } = await threeSheets();
-    await make('Hers one', 'kim');
+    await make('Hers one', 'grace');
     await tick();
-    await make('Hers two', 'kim');
+    await make('Hers two', 'grace');
 
     await reorder([a.id, b.id, c.id]);
     expect(await titles()).toEqual(['A', 'B', 'C']);
-    // Kim never dragged anything, so her list is still by recency.
-    expect(await titles('/api/sheets', 'kim')).toEqual(['Hers two', 'Hers one']);
+    // Grace never dragged anything, so her list is still by recency.
+    expect(await titles('/api/sheets', 'grace')).toEqual(['Hers two', 'Hers one']);
   });
 });

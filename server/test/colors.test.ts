@@ -11,8 +11,8 @@ beforeEach(() => {
     autoRefreshRates: false,
     seedWelcomeSheet: false,
     spaces: [
-      { id: 'jason', name: 'Jason' },
-      { id: 'kim', name: 'Kim' },
+      { id: 'ada', name: 'Ada' },
+      { id: 'grace', name: 'Grace' },
     ],
   });
 });
@@ -23,7 +23,7 @@ afterEach(async () => {
 
 const as = (user: string) => ({ cookie: `webcalc_user=${user}` });
 
-async function makeSheet(owner = 'jason', title = 'Budget') {
+async function makeSheet(owner = 'ada', title = 'Budget') {
   const response = await app.server.inject({
     method: 'POST',
     url: '/api/sheets',
@@ -34,7 +34,7 @@ async function makeSheet(owner = 'jason', title = 'Budget') {
   return response.json() as Sheet;
 }
 
-async function makeFolder(owner = 'jason', name = 'Work') {
+async function makeFolder(owner = 'ada', name = 'Work') {
   const response = await app.server.inject({
     method: 'POST',
     url: '/api/folders',
@@ -45,7 +45,7 @@ async function makeFolder(owner = 'jason', name = 'Work') {
   return response.json() as { id: string; name: string; color: string | null };
 }
 
-const setSheetColor = (id: string, color: unknown, owner = 'jason') =>
+const setSheetColor = (id: string, color: unknown, owner = 'ada') =>
   app.server.inject({
     method: 'PUT',
     url: `/api/sheets/${id}/color`,
@@ -53,7 +53,7 @@ const setSheetColor = (id: string, color: unknown, owner = 'jason') =>
     payload: { color },
   });
 
-const setFolderColor = (id: string, color: unknown, owner = 'jason') =>
+const setFolderColor = (id: string, color: unknown, owner = 'ada') =>
   app.server.inject({
     method: 'PUT',
     url: `/api/folders/${id}/color`,
@@ -73,7 +73,7 @@ describe('colouring a sheet', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ id: sheet.id, color: 'teal' });
 
-    const listed = await app.server.inject({ url: '/api/sheets', headers: as('jason') });
+    const listed = await app.server.inject({ url: '/api/sheets', headers: as('ada') });
     expect((listed.json() as { sheets: SheetSummary[] }).sheets[0]?.color).toBe('teal');
 
     const fetched = await app.server.inject({ url: `/api/sheets/${sheet.id}` });
@@ -147,7 +147,7 @@ describe('colouring a folder', () => {
     const response = await setFolderColor(folder.id, 'purple');
     expect(response.statusCode).toBe(200);
 
-    const listed = await app.server.inject({ url: '/api/folders', headers: as('jason') });
+    const listed = await app.server.inject({ url: '/api/folders', headers: as('ada') });
     expect(
       (listed.json() as { folders: Array<{ color: string | null }> }).folders[0]?.color,
     ).toBe('purple');
@@ -156,10 +156,10 @@ describe('colouring a folder', () => {
   it('refuses to colour a folder in another space', async () => {
     // Renaming and deleting a folder are already refused across spaces, and
     // recolouring someone else's filing is the same kind of change.
-    const folder = await makeFolder('jason');
-    expect((await setFolderColor(folder.id, 'red', 'kim')).statusCode).toBe(404);
+    const folder = await makeFolder('ada');
+    expect((await setFolderColor(folder.id, 'red', 'grace')).statusCode).toBe(404);
 
-    const listed = await app.server.inject({ url: '/api/folders', headers: as('jason') });
+    const listed = await app.server.inject({ url: '/api/folders', headers: as('ada') });
     expect(
       (listed.json() as { folders: Array<{ color: string | null }> }).folders[0]?.color,
     ).toBeNull();

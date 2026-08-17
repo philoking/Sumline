@@ -132,8 +132,9 @@ export function Reference({
                 Sales tax, compound interest, loan repayments and inflation;
                 conditionals, number bases and bitwise operators; live stock,
                 weather and knowledge lookups; and trip planning. Each was
-                deliberately left out rather than missed — see the closed
-                milestones in the repository for why.
+                deliberately left out rather than missed — the repository’s{' '}
+                <code>docs/decisions.md</code> says which were declined and
+                which are merely deferred.
               </p>
               <h3>Credits</h3>
               <p className="reference-blurb">

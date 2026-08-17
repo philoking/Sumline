@@ -30,9 +30,9 @@ export function App() {
   const theme = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
-  /** Whose space we are in. Null until the first load settles. */
+  /** Which space we are working in. Null until the first load settles. */
   const [space, setSpace] = useState<string | null>(null);
-  /** Whose space the open sheet is in — differs when a share link was followed. */
+  /** Which space the open sheet belongs to — differs after a share link. */
   const [sheetOwner, setSheetOwner] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>({});
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
@@ -70,11 +70,12 @@ export function App() {
   /**
    * Who the lock reports as holding a sheet.
    *
-   * The id carries the space as well as the browser, so switching person on a
-   * shared machine hands the lock over properly instead of the new arrival
-   * inheriting it. The name is the person, not the browser — "Kim is editing
+   * The id carries the space as well as the browser, so switching space on a
+   * shared machine hands the lock over properly instead of the next arrival
+   * inheriting it. The name is the space, not the browser — "Work is editing
    * this sheet" is the message worth showing, and it is the whole reason the
-   * lock banner exists.
+   * lock banner exists. A space is not necessarily a person: it may be Work,
+   * School, or one client of several.
    */
   const currentUserName = users.find((user) => user.id === space)?.name ?? '';
 
@@ -183,9 +184,9 @@ export function App() {
     void refreshSheets().catch(() => undefined);
   }, [refreshSheets]);
 
-  // Remembered per space, so switching to Kim does not try to reopen Jason's
-  // last sheet — which is not in her list and would silently fall back to
-  // whatever happened to be first.
+  // Remembered per space, so switching spaces does not try to reopen the sheet
+  // the previous one had open — it is not in this list, and the fallback would
+  // silently land on whatever happened to be first.
   useEffect(() => {
     if (activeId && space) rememberSheet(space, activeId);
   }, [activeId, space]);
@@ -499,7 +500,7 @@ export function App() {
             missing from the list. */}
         {sheetOwner && space && sheetOwner !== space && (
           <span className="owner-badge">
-            {users.find((user) => user.id === sheetOwner)?.name ?? sheetOwner}’s sheet
+            From {users.find((user) => user.id === sheetOwner)?.name ?? sheetOwner}
           </span>
         )}
         <span className={`status status-${status}`}>{statusLabel(status, lock)}</span>
@@ -628,8 +629,8 @@ export function App() {
               type="button"
               className="user-chip"
               onClick={() => setUserMenuOpen((open) => !open)}
-              title={`Working as ${currentUserName} — click to change`}
-              aria-label={`Working as ${currentUserName}. Change or manage spaces.`}
+              title={`In the ${currentUserName} space — click to switch`}
+              aria-label={`In the ${currentUserName} space. Switch or manage spaces.`}
               aria-haspopup="menu"
               aria-expanded={userMenuOpen}
             >
