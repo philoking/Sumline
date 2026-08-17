@@ -9,7 +9,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type Ref,
 } from 'react';
-import { Compartment, EditorState, Facet, RangeSetBuilder } from '@codemirror/state';
+import {
+  Compartment,
+  EditorState,
+  Facet,
+  RangeSetBuilder,
+  Transaction,
+  type Extension,
+} from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -20,7 +27,13 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, toggleComment } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  history,
+  historyField,
+  historyKeymap,
+  toggleComment,
+} from '@codemirror/commands';
 import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
 import {
   openSearchPanel,
@@ -30,9 +43,19 @@ import {
 } from '@codemirror/search';
 import type { LineResult, Token, TokenKind } from '@webcalc/engine';
 import { keepReferencesPointing, replacingDocument } from './references';
+import { loadUndoHistory, saveUndoHistory } from './undoHistory';
 
 /** How a sheet's text is read — `engine.tokenize`, handed in by the app. */
 export type Tokenize = (source: string) => Token[][];
+
+/**
+ * How long typing has to pause before the undo stack is written out.
+ *
+ * Shorter than the app's autosave, so the stack kept for a sheet is never
+ * older than the text saved for it: the two are compared on the way back in,
+ * and a stack that lagged behind would be discarded as not belonging.
+ */
+const UNDO_SAVE_DELAY_MS = 500;
 
 /** What the app can ask of the sheet from outside it. */
 export interface EditorHandle {
@@ -41,6 +64,15 @@ export interface EditorHandle {
 }
 
 export interface EditorProps {
+  /**
+   * Which sheet is on screen, so the undo stack can follow it.
+   *
+   * The view is built once and re-used, so without this a sheet switch is just
+   * another edit to the same document: ⌘Z after one would undo the switch
+   * itself and pull the previous sheet's text into this one. Null before the
+   * first sheet has settled.
+   */
+  sheetId: string | null;
   value: string;
   results: LineResult[];
   readOnly: boolean;
@@ -516,6 +548,7 @@ const sheetHighlighting = ViewPlugin.fromClass(
 );
 
 export function Editor({
+  sheetId,
   value,
   results,
   readOnly,
@@ -622,78 +655,148 @@ export function Editor({
     );
   });
 
+  /**
+   * The editor's configuration, rebuilt whenever a state is.
+   *
+   * A function rather than a constant because switching sheets replaces the
+   * whole state — that is how each sheet gets an undo stack of its own — and
+   * the replacement has to be configured exactly as the outgoing one was. The
+   * compartments are re-used rather than remade, so the effects that
+   * reconfigure them go on addressing the live state.
+   */
+  const buildExtensions = useRef((): Extension[] => []);
+  buildExtensions.current = () => [
+    history(),
+    keymap.of([
+      // Soulver's own shortcuts, kept familiar.
+      { key: 'Mod-\\', run: insertPreviousReference },
+      { key: 'Mod-t', run: makeSubtotal },
+      { key: 'Mod-/', run: toggleComment },
+      { key: 'Mod-Shift-u', run: unlinkReferences },
+      // Ahead of the default keymap, which claims Mod-d for its own use.
+      ...searchKeymap,
+      ...defaultKeymap,
+      ...historyKeymap,
+    ]),
+    autocompletion({ override: [completeNames], icons: false }),
+    // At the top, where a browser's own find bar sits, rather than at the
+    // bottom over the total.
+    search({ top: true }),
+    gutterCompartment.current.of(showLineNumbers ? lineNumbers() : []),
+    keepReferencesPointing(frozenValue),
+    tokenizeCompartment.current.of(sheetTokens.of(tokenize)),
+    sheetHighlighting,
+    EditorView.lineWrapping,
+    cmPlaceholder('Start typing. Try: 20% of 250'),
+    editorTheme,
+    readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        onChangeRef.current(update.state.doc.toString());
+        keepUndo.current();
+      }
+      if (update.selectionSet || update.docChanged) {
+        // React drops the update when the number has not changed, so
+        // this costs a render per line moved between, not per keystroke.
+        const { head } = update.state.selection.main;
+        setActiveLine(update.state.doc.lineAt(head).number);
+        // Selecting changes neither the document nor the geometry, so
+        // nothing else here would notice a selection being dragged.
+        requestAnimationFrame(() => measure.current());
+      }
+      // The find panel opening or closing takes a strip of height off
+      // the top of the sheet, which moves every line down the screen
+      // without changing the document, the viewport or the editor's own
+      // geometry — so none of the three flags above notice it, and the
+      // answer column would go on sitting where the lines used to be.
+      const panelMoved =
+        searchPanelOpen(update.startState) !== searchPanelOpen(update.state);
+      if (
+        update.docChanged ||
+        update.geometryChanged ||
+        update.viewportChanged ||
+        panelMoved
+      ) {
+        requestAnimationFrame(() => measure.current());
+      }
+    }),
+  ];
+
+  /** Which sheet the live state's undo stack belongs to. */
+  const stackFor = useRef<string | null>(null);
+  /**
+   * A stack found in storage that the document on screen has not caught up to.
+   *
+   * Selecting a sheet changes `sheetId` a render or more before its text
+   * arrives, so the first look at storage usually happens while the outgoing
+   * sheet's text is still in the editor. Rather than take the mismatch as
+   * grounds to discard — which would mean a stack was only ever restored by
+   * luck of timing — the intent is held here and tried again when the text
+   * lands.
+   */
+  const pendingRestore = useRef<string | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Writes the live stack out, at most once per idle moment.
+   *
+   * Debounced because this serialises the whole history, which is work worth
+   * doing when someone pauses and not on every keystroke of a burst.
+   */
+  const keepUndo = useRef(() => {});
+  keepUndo.current = () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => {
+      undoTimer.current = null;
+      const view = viewRef.current;
+      const id = stackFor.current;
+      if (!view || !id) return;
+      saveUndoHistory(
+        id,
+        view.state.doc.toString(),
+        view.state.toJSON({ history: historyField }),
+      );
+    }, UNDO_SAVE_DELAY_MS);
+  };
+
+  /**
+   * Builds a state for `doc`, adopting a kept stack when one fits it.
+   *
+   * The kept value is a whole serialised state — document, selection and
+   * history together — which is what `fromJSON` reads. It is handed back only
+   * for a document it matches, so the document it carries is `doc` and the
+   * caret lands where it was left.
+   */
+  const stateFor = useRef((id: string | null, doc: string): EditorState => {
+    const config = { doc, extensions: buildExtensions.current() };
+    const kept = id ? loadUndoHistory(id, doc) : null;
+    if (!kept) return EditorState.create(config);
+    try {
+      return EditorState.fromJSON(kept, config, { history: historyField });
+    } catch {
+      // Written by a version of CodeMirror that serialised state differently.
+      // Starting with an empty stack is the behaviour without this feature.
+      return EditorState.create(config);
+    }
+  });
+
   useLayoutEffect(() => {
     // CodeMirror gets a host element of its own so React never has to
     // reconcile around DOM it did not create.
     const host = editorHostRef.current;
     if (!host) return;
 
+    stackFor.current = sheetId;
     const view = new EditorView({
       parent: host,
-      state: EditorState.create({
-        doc: value,
-        extensions: [
-          history(),
-          keymap.of([
-            // Soulver's own shortcuts, kept familiar.
-            { key: 'Mod-\\', run: insertPreviousReference },
-            { key: 'Mod-t', run: makeSubtotal },
-            { key: 'Mod-/', run: toggleComment },
-            { key: 'Mod-Shift-u', run: unlinkReferences },
-            // Ahead of the default keymap, which claims Mod-d for its own use.
-            ...searchKeymap,
-            ...defaultKeymap,
-            ...historyKeymap,
-          ]),
-          autocompletion({ override: [completeNames], icons: false }),
-          // At the top, where a browser's own find bar sits, rather than at the
-          // bottom over the total.
-          search({ top: true }),
-          gutterCompartment.current.of(showLineNumbers ? lineNumbers() : []),
-          keepReferencesPointing(frozenValue),
-          tokenizeCompartment.current.of(sheetTokens.of(tokenize)),
-          sheetHighlighting,
-          EditorView.lineWrapping,
-          cmPlaceholder('Start typing. Try: 20% of 250'),
-          editorTheme,
-          readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              onChangeRef.current(update.state.doc.toString());
-            }
-            if (update.selectionSet || update.docChanged) {
-              // React drops the update when the number has not changed, so
-              // this costs a render per line moved between, not per keystroke.
-              const { head } = update.state.selection.main;
-              setActiveLine(update.state.doc.lineAt(head).number);
-              // Selecting changes neither the document nor the geometry, so
-              // nothing else here would notice a selection being dragged.
-              requestAnimationFrame(() => measure.current());
-            }
-            // The find panel opening or closing takes a strip of height off
-            // the top of the sheet, which moves every line down the screen
-            // without changing the document, the viewport or the editor's own
-            // geometry — so none of the three flags above notice it, and the
-            // answer column would go on sitting where the lines used to be.
-            const panelMoved =
-              searchPanelOpen(update.startState) !== searchPanelOpen(update.state);
-            if (
-              update.docChanged ||
-              update.geometryChanged ||
-              update.viewportChanged ||
-              panelMoved
-            ) {
-              requestAnimationFrame(() => measure.current());
-            }
-          }),
-        ],
-      }),
+      state: stateFor.current(sheetId, value),
     });
 
     viewRef.current = view;
     requestAnimationFrame(() => measure.current());
 
     return () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
       view.destroy();
       viewRef.current = null;
     };
@@ -729,21 +832,74 @@ export function Editor({
   // changes the sheet, and this is the first moment the sheet it belongs to is
   // actually in the editor. An effect watching `reveal` alone would scroll the
   // outgoing document to a line number that means nothing in it.
+  /*
+   * Gives each sheet an undo stack of its own, kept across reloads.
+   *
+   * Declared above the effect that syncs `value` so that on the render where
+   * both change, the state is replaced before the text is compared — the swap
+   * below then finds the document already correct and does nothing.
+   *
+   * The whole state is replaced rather than the stack being cleared, because
+   * that is the only way to put a *restored* stack in. Replacing it also has
+   * to be what happens when there is nothing to restore: leaving the outgoing
+   * sheet's stack in place is how ⌘Z ends up applying one sheet's edits to
+   * another's text.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || sheetId === stackFor.current) return;
+
+    // The outgoing sheet's stack is written out now rather than on its debounce,
+    // which would otherwise fire after the state it was reading had been
+    // replaced and store the incoming sheet's text under the outgoing sheet's id.
+    if (undoTimer.current) {
+      clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+      const leaving = stackFor.current;
+      if (leaving) {
+        const state = view.state.toJSON({ history: historyField });
+        saveUndoHistory(leaving, view.state.doc.toString(), state.history);
+      }
+    }
+
+    stackFor.current = sheetId;
+    // `value` still holds the outgoing sheet's text until its load settles, so
+    // a stack that does not fit yet is remembered rather than thrown away.
+    pendingRestore.current = sheetId;
+    view.setState(stateFor.current(sheetId, value));
+    if (sheetId && loadUndoHistory(sheetId, value)) pendingRestore.current = null;
+    requestAnimationFrame(() => measure.current());
+  }, [sheetId, value]);
+
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     const current = view.state.doc.toString();
     if (current !== value) {
-      view.dispatch({
-        changes: { from: 0, to: current.length, insert: value },
-        selection: { anchor: Math.min(view.state.selection.main.anchor, value.length) },
-        annotations: replacingDocument.of(true),
-      });
+      // The text this sheet's kept stack was waiting for may be the text now
+      // arriving, in which case the stack is adopted with it — a reload lands
+      // here, where the sheet id is settled a render before its content is.
+      if (pendingRestore.current === sheetId && sheetId && loadUndoHistory(sheetId, value)) {
+        pendingRestore.current = null;
+        view.setState(stateFor.current(sheetId, value));
+        requestAnimationFrame(() => measure.current());
+      } else {
+        view.dispatch({
+          changes: { from: 0, to: current.length, insert: value },
+          selection: { anchor: Math.min(view.state.selection.main.anchor, value.length) },
+          // None of the changes that reach here are this person's own edit —
+          // a sheet arriving, a conflict reloading, another tab's save coming
+          // down the stream — so none of them belong in the undo stack. Left
+          // undoable, ⌘Z would answer "undo my last change" by reverting
+          // someone else's, or by restoring text from a different sheet.
+          annotations: [replacingDocument.of(true), Transaction.addToHistory.of(false)],
+        });
+      }
     }
     if (reveal === null) return;
     showLine(view, reveal);
     onRevealedRef.current();
-  }, [value, reveal]);
+  }, [value, reveal, sheetId]);
 
   useEffect(() => {
     const view = viewRef.current;

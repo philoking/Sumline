@@ -1461,6 +1461,7 @@ export function App() {
           <div className="sheet-scroll">
             <Editor
               ref={editorRef}
+              sheetId={activeId}
               value={content}
               results={results}
               readOnly={!lock.granted}
