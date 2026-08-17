@@ -18,8 +18,23 @@ export interface Classified {
   comment?: string;
 }
 
+/** A span of the raw line, as a half-open `[from, to)` pair of offsets. */
+export interface Span {
+  from: number;
+  to: number;
+}
+
 const DIRECTIVE_RE =
   /^(sum|total|subtotal|average|avg|mean|median|count)(?:\s+(?:of\s+)?#([\w-]+))?\s*$/i;
+
+/**
+ * `#food`, but not `# Heading` — a tag has no space after the hash.
+ *
+ * Exported because the highlighter marks the same spans this strips, and two
+ * ideas of what a tag looks like would show as a `#tag` being coloured on a
+ * line the engine never collected it from.
+ */
+export const TAG_RE = /(^|\s)#([\w-]+)/g;
 
 /**
  * A variable name — one or more words, not starting with a digit — followed by
@@ -75,9 +90,7 @@ export function classify(
   }
 
   // Collect and remove tags so they do not reach the expression parser.
-  body = body.replace(/(^|\s)#([\w-]+)/g, (match, lead: string, tag: string) => {
-    // `# Heading` (hash followed by space) is a heading, not a tag; a tag has
-    // no space after the hash, which this regex already guarantees.
+  body = body.replace(TAG_RE, (match, lead: string, tag: string) => {
     tags.push(tag.toLowerCase());
     return lead;
   });
@@ -144,8 +157,10 @@ export function classify(
  * `Boeing "747" is $386.8M` — quoted text is commentary, so the number inside
  * it must not reach the parser.
  */
+export const QUOTED_RE = /"[^"]*"/g;
+
 function stripQuotedText(text: string): string {
-  return text.replace(/"[^"]*"/g, ' ');
+  return text.replace(QUOTED_RE, ' ');
 }
 
 /**
@@ -158,7 +173,7 @@ function stripQuotedText(text: string): string {
 const EXPRESSION_KEYWORDS = new Set(['to', 'in', 'per', 'through', 'until', 'mod']);
 
 /**
- * `$999 (for iPhone 16)` — a parenthesised aside is a comment.
+ * `$999 (for iPhone 16)` — the parenthesised asides in a line, as spans.
  *
  * Testing for letters alone is not enough, because so much of the engine's
  * vocabulary *is* letters: `(8:30 to 17:15)` was being deleted as prose, which
@@ -173,35 +188,70 @@ const EXPRESSION_KEYWORDS = new Set(['to', 'in', 'per', 'through', 'until', 'mod
  *
  * `isKnownWord` is the same predicate the prose-stripper in `evaluate` uses,
  * so the two agree on what counts as engine vocabulary.
+ *
+ * Spans rather than a rewritten string, because the highlighter has to grey
+ * out exactly what this removes and cannot find it again once it is gone.
  */
-function stripParentheticalComments(
+export function parentheticalAsides(
   text: string,
   isKnownWord: (word: string) => boolean,
-): string {
-  return text.replace(/(^|[^\w)])\(([^()]*)\)/g, (match, lead: string, inner: string) => {
-    if (match.trim() === text.trim()) return match;
-    if (!/[A-Za-z]{2}/.test(inner) || /[+\-*/^]/.test(inner)) return match;
+): Span[] {
+  const spans: Span[] = [];
+  for (const match of text.matchAll(/(^|[^\w)])\(([^()]*)\)/g)) {
+    const [whole, lead = '', inner = ''] = match;
+    if (whole.trim() === text.trim()) continue;
+    if (!/[A-Za-z]{2}/.test(inner) || /[+\-*/^]/.test(inner)) continue;
 
     const vocabulary = (inner.match(/[A-Za-z_][\w]*/g) ?? []).some(
       (word) => EXPRESSION_KEYWORDS.has(word.toLowerCase()) || isKnownWord(word),
     );
-    return /\d/.test(inner) && vocabulary ? match : lead;
-  });
+    if (/\d/.test(inner) && vocabulary) continue;
+
+    const from = (match.index ?? 0) + lead.length;
+    spans.push({ from, to: from + whole.length - lead.length });
+  }
+  return spans;
+}
+
+function stripParentheticalComments(
+  text: string,
+  isKnownWord: (word: string) => boolean,
+): string {
+  const spans = parentheticalAsides(text, isKnownWord);
+  if (spans.length === 0) return text;
+
+  let out = '';
+  let at = 0;
+  for (const { from, to } of spans) {
+    out += text.slice(at, from);
+    at = to;
+  }
+  return out + text.slice(at);
 }
 
 /**
- * `Cost of 128 GB iPhone 16: $999` — everything before the colon is a label.
+ * `Cost of 128 GB iPhone 16: $999` — the label, colon and all, as a span.
  *
  * Requires whitespace after the colon, which is how Soulver keeps a label
  * distinct from a clock time like `14:45`.
+ *
+ * A span for the same reason the asides above are: the highlighter must leave
+ * the label alone, and `128 GB` inside one would otherwise be coloured as a
+ * quantity the engine never reads.
  */
-function extractLabel(text: string): { rest: string } | null {
-  const m = /^([^:]*[A-Za-z][^:]*):\s+(\S.*)$/.exec(text.trim());
+export function labelSpan(text: string): Span | null {
+  const lead = text.length - text.trimStart().length;
+  const m = /^([^:]*[A-Za-z][^:]*):(\s+)\S.*$/.exec(text.trim());
   if (!m) return null;
   // A label is prose, not an expression: reject anything operator-shaped so
   // `a + b: 3` is not silently swallowed.
   if (/[+\-*/^=<>]/.test(m[1]!)) return null;
-  return { rest: m[2]! };
+  return { from: lead, to: lead + m[1]!.length + 1 + m[2]!.length };
+}
+
+function extractLabel(text: string): { rest: string } | null {
+  const span = labelSpan(text);
+  return span ? { rest: text.slice(span.to) } : null;
 }
 
 function directiveFor(verb: string): 'sum' | 'average' | 'count' | 'median' {
@@ -211,7 +261,7 @@ function directiveFor(verb: string): 'sum' | 'average' | 'count' | 'median' {
 }
 
 /** Index of a `//` comment marker outside any quoted string, or -1. */
-function findComment(text: string): number {
+export function findComment(text: string): number {
   let quote: string | null = null;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;

@@ -33,6 +33,18 @@
   --warn: #e5b567;
   --warn-soft: #33291a;
   --selection: #2f4a55;
+
+  /* The sheet's own colouring — see the note above the palette in Editor.tsx
+     for which token kinds share which of these. Numbers are absent because
+     they keep --input-text, the colour the sheet has always used for what you
+     type. Analogous and desaturated on purpose: a sheet is a document, and
+     these have to be tellable apart at a glance without lighting the page up
+     like a terminal. */
+  --sheet-prose: #c8c8c8;
+  --sheet-unit: #9ec5a8;
+  --sheet-name: #b7a6d6;
+  --sheet-keyword: #a3a3a3;
+  --sheet-tag: #d2b273;
 }
 
 /*
@@ -61,6 +73,12 @@
     --warn: #8a5a00;
     --warn-soft: #fdf3dc;
     --selection: #cfe6ee;
+
+    --sheet-prose: #4b4b4f;
+    --sheet-unit: #3d7355;
+    --sheet-name: #63498f;
+    --sheet-keyword: #7a7a80;
+    --sheet-tag: #8a5a00;
   }
 }
 
@@ -81,6 +99,12 @@
   --warn: #8a5a00;
   --warn-soft: #fdf3dc;
   --selection: #cfe6ee;
+
+  --sheet-prose: #4b4b4f;
+  --sheet-unit: #3d7355;
+  --sheet-name: #63498f;
+  --sheet-keyword: #7a7a80;
+  --sheet-tag: #8a5a00;
 }
 
 /*
@@ -1846,8 +1870,17 @@ button.danger-button:disabled {
     overflow: visible !important;
   }
 
-  .cm-content {
+  /* Ink, not colour. The syntax palette is tuned for a lit screen and prints
+     as a set of pale washes — a heading set in the dark theme's near-white is
+     all but invisible on paper. Structure survives in the weight and in the
+     one grey kept for the parts of a line the engine ignores. */
+  .cm-content,
+  .cm-content [class^='cm-sheet-'] {
     color: #000 !important;
+  }
+
+  .cm-content .cm-sheet-comment {
+    color: #666 !important;
   }
 
   .answers {

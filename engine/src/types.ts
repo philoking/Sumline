@@ -1,5 +1,6 @@
 import type { HistoricalRates } from './historical.js';
 import type { NumberRegion } from './numberFormat.js';
+import type { Token } from './tokenize.js';
 
 export type { NumberRegion };
 export type { HistoricalRates };
@@ -151,6 +152,20 @@ export interface Engine {
     statistic: Statistic,
     options?: SummaryOptions,
   ): string;
+  /**
+   * Where every token on each line of a sheet is, and what this engine reads
+   * it as — one array of tokens per line, offset from that line's own start.
+   *
+   * Reported by the engine for the same reason `ratesNeeded` is: recognising a
+   * token means reading the line the way evaluation reads it, and a second
+   * implementation in the host would eventually disagree. A highlighter that
+   * disagreed would be worse than none, because the colour is the only warning
+   * that `hours` has stopped meaning hours.
+   *
+   * Purely a reading of the text — nothing is evaluated, so this costs a pass
+   * over the source and is safe to call on every keystroke.
+   */
+  tokenize(source: string | string[]): Token[][];
   /** ISO codes this engine knows how to convert between. */
   currencies: string[];
   rateDate: string | null;

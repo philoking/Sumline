@@ -431,6 +431,27 @@ Formatting chosen from that menu is **written into the line as text** (` to 2 dp
 rather than stored invisibly against it. A sheet is plain text, and hidden per-line state would
 not survive being copied, exported, or having its lines moved around.
 
+### Highlighting
+
+The sheet is coloured by what the engine makes of it, not by a set of patterns the editor keeps
+of its own: numbers, units and currencies, variables and references, operators, tags, headings
+and comments each get a shade, and anything left plain is text the engine is ignoring.
+
+That makes the colour a **reading of the line**, which is the useful part. A word you meant as a
+note but that turns out to be a unit is coloured as a unit. `128 GB` inside a label stays plain,
+because a label is never evaluated. And a variable that shares a name with a unit shows you
+which one won:
+
+```
+hours = 6.5                 6.5
+hours * 2                    13          hours is the variable
+2 hours + 30 minutes          2.5 hours  hours is the unit
+```
+
+The palette is deliberately quiet — five close-toned colours, with numbers keeping the blue the
+sheet has always used for what you type. It follows the light and dark appearances, and prints
+as plain black.
+
 ### The view menu
 
 `👁` in the toolbar holds everything about how a sheet is *shown*, rather than what it says:
@@ -883,7 +904,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 841 engine tests, 234 server tests, 34 web tests
+npm test        # 865 engine tests, 234 server tests, 34 web tests
 npm run build   # build all three workspaces
 ```
 
@@ -908,6 +929,16 @@ what they need:
 
 If you're adding syntax, the rewriters live in
 [`preprocess.ts`](engine/src/preprocess.ts) and every phrasing needs a case in the golden table.
+
+One thing sits beside that pipeline rather than in it.
+[`tokenize.ts`](engine/src/tokenize.ts) answers *where* on a line each thing the engine
+recognises is, which the pipeline cannot: it rewrites the text as it goes, so by the time a line
+evaluates, the positions in the text the reader is looking at are gone. It reads a line through
+the same predicates the classifier and the rewriters use — one rule for what a tag is, what an
+aside is, what a label is — because the editor draws its
+[highlighting](#highlighting) straight from the result, and a second opinion about what a token
+is would show as a sheet coloured as though it meant something it does not. New syntax that
+introduces a new kind of token belongs here as well as there.
 
 ### Adding to the reference
 

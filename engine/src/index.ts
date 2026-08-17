@@ -18,6 +18,7 @@ export type {
   NumberRegion,
   RateTable,
 } from './types.js';
+export type { Token, TokenKind } from './tokenize.js';
 export {
   ALL_EXAMPLES,
   EXAMPLE_GROUPS,

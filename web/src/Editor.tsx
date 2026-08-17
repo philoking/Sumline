@@ -9,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type Ref,
 } from 'react';
-import { Compartment, EditorState, RangeSetBuilder } from '@codemirror/state';
+import { Compartment, EditorState, Facet, RangeSetBuilder } from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -28,9 +28,11 @@ import {
   searchKeymap,
   searchPanelOpen,
 } from '@codemirror/search';
-import type { LineResult } from '@webcalc/engine';
-import { isCommentLine, isHeadingLine } from './lines';
+import type { LineResult, Token, TokenKind } from '@webcalc/engine';
 import { keepReferencesPointing, replacingDocument } from './references';
+
+/** How a sheet's text is read — `engine.tokenize`, handed in by the app. */
+export type Tokenize = (source: string) => Token[][];
 
 /** What the app can ask of the sheet from outside it. */
 export interface EditorHandle {
@@ -62,6 +64,15 @@ export interface EditorProps {
   summarise(from: number, to: number): { label: string; value: string } | null;
   /** Whether the gutter is drawn. Off is View → Line numbers, unticked. */
   showLineNumbers: boolean;
+  /**
+   * How the sheet is coloured — the engine's own reading of the text.
+   *
+   * A callback rather than a set of rules here, for the reason `summarise` is
+   * one: a second idea of what a token is would drift from the engine's, and
+   * the drift would show as a sheet coloured as though it meant something it
+   * does not. See `tokenize` on the engine.
+   */
+  tokenize: Tokenize;
   ref?: Ref<EditorHandle>;
 }
 
@@ -182,7 +193,10 @@ const editorTheme = EditorView.theme({
     fontFamily: 'var(--font-sheet)',
     padding: '0',
     caretColor: 'var(--input-text)',
-    color: 'var(--input-text)',
+    // The colour of everything the engine does *not* read: labels, notes, the
+    // words around a sum. It is the quietest thing in the sheet because it is
+    // the part that does not calculate — see the palette below.
+    color: 'var(--sheet-prose)',
   },
   '.cm-line': {
     padding: '0 12px 0 0',
@@ -190,10 +204,31 @@ const editorTheme = EditorView.theme({
     fontVariantNumeric: 'tabular-nums',
   },
   '.cm-cursor': { borderLeftColor: 'var(--input-text)' },
-  // Headings and comments are the two things Soulver sets apart from the
-  // calculating text, so they are the two things highlighted here.
+
+  /*
+   * The sheet's colouring, one class per kind the engine reports.
+   *
+   * Five colours and two weights, which is fewer than the eleven kinds — the
+   * engine says precisely what it read, and the palette groups what a reader
+   * has no reason to tell apart. A currency is the dimension of a number in
+   * the same way a unit is; `line 5` is a variable that happens to be
+   * numbered; a directive is a keyword said in the imperative, so it takes the
+   * keyword's colour and the heading's weight.
+   *
+   * The set is deliberately close-toned. A notepad calculator is a document
+   * you read, not a program you debug, and a sheet lit up like a terminal is
+   * harder to read down than a plain one. Numbers keep the blue the sheet has
+   * always used for what you type, which leaves it the brightest thing on the
+   * line — the answer column is on the right, but the figures are here.
+   */
   '.cm-sheet-heading': { color: 'var(--text)', fontWeight: '600' },
   '.cm-sheet-comment': { color: 'var(--muted)' },
+  '.cm-sheet-number': { color: 'var(--input-text)' },
+  '.cm-sheet-unit, .cm-sheet-currency': { color: 'var(--sheet-unit)' },
+  '.cm-sheet-name, .cm-sheet-reference': { color: 'var(--sheet-name)' },
+  '.cm-sheet-operator, .cm-sheet-keyword': { color: 'var(--sheet-keyword)' },
+  '.cm-sheet-directive': { color: 'var(--sheet-keyword)', fontWeight: '600' },
+  '.cm-sheet-tag': { color: 'var(--sheet-tag)' },
   // The gutter numbers are what make `line 5` references findable, so they
   // are always visible rather than shown on hover.
   '.cm-gutters': {
@@ -394,38 +429,86 @@ function completeNames(context: CompletionContext) {
   };
 }
 
-const HEADING_LINE = Decoration.line({ class: 'cm-sheet-heading' });
-const COMMENT_LINE = Decoration.line({ class: 'cm-sheet-comment' });
+/**
+ * The engine that reads this sheet.
+ *
+ * A facet rather than a closed-over variable, so the plugin below sees a new
+ * one arriving — rates landing adds every currency at once, and until they do
+ * `€` is a symbol the engine does not know.
+ */
+const sheetTokens = Facet.define<Tokenize, Tokenize>({
+  combine: (values) => values[0] ?? (() => []),
+});
 
-/** Marks headings and comments so a sheet reads as a document with structure. */
-function buildLineDecorations(view: EditorView): DecorationSet {
+const marks = new Map<TokenKind, Decoration>();
+
+function markFor(kind: TokenKind): Decoration {
+  const existing = marks.get(kind);
+  if (existing) return existing;
+  const mark = Decoration.mark({ class: `cm-sheet-${kind}` });
+  marks.set(kind, mark);
+  return mark;
+}
+
+/**
+ * Turns the engine's reading of the sheet into decorations for what is on
+ * screen.
+ *
+ * Only the visible lines are decorated, for the same reason only the visible
+ * lines are measured for the answer column: a long sheet would otherwise cost
+ * a decoration per line per keystroke.
+ */
+function buildDecorations(view: EditorView, tokens: Token[][]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  let last = 0;
   for (const { from, to } of view.visibleRanges) {
     for (let pos = from; pos <= to; ) {
       const line = view.state.doc.lineAt(pos);
-      if (isHeadingLine(line.text)) {
-        builder.add(line.from, line.from, HEADING_LINE);
-      } else if (isCommentLine(line.text)) {
-        builder.add(line.from, line.from, COMMENT_LINE);
-      }
       pos = line.to + 1;
+      // A range can begin part-way through a line the previous one already
+      // covered, and the builder requires each range added exactly once.
+      if (line.number <= last) continue;
+      last = line.number;
+
+      for (const token of tokens[line.number - 1] ?? []) {
+        const start = line.from + Math.min(token.from, line.length);
+        const end = line.from + Math.min(token.to, line.length);
+        if (end > start) builder.add(start, end, markFor(token.kind));
+      }
     }
   }
   return builder.finish();
 }
 
-
+/**
+ * Colours the sheet from the engine's own reading of it.
+ *
+ * The whole document is tokenized rather than the visible part, because a
+ * variable is only a variable from its declaration downwards: a viewport
+ * starting at line 40 cannot tell what line 12 named. It costs a pass over the
+ * text, which is a fraction of the evaluation the sheet is already doing on
+ * every keystroke, and the result is cached until the text changes so
+ * scrolling redraws without re-reading.
+ */
 const sheetHighlighting = ViewPlugin.fromClass(
   class {
+    tokens: Token[][];
     decorations: DecorationSet;
 
     constructor(view: EditorView) {
-      this.decorations = buildLineDecorations(view);
+      this.tokens = view.state.facet(sheetTokens)(view.state.doc.toString());
+      this.decorations = buildDecorations(view, this.tokens);
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged) {
-        this.decorations = buildLineDecorations(update.view);
+      const reread =
+        update.docChanged ||
+        update.startState.facet(sheetTokens) !== update.state.facet(sheetTokens);
+      if (reread) {
+        this.tokens = update.state.facet(sheetTokens)(update.state.doc.toString());
+      }
+      if (reread || update.viewportChanged) {
+        this.decorations = buildDecorations(update.view, this.tokens);
       }
     }
   },
@@ -441,6 +524,7 @@ export function Editor({
   onRevealed,
   summarise,
   showLineNumbers,
+  tokenize,
   ref,
 }: EditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -450,6 +534,7 @@ export function Editor({
   const onRevealedRef = useRef(onRevealed);
   const readOnlyCompartment = useRef(new Compartment());
   const gutterCompartment = useRef(new Compartment());
+  const tokenizeCompartment = useRef(new Compartment());
   const answersRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLUListElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
@@ -566,6 +651,7 @@ export function Editor({
           search({ top: true }),
           gutterCompartment.current.of(showLineNumbers ? lineNumbers() : []),
           keepReferencesPointing(frozenValue),
+          tokenizeCompartment.current.of(sheetTokens.of(tokenize)),
           sheetHighlighting,
           EditorView.lineWrapping,
           cmPlaceholder('Start typing. Try: 20% of 250'),
@@ -668,6 +754,17 @@ export function Editor({
       ),
     });
   }, [readOnly]);
+
+  // A new engine reads the sheet differently — currencies arrive with the
+  // rates, and the number format follows the space's region — so the colouring
+  // is rebuilt when one does rather than waiting for the next keystroke.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: tokenizeCompartment.current.reconfigure(sheetTokens.of(tokenize)),
+    });
+  }, [tokenize]);
 
   // Dropping the gutter moves every line left, so the answers have to be
   // placed again — the same reason the find panel needs a measure.

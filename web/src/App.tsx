@@ -178,6 +178,19 @@ export function App() {
     [engine, results, statistic, countVariables, countReferenced],
   );
 
+  /**
+   * How the sheet is coloured.
+   *
+   * The same engine that answers the sheet, so the colouring cannot claim a
+   * word means something the answer disagrees with. Memoised on the engine
+   * alone: it depends on nothing else, and a new identity every render would
+   * have the editor re-read the whole sheet each time anything else moved.
+   */
+  const tokenizeSheet = useCallback(
+    (source: string) => engine.tokenize(source),
+    [engine],
+  );
+
   /** The content the server last confirmed, so we never save a no-op. */
   const savedContent = useRef('');
 
@@ -1221,6 +1234,7 @@ export function App() {
               reveal={reveal}
               showLineNumbers={showLineNumbers}
               summarise={summariseLines}
+              tokenize={tokenizeSheet}
               onChange={setContent}
               onRevealed={() => setReveal(null)}
             />

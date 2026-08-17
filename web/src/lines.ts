@@ -1,21 +1,16 @@
 /**
- * What counts as a heading and what counts as a comment.
+ * What counts as a comment.
  *
- * One copy, because two things depend on the answer and must not disagree: the
- * highlighting that greys a line out, and the reference renumbering that leaves
- * greyed-out lines alone. Two sets of rules would eventually diverge, and the
- * divergence would show as the app editing a note it had said it was ignoring.
+ * This is the reference renumbering's copy, and now the only one: the
+ * highlighting used to share it — along with a matching rule for headings —
+ * and draws both from the engine's own reading of the line instead, together
+ * with everything else it colours.
  *
- * These mirror the engine's own classifier rather than importing it: the engine
- * classifies a line in order to evaluate it, and returns the verdict per line
- * only after evaluation — which is too late for a transaction filter that has
- * to decide before the change is applied.
+ * It mirrors the engine's classifier rather than importing it, because the
+ * engine classifies a line in order to *evaluate* it: both `evaluate` and
+ * `tokenize` want a whole document, and a transaction filter has to decide
+ * about one line before the change it is inspecting has been applied.
  */
-
-export function isHeadingLine(text: string): boolean {
-  return /^\s*#{1,6}\s/.test(text) || /^\s*[-=]{3,}\s*$/.test(text);
-}
-
 export function isCommentLine(text: string): boolean {
   return /^\s*\/\//.test(text);
 }

@@ -14,6 +14,7 @@ import { createMathContext, toFps, type MathContext } from './mathInstance.js';
 import { toNumberRegion } from './numberFormat.js';
 import { toZone, wallClockDate } from './temporal/zones.js';
 import { preprocess, stripOuterParens } from './preprocess.js';
+import { tokenizeLines } from './tokenize.js';
 import { Labelled, Multiplier, Percentage, Rate } from './values.js';
 import type { Engine, EngineOptions, LineResult, Statistic } from './types.js';
 
@@ -89,6 +90,17 @@ export function createEngine(options: EngineOptions = {}): Engine {
         if (wanted) dates.add(wanted.on);
       }
       return [...dates];
+    },
+    tokenize(source) {
+      const lines = Array.isArray(source) ? source : source.split('\n');
+      return tokenizeLines(lines, {
+        currencies: ctx.currencies,
+        isKnownUnit: (word) => isKnownUnit(ctx, word),
+        region,
+        // Globals are bound before the sheet runs, so a line reading one is
+        // reading a variable and should be coloured as though it declared it.
+        globals: Object.keys(options.globals ?? {}),
+      });
     },
     total(results) {
       return this.summary(results, 'total');
