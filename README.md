@@ -503,6 +503,21 @@ app on an empty database.**
 | `TZ` | `UTC` | Timezone for date calculations |
 | `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
 
+## Acknowledgement
+
+The idea is [Soulver](https://soulver.app/)'s. Soulver created and refined the notepad
+calculator — a sheet you type into line by line with the answers in a column beside it — and
+most of what makes this app pleasant to use was worked out there first: unit assimilation, the
+last-currency-wins rule, `sum` closing a section, `prev` and `line N`, per-line formatting
+written into the line, and a good deal of the natural phrasing the engine accepts. Soulver's
+own documentation was the specification this was built against, and it is cited throughout the
+source where a rule came from there.
+
+WebCalc is an independent implementation, not a port: no Soulver code was used, and it is not
+affiliated with or endorsed by Soulver's makers. If you want the polished native original — with
+the features listed under [What's deliberately not here](#whats-deliberately-not-here), and many
+more — buy Soulver.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

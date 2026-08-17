@@ -135,6 +135,28 @@ export function Reference({
                 deliberately left out rather than missed — see the closed
                 milestones in the repository for why.
               </p>
+              <h3>Credits</h3>
+              <p className="reference-blurb">
+                The notepad calculator is{' '}
+                <a href="https://soulver.app/" target="_blank" rel="noreferrer noopener">
+                  Soulver
+                </a>
+                ’s idea. Soulver worked out how a sheet like this should behave, and
+                its documentation was the specification this was built against.
+                WebCalc is an independent implementation, unaffiliated with
+                Soulver’s makers — if you want the polished native original, buy it.
+              </p>
+              <p className="reference-blurb">
+                Exchange rates from{' '}
+                <a href="https://frankfurter.dev/" target="_blank" rel="noreferrer noopener">
+                  Frankfurter
+                </a>{' '}
+                (European Central Bank data); public holidays from{' '}
+                <a href="https://date.nager.at/" target="_blank" rel="noreferrer noopener">
+                  Nager.Date
+                </a>
+                .
+              </p>
             </section>
           )}
         </div>
