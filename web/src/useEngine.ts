@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createEngine,
+  type EngineOptions,
   type HistoricalRates,
   type LineResult,
   type RateTable,
 } from '@webcalc/engine';
 import { api, type HolidayTable } from './api';
-import type { EngineInputs } from './engineOptions';
+
 
 /**
  * Loads exchange rates once, then builds an engine around them.
@@ -15,7 +16,7 @@ import type { EngineInputs } from './engineOptions';
  * delays an answer; the engine simply starts without currency support and
  * gains it when the rates arrive.
  */
-export function useEngine(options: EngineInputs) {
+export function useEngine(options: EngineOptions) {
   const [rates, setRates] = useState<RateTable | null>(null);
   const [holidays, setHolidays] = useState<HolidayTable | null>(null);
   /**
@@ -38,13 +39,6 @@ export function useEngine(options: EngineInputs) {
     };
   }, []);
 
-  /*
-   * Refetched when the space's country changes, not just on mount. The endpoint
-   * answers according to that setting, so a stale fetch would leave the sheet
-   * doing workday maths against the country the space used to be in — and would
-   * only correct itself on a reload.
-   */
-  const holidayCountry = options.holidayCountry;
   useEffect(() => {
     let cancelled = false;
     api
@@ -54,7 +48,7 @@ export function useEngine(options: EngineInputs) {
     return () => {
       cancelled = true;
     };
-  }, [holidayCountry]);
+  }, []);
 
   const engine = useMemo(
     () =>

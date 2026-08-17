@@ -19,6 +19,7 @@ import { Login } from './Login';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
 import { SpaceSettings } from './SpaceSettings';
+import { GlobalSettings } from './GlobalSettings';
 import { engineOptionsFrom } from './engineOptions';
 import { useEngine, useResults } from './useEngine';
 import { useTheme } from './useTheme';
@@ -75,6 +76,7 @@ export function App() {
   /** Turns the space list into an editable one, rather than a second menu. */
   const [managingSpaces, setManagingSpaces] = useState(false);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
+  const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
   const [referenceOpen, setReferenceOpen] = useState(
     () => new URLSearchParams(window.location.search).has('help'),
@@ -763,7 +765,21 @@ export function App() {
                       }}
                     >
                       <span className="tick" />
-                      Space settings…
+                      {currentUserName || "Space"} settings…
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setManagingSpaces(false);
+                        setGlobalSettingsOpen(true);
+                      }}
+                    >
+                      <span className="tick" />
+                      Global settings…
                     </button>
                   </li>
                   <li>
@@ -1048,14 +1064,9 @@ export function App() {
           canRemove={users.length > 1}
           computed={{
             ...(settings.region && { region: settings.region }),
-            ...(settings.fps !== undefined && { fps: settings.fps }),
             ...(settings.zone && { zone: settings.zone }),
-            ...(settings.holidayCountry && { holidayCountry: settings.holidayCountry }),
           }}
           sharedComputed={settings.shared ?? {}}
-          holidays={
-            holidays ? { country: holidays.country, count: holidays.dates.length } : null
-          }
           // One line through the same engine the sheets use, so the preview
           // cannot disagree with what a sheet would actually compute.
           preview={(expression) => engine.evaluate(expression)[0]?.output ?? ''}
@@ -1065,26 +1076,6 @@ export function App() {
           }}
           onSaveGlobals={(globals) => void persistSettings({ globals })}
           onSaveComputed={(key, value) => void persistSettings({ [key]: value })}
-          onSaveSharedComputed={(key, value) => {
-            // Refetched rather than merged, for the same reason the shared
-            // globals are: the server owns the resolved view, and a space that
-            // overrides this one must not appear to have picked up the change.
-            void api
-              .saveSharedComputed(key, value)
-              .then(() => api.settings())
-              .then(setSettings)
-              .catch((cause: unknown) => setError(describe(cause)));
-          }}
-          onSaveSharedGlobals={(globals) => {
-            // Refetched rather than merged locally: the server owns the resolved
-            // view, and a space that overrides one of these must not appear to
-            // have picked up the new value.
-            void api
-              .saveSharedGlobals(globals)
-              .then(() => api.settings())
-              .then(setSettings)
-              .catch((cause: unknown) => setError(describe(cause)));
-          }}
           onRemove={() => {
             const current = users.find((user) => user.id === space);
             if (!current) return;
@@ -1094,6 +1085,30 @@ export function App() {
           onClose={() => setSpaceSettingsOpen(false)}
         />
       )}
+
+      <GlobalSettings
+        open={globalSettingsOpen}
+        computed={settings.shared ?? {}}
+        globals={settings.sharedGlobals ?? {}}
+        preview={(expression) => engine.evaluate(expression)[0]?.output ?? ''}
+        onSaveComputed={(key, value) => {
+          // Refetched rather than merged: the server owns the resolved view, and
+          // a space that overrides this must not appear to have picked it up.
+          void api
+            .saveSharedComputed(key, value)
+            .then(() => api.settings())
+            .then(setSettings)
+            .catch((cause: unknown) => setError(describe(cause)));
+        }}
+        onSaveGlobals={(globals) => {
+          void api
+            .saveSharedGlobals(globals)
+            .then(() => api.settings())
+            .then(setSettings)
+            .catch((cause: unknown) => setError(describe(cause)));
+        }}
+        onClose={() => setGlobalSettingsOpen(false)}
+      />
 
       <Reference
         open={referenceOpen}

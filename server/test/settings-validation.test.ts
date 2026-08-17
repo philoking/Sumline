@@ -101,24 +101,6 @@ describe('the timezone setting', () => {
   });
 });
 
-describe('the default frame rate', () => {
-  it('is stored and read back', async () => {
-    expect((await put({ fps: 30 })).statusCode).toBe(200);
-    expect(await settings()).toMatchObject({ fps: 30 });
-  });
-
-  it('refuses a rate nothing could divide by', async () => {
-    for (const fps of [0, -5, 'thirty', 5000]) {
-      const response = await put({ fps });
-      expect(response.statusCode, JSON.stringify(fps)).toBe(400);
-    }
-  });
-
-  it('accepts a fractional rate, since 23.976 is a real one', async () => {
-    expect((await put({ fps: 23.976 })).statusCode).toBe(200);
-  });
-});
-
 describe('clearing an override', () => {
   it('removes the key so the tier above shows through again', async () => {
     // null is not a value of "no region" — it is the absence of an override,
@@ -131,7 +113,7 @@ describe('clearing an override', () => {
   });
 
   it('accepts null for every computed setting', async () => {
-    for (const key of ['region', 'fps', 'zone', 'holidayCountry']) {
+    for (const key of ['region', 'zone']) {
       const response = await put({ [key]: null });
       expect(response.statusCode, key).toBe(200);
     }
@@ -211,6 +193,6 @@ describe('the Everywhere tier', () => {
 
   it('refuses instance-wide what it would refuse per space', async () => {
     expect((await putShared({ region: 42 })).statusCode).toBe(400);
-    expect((await putShared({ fps: 0 })).statusCode).toBe(400);
+    expect((await putShared({ zone: 42 })).statusCode).toBe(400);
   });
 });

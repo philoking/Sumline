@@ -53,9 +53,7 @@ export interface Folder {
 /** The settings that change what a sheet computes. Missing means inherit. */
 export interface Computed {
   region?: NumberRegion;
-  fps?: number;
   zone?: string;
-  holidayCountry?: string;
 }
 
 export type Statistic = 'total' | 'average' | 'count' | 'median';
@@ -72,8 +70,6 @@ export interface Settings {
    * an answer looks. Two browsers open on the same space must not disagree.
    */
   region?: NumberRegion;
-  /** Frame rate assumed by a timecode that does not name one. */
-  fps?: number;
   /**
    * The zone this space's dates resolve in — `Europe/Berlin`, or `Berlin`.
    *
@@ -82,13 +78,6 @@ export interface Settings {
    * should resolve in one place no matter who opens them.
    */
   zone?: string;
-  /**
-   * ISO country code whose public holidays this space's workday maths uses.
-   *
-   * Per space for the same reason as the region: it changes what a sheet
-   * computes. Absent means the instance default from `HOLIDAY_COUNTRY`.
-   */
-  holidayCountry?: string;
   /**
    * Whether the sidebar is arranged by hand or by what changed last.
    *

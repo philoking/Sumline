@@ -297,8 +297,7 @@ counting a holiday.
 A laptime needs two colons and a timecode three, which is how they are told apart from a clock
 time. The compact `3h 5m 10s` form needs at least two components, so a lone `5m` stays five metres.
 
-A timecode that names no frame rate uses the space's default, which is 24 unless Space settings
-says otherwise. Writing `@ 30 fps` on the line still wins.
+A timecode that names no frame rate is read at 24 fps. Writing `@ 30 fps` on the line changes it.
 
 ### Time zones
 
@@ -510,30 +509,28 @@ doesn't do, because the same line is a passing test. Adding one to the docs mean
 From the ⤓ menu: copy with answers, or download as text, Markdown or CSV. **Print / save as PDF**
 uses a print stylesheet that lays the answer column beside the text on paper.
 
-### Space settings
+### Space settings and Global settings
 
-Behind the initial in the top bar. A space carries three things beyond its sheets:
+Two panels behind the initial in the top bar, and which one you open says what you
+are editing.
 
-| Setting | What it does |
-| --- | --- |
-| **Numbers** | The [region](#numbers-and-notation) its sheets are written in. Changes how they are read, not just how answers look. |
-| **Timecode** | The frame rate a timecode assumes when it names none. |
-| **Time zone** | Where its dates [resolve](#time-zones-and-the-clock). Empty means the reader's own. |
-| **Public holidays** | The [country](#workdays) whose calendar `workdays` leaves out. |
-| **Variables** | Globals every sheet can use — the section below. |
+**Global settings** holds what is true of the whole instance: the number region,
+the timezone, and the variables every space can use.
 
-All four are per space rather than per browser, because they change what a sheet *computes*: two
-browsers open on the same space must not disagree about what `1.234` means. That is the opposite of
-the theme, which is per browser precisely because it changes nothing.
+**\<Space\> settings** holds only that space: its name, its own variables, and an
+override for the region or timezone where it needs to differ. Each override names
+what it would otherwise inherit, so an unset field never leaves you guessing.
 
-**They have two scopes, exactly like the variables below.** Set a region once under *Numbers and
-time everywhere* and every space follows it; a space that needs to differ overrides it under
-*Numbers and time in \<space\>*. An override is a decision, not a copy: change the Everywhere value
-afterwards and the spaces that never overrode it follow along, while the one that did keeps what it
-chose. Clearing an override — the **Inherit** option, or an empty field — puts a space back on the
-Everywhere value.
+An override is a decision, not a copy. Change the global value afterwards and the
+spaces that never overrode it follow along, while the one that did keeps what it
+chose. Choosing the **Global —** option puts a space back on the global value.
 
-Through the API, the space's own tier is `PUT /api/settings` and the Everywhere tier is
+Region and timezone are per space rather than per browser because they change what
+a sheet *computes*: two browsers open on the same space must not disagree about
+what `1.234` means. That is the opposite of the theme, which is per browser
+precisely because it changes nothing.
+
+Through the API, a space's own tier is `PUT /api/settings` and the global tier is
 `PUT /api/settings/shared`; `null` clears an override:
 
 ```bash
@@ -545,26 +542,14 @@ curl -X PUT localhost:8422/api/settings/shared \
 curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
   -H 'cookie: webcalc_user=boston' -d '{"region": "north-america"}'
 
-# and back to following Everywhere
+# and back to following the global value
 curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
   -H 'cookie: webcalc_user=boston' -d '{"region": null}'
 ```
 
-`GET /api/settings` returns the space's own keys, `shared` (the Everywhere tier) and `effective`
-(the two resolved) — computed server-side so the panel and the sheets cannot disagree about which
-value is winning.
-
-They can be set through the API too:
-
-```bash
-curl -X PUT http://localhost:8422/api/settings \
-  -H 'content-type: application/json' -H 'cookie: webcalc_user=work' \
-  -d '{"region": "western-europe", "fps": 30, "zone": "Europe/Berlin", "holidayCountry": "DE"}'
-```
-
-A region the server does not recognise is refused if it is not shaped like a region name at all,
-and otherwise falls back to the default — the list of regions lives in the engine, and the server
-keeps no second copy of it to drift out of step.
+`GET /api/settings` returns the space's own keys, `shared` (the global tier) and
+`effective` (the two resolved) — computed server-side so the panel and the sheets
+cannot disagree about which value is winning.
 
 ### Global variables
 
@@ -870,7 +855,7 @@ app on an empty database.**
 | `DATA_DIR` | `/data` | Directory holding `webcalc.db` |
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
 | `TZ` | `UTC` | The **container's** clock: log timestamps, and which years of public holidays get fetched. It does **not** decide how sheets do date maths — that follows the reader's browser. See [Time zones and the clock](#time-zones-and-the-clock). |
-| `HOLIDAY_COUNTRY` | `US` | Default ISO country code for public holidays. A space can [choose its own](#workdays), which wins. |
+| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
 | `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
 | `WEBCALC_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
 

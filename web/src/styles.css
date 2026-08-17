@@ -412,8 +412,8 @@ button.ghost:hover {
   border-color: var(--accent);
 }
 
-/* The region picker and the frame rate. Same shape as the name field, so the
-   panel reads as one form rather than three unrelated controls. */
+/* A single setting's control. Same shape as the name field above it, so the
+   panel reads as one form rather than a stack of unrelated boxes. */
 .setting-select,
 .setting-input {
   width: 100%;
@@ -426,16 +426,16 @@ button.ghost:hover {
   font-size: 14px;
 }
 
-/* The samples in the region labels only line up in a monospaced figure, and
-   lining them up is what makes the three options comparable at a glance. */
+/* The samples in the region labels only line up in a tabular figure, and lining
+   them up is what makes the three options comparable at a glance. */
 .setting-select {
   font-variant-numeric: tabular-nums;
 }
 
-/* A frame rate is two or three digits; a full-width box would suggest
-   otherwise. */
-.setting-input {
-  width: 7em;
+/* Settings are one per group, so the heading carries the label and the blurb
+   carries the explanation — the control needs no label of its own. */
+.space-settings .reference-group h3 + .reference-blurb {
+  margin-bottom: 8px;
 }
 
 .setting-select:focus,

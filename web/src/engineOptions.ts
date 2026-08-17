@@ -14,18 +14,7 @@ import type { Computed, Settings } from './api';
  * which statistic the corner shows, whether the total is visible, how the
  * sidebar is ordered — are the app's business and never reach the engine.
  */
-export interface EngineInputs extends EngineOptions {
-  /**
-   * Not an engine option — the holidays themselves are.
-   *
-   * It belongs here anyway because it is a setting that changes what a sheet
-   * computes, and the layer that builds the engine is what has to notice it
-   * changed and fetch the right calendar.
-   */
-  holidayCountry?: string;
-}
-
-export function engineOptionsFrom(settings: Settings): EngineInputs {
+export function engineOptionsFrom(settings: Settings): EngineOptions {
   /*
    * The resolved view the server computed, not this space's own globals: the
    * server owns precedence between the space and Everywhere, so that it is
@@ -41,9 +30,7 @@ export function engineOptionsFrom(settings: Settings): EngineInputs {
    */
   const computed: Computed = settings.effective ?? {
     ...(settings.region && { region: settings.region }),
-    ...(settings.fps !== undefined && { fps: settings.fps }),
     ...(settings.zone && { zone: settings.zone }),
-    ...(settings.holidayCountry && { holidayCountry: settings.holidayCountry }),
   };
 
   return {
@@ -53,8 +40,6 @@ export function engineOptionsFrom(settings: Settings): EngineInputs {
     // Left off entirely when unset, so the engine applies its own default
     // rather than this layer keeping a second copy of what that default is.
     ...(computed.region && { region: computed.region }),
-    ...(computed.fps !== undefined && { fps: computed.fps }),
     ...(computed.zone && { zone: computed.zone }),
-    ...(computed.holidayCountry && { holidayCountry: computed.holidayCountry }),
   };
 }

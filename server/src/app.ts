@@ -11,7 +11,7 @@ import {
   type Space,
 } from './spaces.js';
 import { RatesService, type RateFetcher } from './rates.js';
-import { HolidayService, normaliseCountry, type HolidayFetcher } from './holidays.js';
+import { HolidayService, type HolidayFetcher } from './holidays.js';
 import {
   SESSION_COOKIE,
   clearedSessionCookie,
@@ -105,7 +105,7 @@ function readRegion(value: unknown): string | typeof INVALID {
  * instance and occasionally true of one space alone. Display preferences stay
  * per space and free-form; a wrong one costs an odd-looking toggle.
  */
-const COMPUTED_SETTINGS = ['region', 'fps', 'zone', 'holidayCountry'] as const;
+const COMPUTED_SETTINGS = ['region', 'zone'] as const;
 
 /**
  * Validates one computed setting, or reports why it cannot be stored.
@@ -119,12 +119,8 @@ function readComputed(key: string, value: unknown): unknown | typeof INVALID {
   switch (key) {
     case 'region':
       return readRegion(value);
-    case 'fps':
-      return readFps(value);
     case 'zone':
       return readZone(value);
-    case 'holidayCountry':
-      return normaliseCountry(value) ?? INVALID;
     default:
       return value;
   }
@@ -132,9 +128,7 @@ function readComputed(key: string, value: unknown): unknown | typeof INVALID {
 
 const COMPUTED_HELP: Record<string, string> = {
   region: 'region must be a name like western-europe, or null to inherit',
-  fps: 'fps must be a positive number, or null to inherit',
   zone: 'zone must be a name like Europe/Berlin, or null to inherit',
-  holidayCountry: 'holidayCountry must be a two-letter code like DE, or null to inherit',
 };
 
 /**
@@ -149,19 +143,6 @@ function readZone(value: unknown): string | typeof INVALID {
   if (typeof value !== 'string') return INVALID;
   const name = value.trim();
   return /^[A-Za-z][A-Za-z0-9_+\-/ ]{1,60}$/.test(name) ? name : INVALID;
-}
-
-/**
- * Checks a default frame rate on its way in.
- *
- * Everything that reads a timecode divides by this, so it has to be a positive
- * finite number. The bound is generous rather than principled: it exists to
- * reject a typo, not to have an opinion about cinematography.
- */
-function readFps(value: unknown): number | typeof INVALID {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1000
-    ? value
-    : INVALID;
 }
 
 /**
@@ -440,14 +421,7 @@ export function buildApp(options: AppOptions): App {
    * can keep its own country's calendar — the workday maths in a sheet is only
    * as right as the holidays behind it.
    */
-  server.get('/api/holidays', async (request) => {
-    // The resolved value, so a space with no country of its own follows the
-    // instance-wide one rather than jumping straight to HOLIDAY_COUNTRY.
-    const country =
-      store.getSettings(currentUser(request))['holidayCountry'] ??
-      store.sharedSettings()['holidayCountry'];
-    return country === undefined ? holidays.current() : holidays.for(country);
-  });
+  server.get('/api/holidays', async () => holidays.current());
 
 /**
    * A space's settings, plus the tier above it and the two resolved together.
