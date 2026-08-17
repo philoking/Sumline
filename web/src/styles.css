@@ -1143,6 +1143,20 @@ button.danger-button:disabled {
 }
 
 /*
+ * The sheet's left margin, for when the gutter is not there to be it.
+ *
+ * `.sheet-body` has no horizontal padding: with line numbers on, every pixel
+ * between the sidebar and the first character comes from the gutter's own
+ * padding. Turning them off therefore took the margin away with them and left
+ * the text against the divider. This is deliberately narrower than the gutter
+ * it replaces — reclaiming that width is most of the reason to turn the
+ * numbers off — but a document still needs an edge to start from.
+ */
+.editor-host.no-gutter {
+  padding-left: 20px;
+}
+
+/*
  * Answers sit in their own column, left-aligned against a hairline divider,
  * and are absolutely positioned against the measured top of each line so they
  * stay level with the text through soft wrapping.

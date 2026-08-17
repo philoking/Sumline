@@ -839,7 +839,10 @@ export function Editor({
 
   return (
     <div className="sheet-body" ref={hostRef}>
-      <div className="editor-host" ref={editorHostRef} />
+      <div
+        className={`editor-host${showLineNumbers ? '' : ' no-gutter'}`}
+        ref={editorHostRef}
+      />
       <div
         className="answers"
         ref={answersRef}
