@@ -98,6 +98,20 @@ function readRegion(value: unknown): string | typeof INVALID {
 }
 
 /**
+ * Checks a timezone name on its way in.
+ *
+ * Shape, not membership, for the third time and the same reason: the zone table
+ * lives in the engine, which this server does not depend on at runtime. An
+ * unrecognised-but-well-formed name is harmless — the engine falls back to the
+ * reader's own zone, which is what it would have used anyway.
+ */
+function readZone(value: unknown): string | typeof INVALID {
+  if (typeof value !== 'string') return INVALID;
+  const name = value.trim();
+  return /^[A-Za-z][A-Za-z0-9_+\-/ ]{1,60}$/.test(name) ? name : INVALID;
+}
+
+/**
  * Checks a default frame rate on its way in.
  *
  * Everything that reads a timecode divides by this, so it has to be a positive
@@ -433,6 +447,11 @@ export function buildApp(options: AppOptions): App {
       }
       if ('fps' in changes && readFps(changes['fps']) === INVALID) {
         return reply.code(400).send({ error: 'fps must be a positive number' });
+      }
+      if ('zone' in changes && readZone(changes['zone']) === INVALID) {
+        return reply
+          .code(400)
+          .send({ error: 'zone must be a name like Europe/Berlin' });
       }
       if ('holidayCountry' in changes) {
         const country = normaliseCountry(changes['holidayCountry']);

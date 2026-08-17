@@ -37,6 +37,8 @@ export interface SpaceSettingsProps {
   region: NumberRegion | undefined;
   /** Default frame rate for timecodes, or undefined for the engine's default. */
   fps: number | undefined;
+  /** This space's timezone, or undefined for the reader's own. */
+  zone: string | undefined;
   /** This space's holiday country, or undefined for the instance default. */
   holidayCountry: string | undefined;
   /** The country and holiday count actually in force, as the server reports it. */
@@ -48,6 +50,7 @@ export interface SpaceSettingsProps {
   onSaveSharedGlobals(globals: Record<string, string>): void;
   onSaveRegion(region: NumberRegion): void;
   onSaveFps(fps: number): void;
+  onSaveZone(zone: string): void;
   onSaveHolidayCountry(country: string): void;
   onRemove(): void;
   onClose(): void;
@@ -210,9 +213,9 @@ function GlobalsEditor({
  */
 export function SpaceSettings(props: SpaceSettingsProps) {
   const { open, space, globals, sharedGlobals, canRemove, region, fps, preview } = props;
-  const { holidayCountry, holidays } = props;
+  const { zone, holidayCountry, holidays } = props;
   const { onRename, onSaveGlobals, onSaveSharedGlobals, onRemove, onClose } = props;
-  const { onSaveRegion, onSaveFps, onSaveHolidayCountry } = props;
+  const { onSaveRegion, onSaveFps, onSaveZone, onSaveHolidayCountry } = props;
 
   const [name, setName] = useState(space.name);
   const [spaceRows, setSpaceRows] = useState<Row[]>(() => toRows(globals));
@@ -221,6 +224,7 @@ export function SpaceSettings(props: SpaceSettingsProps) {
   // number the moment a digit is deleted.
   const [fpsText, setFpsText] = useState(String(fps ?? DEFAULT_FPS));
   const [countryText, setCountryText] = useState(holidayCountry ?? '');
+  const [zoneText, setZoneText] = useState(zone ?? '');
 
   // Reset whenever the panel opens, so a cancelled edit is not still sitting
   // there the next time it is opened.
@@ -231,7 +235,8 @@ export function SpaceSettings(props: SpaceSettingsProps) {
     setSharedRows(toRows(sharedGlobals));
     setFpsText(String(fps ?? DEFAULT_FPS));
     setCountryText(holidayCountry ?? '');
-  }, [open, space.name, space.id, globals, sharedGlobals, fps, holidayCountry]);
+    setZoneText(zone ?? '');
+  }, [open, space.name, space.id, globals, sharedGlobals, fps, holidayCountry, zone]);
 
   if (!open) return null;
 
@@ -338,6 +343,35 @@ export function SpaceSettings(props: SpaceSettingsProps) {
                 if (event.key === 'Escape') setFpsText(String(fps ?? DEFAULT_FPS));
               }}
             />
+
+            <h3>Time zone</h3>
+            <p className="reference-blurb">
+              Where this space’s dates resolve. Leave it empty and they resolve
+              wherever the reader is, which is usually what you want.
+            </p>
+            <input
+              className="setting-select"
+              value={zoneText}
+              placeholder="Your own — e.g. Europe/Berlin"
+              aria-label="Time zone"
+              onChange={(event) => setZoneText(event.target.value)}
+              onBlur={() => {
+                const next = zoneText.trim();
+                if (next !== (zone ?? '')) onSaveZone(next);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+                if (event.key === 'Escape') setZoneText(zone ?? '');
+              }}
+            />
+            {/* Shown from the engine rather than echoed back, so a name it does
+                not recognise reads as "still the reader's own" instead of
+                looking accepted. */}
+            <p className="reference-note">
+              {zone
+                ? `Dates here resolve as ${preview('now')} — it is currently ${preview('time in ' + zone) || 'unknown'} there.`
+                : 'Dates resolve in the reader’s own zone. A name it does not recognise falls back to that too.'}
+            </p>
 
             <h3>Public holidays</h3>
             <p className="reference-blurb">

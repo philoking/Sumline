@@ -37,13 +37,66 @@ import {
   parseTimecode,
   toSpanUnit,
 } from './parse.js';
-import { resolveZone, wallClockIn, zoneOffsetMinutes } from './zones.js';
+import {
+  instantInZone,
+  resolveZone,
+  wallClockIn,
+  zoneOffsetMinutes,
+} from './zones.js';
 
 export interface TemporalOptions {
+  /**
+   * The true instant. Timestamps and zone offsets are computed from this and
+   * nothing else, so they stay right whatever zone the sheet reasons in.
+   */
   now: Date;
   holidays: HolidaySet;
   /** Default frame rate for timecodes with none given. */
   fps: number;
+  /**
+   * The zone this sheet's dates resolve in, or null/absent for the reader's own.
+   *
+   * Absent is the default and the common case: evaluation runs in the browser,
+   * so "here" means wherever the reader is. A space sets this when its sheets
+   * should resolve somewhere in particular regardless of who opens them.
+   */
+  zone?: string | null;
+  /**
+   * `now` with its local fields reading as the wall clock in `zone`.
+   *
+   * Every calendar rule below works on local fields, so handing them a shifted
+   * date is what makes them compute in another zone without being rewritten.
+   * Absent means no zone is set and it is simply `now` — which is what keeps an
+   * instance that sets no zone behaving exactly as it did.
+   */
+  wallNow?: Date;
+}
+
+/** The clock the calendar rules reason against. */
+function wall(o: TemporalOptions): Date {
+  return o.wallNow ?? o.now;
+}
+
+/**
+ * The real instant a moment names.
+ *
+ * A moment carrying its own zone already holds one — `time in Paris` is a true
+ * instant that merely renders elsewhere. Everything else was built in wall-clock
+ * space, so when a zone is set its fields have to be read back as that zone's
+ * clock rather than the browser's.
+ */
+function trueInstant(moment: CalendarDate, o: TemporalOptions): Date {
+  if (moment.zone || !o.zone) return moment.date;
+  const d = moment.date;
+  const at = instantInZone(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    o.zone,
+  );
+  return new Date(at.getTime() + d.getSeconds() * 1000 + d.getMilliseconds());
 }
 
 export type TemporalValue =
@@ -215,12 +268,17 @@ function conversion(s: string, o: TemporalOptions): TemporalValue | null {
 
   if (target === 'timestamp' || target === 'unix' || target === 'epoch') {
     const moment = readMoment(left, o);
-    return moment ? new TemporalNumber(Math.round(moment.date.getTime() / 1000)) : null;
+    // Through `trueInstant`, not the moment's own getTime: with a zone set the
+    // moment was built in wall-clock space, and a timestamp is the one answer
+    // that must be the real instant rather than the displayed one.
+    return moment
+      ? new TemporalNumber(Math.round(trueInstant(moment, o).getTime() / 1000))
+      : null;
   }
 
   if (target === 'iso8601' || target === 'iso') {
     const moment = readMoment(left, o);
-    return moment ? isoString(moment) : null;
+    return moment ? isoString(moment, o) : null;
   }
 
   if (target === 'date' || target === 'a date') {
@@ -229,7 +287,9 @@ function conversion(s: string, o: TemporalOptions): TemporalValue | null {
       const value = Number(stamp[0]);
       // 13 digits is milliseconds, 10 is seconds.
       const ms = value > 1e11 ? value : value * 1000;
-      return new CalendarDate(new Date(ms), 'second', undefined, 'datetime');
+      // A timestamp is an absolute instant, so it renders through the space's
+      // zone rather than being shifted into wall-clock space like a date is.
+      return new CalendarDate(new Date(ms), 'second', o.zone ?? undefined, 'datetime');
     }
     const moment = readMoment(left, o);
     return moment ? moment.displayedAs('datetime') : null;
@@ -295,7 +355,7 @@ function zoneQuery(s: string, o: TemporalOptions): TemporalValue | null {
   const moved = /^(.+?)\s+(?:to|in)\s+([A-Za-z][A-Za-z\s+\-0-9]*)$/i.exec(s);
   if (moved) {
     const zone = resolveZone(moved[2]!);
-    const moment = parseMoment(moved[1]!, o.now);
+    const moment = parseMoment(moved[1]!, wall(o));
     if (zone && moment) {
       return new CalendarDate(moment.date, 'minute', zone, 'time');
     }
@@ -338,8 +398,8 @@ function countdown(s: string, o: TemporalOptions): TemporalValue | null {
 
   const backwards = /since|from/i.test(m[2]!);
   const [from, to] = backwards
-    ? [target, new CalendarDate(o.now)]
-    : [new CalendarDate(o.now), target];
+    ? [target, new CalendarDate(wall(o))]
+    : [new CalendarDate(wall(o)), target];
   return inUnit(from, to, unit, o);
 }
 
@@ -349,12 +409,12 @@ function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
   }
 
   if (/^week\s+(?:of\s+(?:the\s+)?year|number)$/i.test(s)) {
-    return new TemporalNumber(weekNumber(o.now));
+    return new TemporalNumber(weekNumber(wall(o)));
   }
 
   const weekOn = /^week\s+number\s+(?:on|of|for)\s+(.+)$/i.exec(s);
   if (weekOn) {
-    const date = parseDate(weekOn[1]!, o.now);
+    const date = parseDate(weekOn[1]!, wall(o));
     if (date) return new TemporalNumber(weekNumber(date.date));
   }
 
@@ -363,19 +423,19 @@ function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
     'i',
   ).exec(s);
   if (dow) {
-    const date = parseDate(dow[1]!, o.now);
+    const date = parseDate(dow[1]!, wall(o));
     if (date) return WEEKDAY_NAMES[date.date.getDay()] ?? null;
   }
 
   const quarter = /^days\s+in\s+q([1-4])(?:\s+(\d{4}))?$/i.exec(s);
   if (quarter) {
-    const year = quarter[2] ? Number(quarter[2]) : o.now.getFullYear();
+    const year = quarter[2] ? Number(quarter[2]) : wall(o).getFullYear();
     return Timespan.of(daysInQuarter(year, Number(quarter[1])), 'day');
   }
 
   const inMonth = new RegExp(`^days\\s+in\\s+(${MONTH_PATTERN})(?:\\s+(\\d{4}))?$`, 'i').exec(s);
   if (inMonth) {
-    const anchor = parseDate(`${inMonth[1]} 1${inMonth[2] ? ` ${inMonth[2]}` : ''}`, o.now);
+    const anchor = parseDate(`${inMonth[1]} 1${inMonth[2] ? ` ${inMonth[2]}` : ''}`, wall(o));
     if (anchor) {
       return Timespan.of(
         daysInMonth(anchor.date.getFullYear(), anchor.date.getMonth()),
@@ -391,8 +451,8 @@ function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
   if (workdaysIn) {
     const span = parseSpan(workdaysIn[1]!);
     if (span) {
-      const end = addDays(startOfDay(o.now), Math.round(span.seconds / 86_400));
-      return Timespan.of(countWorkdays(startOfDay(o.now), end, o.holidays), 'workday');
+      const end = addDays(startOfDay(wall(o)), Math.round(span.seconds / 86_400));
+      return Timespan.of(countWorkdays(startOfDay(wall(o)), end, o.holidays), 'workday');
     }
   }
 
@@ -401,8 +461,8 @@ function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
     'i',
   ).exec(s);
   if (workdaysFrom) {
-    const from = parseDate(workdaysFrom[1]!, o.now);
-    const to = parseDate(workdaysFrom[2]!, o.now);
+    const from = parseDate(workdaysFrom[1]!, wall(o));
+    const to = parseDate(workdaysFrom[2]!, wall(o));
     if (from && to) {
       return Timespan.of(countWorkdays(from.date, to.date, o.holidays), 'workday');
     }
@@ -421,15 +481,15 @@ function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
 function interval(s: string, o: TemporalOptions): TemporalValue | null {
   const days = /^days\s+between\s+(.+?)\s+and\s+(.+)$/i.exec(s);
   if (days) {
-    const a = parseDate(days[1]!, o.now);
-    const b = parseDate(days[2]!, o.now);
+    const a = parseDate(days[1]!, wall(o));
+    const b = parseDate(days[2]!, wall(o));
     if (a && b) return Timespan.of(Math.abs(diffInDays(a.date, b.date)), 'day');
   }
 
   const through = /^(.+?)\s+through\s+(.+?)(?:\s+in\s+days)?\s*$/i.exec(s);
   if (through) {
-    const a = parseDate(through[1]!, o.now);
-    const b = parseDate(through[2]!, o.now);
+    const a = parseDate(through[1]!, wall(o));
+    const b = parseDate(through[2]!, wall(o));
     // "through" includes both endpoints, so April 1 through April 30 is 30 days.
     if (a && b) return Timespan.of(Math.abs(diffInDays(a.date, b.date)) + 1, 'day');
   }
@@ -492,7 +552,7 @@ function offsetExpression(s: string, o: TemporalOptions): TemporalValue | null {
       const sign = word === 'before' || word === 'ago' ? -1 : 1;
       const anchor =
         anchorText === '' || /^now$/i.test(anchorText)
-          ? new CalendarDate(word === 'ago' || word === 'from' ? startOfDay(o.now) : o.now)
+          ? new CalendarDate(word === 'ago' || word === 'from' ? startOfDay(wall(o)) : wall(o))
           : readMoment(anchorText, o);
       if (anchor) return applySpan(anchor, span, sign, o);
     }
@@ -566,7 +626,7 @@ function bareMoment(s: string, o: TemporalOptions): TemporalValue | null {
  * ------------------------------------------------------------------ */
 
 function readMoment(text: string, o: TemporalOptions): CalendarDate | null {
-  return parseDate(text, o.now) ?? parseMoment(text, o.now);
+  return parseDate(text, wall(o)) ?? parseMoment(text, wall(o));
 }
 
 /** A written span, or the duration implied by a range. */
@@ -598,14 +658,37 @@ function inUnit(
   return Timespan.of(round(seconds / secondsIn(unit), 2), unit);
 }
 
-function isoString(moment: CalendarDate): string {
-  const d = moment.date;
+/**
+ * ISO 8601, carrying the offset of whichever zone the moment belongs to.
+ *
+ * Without a zone that is the reader's own, exactly as before. With one, the
+ * offset has to come from that zone at that instant rather than from the
+ * browser — writing Berlin's wall clock against a Los Angeles offset would name
+ * a different moment entirely.
+ */
+function isoString(moment: CalendarDate, o: TemporalOptions): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  const offset = -d.getTimezoneOffset();
+  const zone = moment.zone ?? o.zone;
+
+  if (!zone) {
+    const d = moment.date;
+    const offset = -d.getTimezoneOffset();
+    const sign = offset >= 0 ? '+' : '-';
+    const abs = Math.abs(offset);
+    return (
+      `${isoDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+      `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+    );
+  }
+
+  const at = trueInstant(moment, o);
+  const f = wallClockIn(at, zone);
+  const offset = zoneOffsetMinutes(at, zone);
   const sign = offset >= 0 ? '+' : '-';
   const abs = Math.abs(offset);
   return (
-    `${isoDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+    `${f.year}-${pad(f.month + 1)}-${pad(f.day)}` +
+    `T${pad(f.hour)}:${pad(f.minute)}:${pad(at.getUTCSeconds())}` +
     `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
   );
 }

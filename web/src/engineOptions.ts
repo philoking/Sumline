@@ -41,6 +41,7 @@ export function engineOptionsFrom(settings: Settings): EngineInputs {
     // rather than this layer keeping a second copy of what that default is.
     ...(settings.region && { region: settings.region }),
     ...(settings.fps !== undefined && { fps: settings.fps }),
+    ...(settings.zone && { zone: settings.zone }),
     ...(settings.holidayCountry && { holidayCountry: settings.holidayCountry }),
   };
 }

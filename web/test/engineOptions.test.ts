@@ -21,11 +21,18 @@ describe('the settings that reach the engine', () => {
     expect(engineOptionsFrom({ fps: 30 })).toMatchObject({ fps: 30 });
   });
 
+  it('passes the timezone through', () => {
+    expect(engineOptionsFrom({ zone: 'Europe/Berlin' })).toMatchObject({
+      zone: 'Europe/Berlin',
+    });
+  });
+
   it('omits what is unset, rather than guessing at the engine’s defaults', () => {
     // A default repeated here is a default that can disagree with the engine's.
     const options = engineOptionsFrom({});
     expect(options).not.toHaveProperty('region');
     expect(options).not.toHaveProperty('fps');
+    expect(options).not.toHaveProperty('zone');
     expect(options).not.toHaveProperty('globals');
   });
 
@@ -73,12 +80,16 @@ describe('the settings that reach the engine', () => {
     const options = engineOptionsFrom({
       region: 'eastern-europe',
       fps: 25,
+      zone: 'Europe/Berlin',
+      holidayCountry: 'DE',
       largeNumberNotation: false,
       effectiveGlobals: { vat: '20%' },
     });
     expect(options).toEqual({
       region: 'eastern-europe',
       fps: 25,
+      zone: 'Europe/Berlin',
+      holidayCountry: 'DE',
       largeNumberNotation: false,
       globals: { vat: '20%' },
     });

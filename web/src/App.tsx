@@ -1048,6 +1048,7 @@ export function App() {
           canRemove={users.length > 1}
           region={settings.region}
           fps={settings.fps}
+          zone={settings.zone}
           holidayCountry={settings.holidayCountry}
           holidays={
             holidays ? { country: holidays.country, count: holidays.dates.length } : null
@@ -1062,6 +1063,7 @@ export function App() {
           onSaveGlobals={(globals) => void persistSettings({ globals })}
           onSaveRegion={(region) => void persistSettings({ region })}
           onSaveFps={(fps) => void persistSettings({ fps })}
+          onSaveZone={(zone) => void persistSettings({ zone })}
           onSaveHolidayCountry={(country) =>
             void persistSettings({ holidayCountry: country })
           }

@@ -25,16 +25,15 @@ export interface MathContext {
    * instance per date; see [`historical.ts`](./historical.ts).
    */
   historicalRates: HistoricalRates;
+  /**
+   * The zone dates resolve in, or null for the reader's own.
+   *
+   * Reference data the evaluator consults, like `holidays` — math.js has no
+   * notion of a calendar, let alone of where one is being read.
+   */
+  zone: string | null;
 }
 
-/**
- * Builds a math.js instance with one unit per currency in the rate table.
- *
- * Currencies are registered relative to the table's base, which lets math.js's
- * own unit system handle conversion, mixed-currency arithmetic and summing for
- * free. The instance is disposable: refreshing rates means building a new one,
- * which keeps the engine free of mutable global state.
- */
 export const DEFAULT_FPS = 24;
 
 /**
@@ -51,11 +50,20 @@ export function toFps(value: unknown): number {
     : DEFAULT_FPS;
 }
 
+/**
+ * Builds a math.js instance with one unit per currency in the rate table.
+ *
+ * Currencies are registered relative to the table's base, which lets math.js's
+ * own unit system handle conversion, mixed-currency arithmetic and summing for
+ * free. The instance is disposable: refreshing rates means building a new one,
+ * which keeps the engine free of mutable global state.
+ */
 export function createMathContext(
   rates?: RateTable,
   holidays: ReadonlySet<string> = new Set(),
   fps: number = DEFAULT_FPS,
   historicalRates: HistoricalRates = {},
+  zone: string | null = null,
 ): MathContext {
   // `all` is typed as optionally undefined by mathjs, but is always populated.
   const math = create(all as FactoryFunctionMap, {
@@ -69,7 +77,7 @@ export function createMathContext(
   // mixed-currency sum answers in, so the set must already be populated.
   registerValueTypes(math, currencies);
 
-  return { math, currencies, holidays, fps: toFps(fps), historicalRates };
+  return { math, currencies, holidays, fps: toFps(fps), historicalRates, zone };
 }
 
 function registerCurrencies(

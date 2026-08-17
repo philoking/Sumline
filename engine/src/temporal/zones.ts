@@ -211,6 +211,54 @@ export function resolveZone(name: string): string | null {
   );
 }
 
+/** Whether the platform's own database knows this identifier. */
+function isKnownZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A zone name for *configuration*, as opposed to one written in a line.
+ *
+ * Accepts an IANA identifier first, because that is the durable, unambiguous
+ * form somebody setting a space's zone would reach for — and `resolveZone` does
+ * not take one, since no sheet ever writes `Europe/Berlin` in an expression.
+ * Falls back to the same place names expressions use, so `Berlin` works too.
+ */
+export function toZone(value: unknown): string | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const name = value.trim();
+  return isKnownZone(name) ? name : resolveZone(name);
+}
+
+/**
+ * `at`, rewritten so its *local* fields read as the wall clock in `zone`.
+ *
+ * The engine's calendar arithmetic works on a `Date`'s local fields throughout —
+ * `startOfDay`, `addDays`, `weekNumber`, the whole date parser — so this is what
+ * lets all of it compute in a chosen zone without any of it being rewritten.
+ * The instant it returns is deliberately *not* the real one; anything needing
+ * that converts back with `instantInZone`.
+ */
+export function wallClockDate(at: Date, zone: string): Date {
+  const f = wallClockIn(at, zone);
+  // Offsets are whole minutes, so seconds and milliseconds are zone-invariant
+  // and are carried across unchanged.
+  return new Date(
+    f.year,
+    f.month,
+    f.day,
+    f.hour,
+    f.minute,
+    at.getUTCSeconds(),
+    at.getUTCMilliseconds(),
+  );
+}
+
 /** Minutes that `zone` is ahead of UTC at the given moment. */
 export function zoneOffsetMinutes(at: Date, zone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {

@@ -67,6 +67,14 @@ export interface Settings {
   /** Frame rate assumed by a timecode that does not name one. */
   fps?: number;
   /**
+   * The zone this space's dates resolve in — `Europe/Berlin`, or `Berlin`.
+   *
+   * Absent means the reader's own, which is the default: evaluation runs in the
+   * browser, so `today` is the reader's today. Set it when a space's sheets
+   * should resolve in one place no matter who opens them.
+   */
+  zone?: string;
+  /**
    * ISO country code whose public holidays this space's workday maths uses.
    *
    * Per space for the same reason as the region: it changes what a sheet

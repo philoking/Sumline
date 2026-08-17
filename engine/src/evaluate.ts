@@ -11,6 +11,7 @@ import { convertAt, parseHistoricalConversion } from './historical.js';
 import { formatValue, type FormatContext } from './format.js';
 import { createMathContext, toFps, type MathContext } from './mathInstance.js';
 import { toNumberRegion } from './numberFormat.js';
+import { toZone, wallClockDate } from './temporal/zones.js';
 import { preprocess, stripOuterParens } from './preprocess.js';
 import { Labelled, Multiplier, Percentage, Rate } from './values.js';
 import type { Engine, EngineOptions, LineResult, Statistic } from './types.js';
@@ -21,10 +22,14 @@ export function createEngine(options: EngineOptions = {}): Engine {
     new Set(options.holidays ?? []),
     toFps(options.fps),
     options.historicalRates ?? {},
+    options.zone === undefined ? null : toZone(options.zone),
   );
   // Coerced once here rather than at each use, so a region written by hand
   // through the settings API cannot leave the sheet answering nothing.
   const region = toNumberRegion(options.region);
+  // Null when unset or unrecognised, which is what makes every date resolve in
+  // the reader's own zone exactly as it did before this existed.
+  const zone = options.zone === undefined ? null : toZone(options.zone);
   const currencies = [...ctx.currencies].sort();
 
   /**
@@ -54,7 +59,10 @@ export function createEngine(options: EngineOptions = {}): Engine {
     evaluate(source) {
       const lines = Array.isArray(source) ? source : source.split('\n');
       const now = readClock();
-      return evaluateLines(lines, ctx, now, contextAt(now), options.globals);
+      // The sheet reasons against the zone's wall clock; the true instant stays
+      // available for timestamps. Both derive from the one clock read above.
+      const wallNow = zone ? wallClockDate(now, zone) : now;
+      return evaluateLines(lines, ctx, now, wallNow, contextAt(wallNow), options.globals);
     },
     ratesNeeded(source) {
       const lines = Array.isArray(source) ? source : source.split('\n');
@@ -164,6 +172,7 @@ function evaluateLines(
   lines: string[],
   ctx: MathContext,
   now: Date,
+  wallNow: Date,
   fmt: FormatContext,
   globals?: Readonly<Record<string, string>>,
 ): LineResult[] {
@@ -173,12 +182,12 @@ function evaluateLines(
     section: [],
     tagged: new Map(),
   };
-  seedGlobals(state, ctx, now, fmt, globals);
+  seedGlobals(state, ctx, now, wallNow, fmt, globals);
   const results: LineResult[] = [];
 
   for (const [index, raw] of lines.entries()) {
     const line = classify(raw ?? '', (word) => isKnownWord(ctx, state, word));
-    const result = evaluateLine(line, index, state, ctx, now, fmt);
+    const result = evaluateLine(line, index, state, ctx, now, wallNow, fmt);
     results.push(result);
 
     // Expose the answer to later lines as `line N` and `prev`.
@@ -212,12 +221,13 @@ function seedGlobals(
   state: SheetState,
   ctx: MathContext,
   now: Date,
+  wallNow: Date,
   fmt: FormatContext,
   globals?: Readonly<Record<string, string>>,
 ): void {
   for (const [name, expression] of Object.entries(globals ?? {})) {
     if (!name.trim() || !expression.trim()) continue;
-    const computed = compute(expression, state, ctx, now, fmt);
+    const computed = compute(expression, state, ctx, now, wallNow, fmt);
     if (computed.value !== undefined) {
       state.scope[aliasFor(name, state)] = computed.value;
     }
@@ -230,6 +240,7 @@ function evaluateLine(
   state: SheetState,
   ctx: MathContext,
   now: Date,
+  wallNow: Date,
   fmt: FormatContext,
 ): LineResult {
   const base: LineResult = { index, kind: line.kind, output: '' };
@@ -250,7 +261,7 @@ function evaluateLine(
 
     case 'assignment':
     case 'expression': {
-      const computed = compute(line.body, state, ctx, now, fmt);
+      const computed = compute(line.body, state, ctx, now, wallNow, fmt);
       if (computed.error) {
         return looksComputational(line.body)
           ? { ...base, error: computed.error }
@@ -328,6 +339,7 @@ function compute(
   state: SheetState,
   ctx: MathContext,
   now: Date,
+  wallNow: Date,
   fmt: FormatContext,
 ): Computed {
   if (body.trim() === '') return { output: '' };
@@ -338,7 +350,7 @@ function compute(
    * to the parser after resolving it for the temporal pass is how
    * `(8:30 to 17:15) - 45 minutes` ended up back at math.js as a range.
    */
-  const options = { now, holidays: ctx.holidays, fps: ctx.fps };
+  const options = { now, wallNow, zone: ctx.zone, holidays: ctx.holidays, fps: ctx.fps };
   const source = resolveTemporalGroups(stripOuterParens(body), options);
 
   /*
@@ -346,7 +358,7 @@ function compute(
    * temporal — `on 2020-01-01` is a date by any measure — and the temporal rules
    * would claim the line and answer with the date rather than the money.
    */
-  const historical = convertHistorically(source, ctx, now, fmt);
+  const historical = convertHistorically(source, ctx, wallNow, fmt);
   if (historical) return historical;
 
   // Dates, times and durations never reach math.js; the gate keeps ordinary

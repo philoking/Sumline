@@ -77,6 +77,30 @@ describe('the region setting', () => {
   });
 });
 
+describe('the timezone setting', () => {
+  it('is stored and read back', async () => {
+    expect((await put({ zone: 'Europe/Berlin' })).statusCode).toBe(200);
+    expect(await settings()).toMatchObject({ zone: 'Europe/Berlin' });
+  });
+
+  it('accepts a place name as well as an identifier', async () => {
+    expect((await put({ zone: 'Berlin' })).statusCode).toBe(200);
+  });
+
+  it('accepts a name it does not recognise, for the engine to fall back on', async () => {
+    // Shape, not membership, for the same reason as the region: the zone table
+    // lives in the engine, which this server cannot import at runtime.
+    expect((await put({ zone: 'Middle/Earth' })).statusCode).toBe(200);
+  });
+
+  it('refuses a value that is not a zone name at all', async () => {
+    for (const zone of [42, null, '', '  ', 'x'.repeat(80), 'drop; table']) {
+      const response = await put({ zone });
+      expect(response.statusCode, JSON.stringify(zone)).toBe(400);
+    }
+  });
+});
+
 describe('the default frame rate', () => {
   it('is stored and read back', async () => {
     expect((await put({ fps: 30 })).statusCode).toBe(200);

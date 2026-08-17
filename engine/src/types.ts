@@ -61,6 +61,15 @@ export interface EngineOptions {
   /** Default frame rate for timecodes that do not name one. */
   fps?: number;
   /**
+   * The zone this sheet's dates resolve in — an IANA name, or any place name
+   * the expression language understands.
+   *
+   * Omitted means the reader's own, which is the default and usually right:
+   * evaluation runs in the browser, so `today` is the reader's today. Set it
+   * when a sheet should resolve somewhere in particular no matter who opens it.
+   */
+  zone?: string;
+  /**
    * Variables available to every sheet, as `name` to expression. Evaluated
    * before the sheet itself, so a sheet can use or shadow them.
    */

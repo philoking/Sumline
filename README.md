@@ -27,9 +27,9 @@ docker compose up -d --build
 Open <http://localhost:8422>. Sheets are stored in the `webcalc-data` volume and survive
 restarts and rebuilds.
 
-Date maths resolves in **your browser's** timezone, not the container's, so `today` is your
-today wherever the instance is hosted. Nothing needs setting for that. See
-[Time zones and the clock](#time-zones-and-the-clock) if you want the detail.
+Date maths resolves in **your browser's** timezone, not the container's, so `today` is your today
+wherever the instance is hosted. Nothing needs setting for that, though a space can pin a zone of
+its own — see [Time zones and the clock](#time-zones-and-the-clock).
 
 ## Syntax
 
@@ -327,9 +327,23 @@ follows along by itself.
 
 It also means the container's `TZ` does **not** decide date maths, whatever it is set to. It sets
 the container's own clock — log timestamps, and which years of public holidays get fetched — and
-nothing else. A space cannot currently pin a timezone of its own; if you need one client's sheets
-to resolve in that client's zone regardless of who is reading them, name the zone in the line
-(`6pm Sydney`), which works today.
+nothing else.
+
+**A space can pin a zone** when that default is wrong for it — a client in another country whose
+sheets should resolve there no matter who opens them. Set it in Space settings, as an IANA name
+(`Europe/Berlin`) or any place name a line would accept (`Berlin`, `Tokyo`). Leave it empty and the
+reader's own zone applies, which stays the default.
+
+With a zone set, everything meaning "here" moves to it — `today`, `now`, `4pm`, week numbers,
+workday counts. Three things deliberately do not:
+
+- **Timestamps stay absolute.** `current timestamp` is the same number in every zone, because it
+  names an instant rather than a wall clock. `today to timestamp` gives the moment that day begins
+  *in the space's zone*, which is a different instant in Tokyo than in Los Angeles.
+- **`as iso8601` carries the space's offset**, since writing Berlin's clock against a Los Angeles
+  offset would name a different moment entirely.
+- **A zone written in the line always wins.** `6pm Sydney in Chicago` means the same thing from
+  anywhere; a space setting is a default, not an override.
 
 ### Timestamps
 
@@ -504,22 +518,20 @@ Behind the initial in the top bar. A space carries three things beyond its sheet
 | --- | --- |
 | **Numbers** | The [region](#numbers-and-notation) its sheets are written in. Changes how they are read, not just how answers look. |
 | **Timecode** | The frame rate a timecode assumes when it names none. |
+| **Time zone** | Where its dates [resolve](#time-zones-and-the-clock). Empty means the reader's own. |
 | **Public holidays** | The [country](#workdays) whose calendar `workdays` leaves out. |
 | **Variables** | Globals every sheet can use — the section below. |
 
-The first three are per space rather than per browser, because they change what a sheet
-*computes*: two browsers open on the same space must not disagree about what `1.234` means. That
-is the opposite of the theme, which is per browser precisely because it changes nothing.
-
-A space's **timezone** is deliberately not on that list — date maths follows the reader's browser
-instead, which is explained under [Time zones and the clock](#time-zones-and-the-clock).
+All four are per space rather than per browser, because they change what a sheet *computes*: two
+browsers open on the same space must not disagree about what `1.234` means. That is the opposite of
+the theme, which is per browser precisely because it changes nothing.
 
 They can be set through the API too:
 
 ```bash
 curl -X PUT http://localhost:8422/api/settings \
   -H 'content-type: application/json' -H 'cookie: webcalc_user=work' \
-  -d '{"region": "western-europe", "fps": 30, "holidayCountry": "DE"}'
+  -d '{"region": "western-europe", "fps": 30, "zone": "Europe/Berlin", "holidayCountry": "DE"}'
 ```
 
 A region the server does not recognise is refused if it is not shaped like a region name at all,
