@@ -13,6 +13,8 @@ export interface SheetSummary {
   lines: number;
   /** Whose space this sheet lives in. */
   owner: string;
+  /** Colour-coding token from `SHEET_COLORS`, or null for none. */
+  color: string | null;
   folderId: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -23,6 +25,8 @@ export interface Folder {
   id: string;
   name: string;
   position: number;
+  /** Colour-coding token from `SHEET_COLORS`, or null for none. */
+  color: string | null;
 }
 
 export type Statistic = 'total' | 'average' | 'count' | 'median';
@@ -183,6 +187,27 @@ export const api = {
       `/api/spaces/${encodeURIComponent(id)}`,
       { method: 'DELETE' },
     ),
+
+  /**
+   * Colours a sheet. Null clears it.
+   *
+   * Its own endpoint rather than part of a save, because colour is how a sheet
+   * is filed rather than what it says: this leaves the version and the
+   * modified time alone, so tagging a sheet cannot collide with someone
+   * editing it and does not jump it to the top of the list.
+   */
+  setSheetColor: (id: string, color: string | null) =>
+    request<{ id: string; color: string | null }>(`/api/sheets/${id}/color`, {
+      method: 'PUT',
+      body: JSON.stringify({ color }),
+    }),
+
+  /** Colours a folder. Null clears it. */
+  setFolderColor: (id: string, color: string | null) =>
+    request<{ id: string; color: string | null }>(`/api/folders/${id}/color`, {
+      method: 'PUT',
+      body: JSON.stringify({ color }),
+    }),
 
   /** Mints (or returns) the slug this sheet is shared under. */
   shareSheet: (id: string) =>

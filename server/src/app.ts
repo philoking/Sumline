@@ -57,6 +57,25 @@ export const USER_COOKIE = 'webcalc_user';
  * authentication at all. Whether the value names a configured space is settled
  * by the caller, which has the configuration.
  */
+/** Returned by `readColor` for a value it will not store. */
+const INVALID = Symbol('invalid colour');
+
+/**
+ * Checks a colour-coding token on its way in.
+ *
+ * The server never interprets the token — it reaches the browser as part of a
+ * class name and the stylesheet decides what it looks like. So what matters
+ * here is the charset, not the membership: a name outside this alphabet could
+ * escape the class attribute, while an unknown-but-harmless name simply
+ * matches no rule and shows no colour. Keeping the palette itself in the web,
+ * where the shades live, avoids two lists that have to be kept in step.
+ */
+function readColor(value: unknown): string | null | typeof INVALID {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return INVALID;
+  return /^[a-z]{2,12}$/.test(value) ? value : INVALID;
+}
+
 function readSpaceCookie(request: FastifyRequest): string | undefined {
   const header = request.headers.cookie;
   if (!header) return undefined;
@@ -258,6 +277,18 @@ export function buildApp(options: AppOptions): App {
     },
   );
 
+  server.put<{ Params: { id: string }; Body: { color?: unknown } }>(
+    '/api/folders/:id/color',
+    async (request, reply) => {
+      const color = readColor(request.body?.color);
+      if (color === INVALID) return reply.code(400).send({ error: 'Unusable colour' });
+      if (!store.setFolderColor(request.params.id, color, currentUser(request))) {
+        return reply.code(404).send({ error: 'Folder not found' });
+      }
+      return { id: request.params.id, color };
+    },
+  );
+
   server.delete<{ Params: { id: string } }>(
     '/api/folders/:id',
     async (request, reply) => {
@@ -379,6 +410,18 @@ export function buildApp(options: AppOptions): App {
       throw error;
     }
   });
+
+  server.put<{ Params: { id: string }; Body: { color?: unknown } }>(
+    '/api/sheets/:id/color',
+    async (request, reply) => {
+      const color = readColor(request.body?.color);
+      if (color === INVALID) return reply.code(400).send({ error: 'Unusable colour' });
+      if (!store.setSheetColor(request.params.id, color)) {
+        return reply.code(404).send({ error: 'Sheet not found' });
+      }
+      return { id: request.params.id, color };
+    },
+  );
 
   server.delete<{ Params: { id: string }; Querystring: { purge?: string } }>(
     '/api/sheets/:id',

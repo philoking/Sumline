@@ -1,4 +1,68 @@
+import { useState, type CSSProperties, type MouseEvent } from 'react';
 import type { Folder, SheetSummary } from './api';
+import { SHEET_COLORS, colorClass, colorLabel } from './colors';
+
+/** Roughly how tall a flyout is: the rename row, two swatch rows and clear. */
+const FLYOUT_HEIGHT = 132;
+
+/**
+ * Places the flyout against the button that opened it.
+ *
+ * Fixed rather than absolute, and so positioned by hand, because the sheet
+ * list scrolls: an absolutely positioned menu inside it is clipped at the
+ * container's edge, which for the last sheet in a long list means a palette
+ * that is half there. Opening upwards when there is no room below is what
+ * makes the folder rows at the very bottom of the sidebar usable.
+ */
+function flyoutStyle(anchor: DOMRect): CSSProperties {
+  const openUpwards = anchor.bottom + FLYOUT_HEIGHT > window.innerHeight;
+  return {
+    right: Math.max(8, window.innerWidth - anchor.right),
+    ...(openUpwards
+      ? { bottom: window.innerHeight - anchor.top + 4 }
+      : { top: anchor.bottom + 4 }),
+  };
+}
+
+/**
+ * The palette shown under the ✎ on a sheet or a folder.
+ *
+ * Both rows get the same control, so colour coding a folder and colour coding
+ * a sheet are the same gesture rather than two things to learn.
+ */
+function ColorPalette({
+  current,
+  onPick,
+}: {
+  current: string | null;
+  onPick(color: string | null): void;
+}) {
+  return (
+    <div className="palette" role="group" aria-label="Colour">
+      <div className="swatches">
+        {SHEET_COLORS.map((color) => (
+          <button
+            key={color.id}
+            type="button"
+            className={`swatch tint-${color.id}${current === color.id ? ' picked' : ''}`}
+            title={color.label}
+            aria-label={color.label}
+            aria-pressed={current === color.id}
+            onClick={() => onPick(color.id)}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        className="palette-clear"
+        disabled={current === null}
+        onClick={() => onPick(null)}
+      >
+        {current === null ? 'No colour' : `Clear ${colorLabel(current).toLowerCase()}`}
+      </button>
+    </div>
+  );
+}
 
 export interface SidebarProps {
   sheets: SheetSummary[];
@@ -20,6 +84,8 @@ export interface SidebarProps {
   onCreateFolder(): void;
   onRenameFolder(folder: Folder): void;
   onDeleteFolder(folder: Folder): void;
+  onColorSheet(sheet: SheetSummary, color: string | null): void;
+  onColorFolder(folder: Folder, color: string | null): void;
   onToggleTrash(): void;
   onEmptyTrash(): void;
 }
@@ -29,8 +95,35 @@ export function Sidebar(props: SidebarProps) {
     sheets, folders, activeId, activeFolder, query, viewingTrash, open,
     onSelect, onCreate, onRename, onDelete, onRestore, onMove, onQuery,
     onSelectFolder, onCreateFolder, onRenameFolder, onDeleteFolder,
-    onToggleTrash, onEmptyTrash,
+    onColorSheet, onColorFolder, onToggleTrash, onEmptyTrash,
   } = props;
+
+  /**
+   * Which row has its edit flyout open, and where to put it.
+   *
+   * Keyed by kind as well as id so a folder and a sheet that happened to share
+   * an id could not open each other's menu.
+   */
+  const [editing, setEditing] = useState<{
+    kind: 'sheet' | 'folder';
+    id: string;
+    anchor: DOMRect;
+  } | null>(null);
+
+  const isEditing = (kind: 'sheet' | 'folder', id: string) =>
+    editing?.kind === kind && editing.id === id;
+  const closeEditor = () => setEditing(null);
+
+  const toggleEditor = (
+    kind: 'sheet' | 'folder',
+    id: string,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => {
+    const anchor = event.currentTarget.getBoundingClientRect();
+    setEditing((current) =>
+      current?.kind === kind && current.id === id ? null : { kind, id, anchor },
+    );
+  };
 
   return (
     <aside className={`sidebar${open ? '' : ' sidebar-collapsed'}`}>
@@ -51,7 +144,10 @@ export function Sidebar(props: SidebarProps) {
 
       <ul className="sheet-list">
         {sheets.map((sheet) => (
-          <li key={sheet.id} className={sheet.id === activeId ? 'active' : ''}>
+          <li
+            key={sheet.id}
+            className={`${sheet.id === activeId ? 'active' : ''}${colorClass(sheet.color)}`}
+          >
             <button
               type="button"
               className="sheet-link"
@@ -95,8 +191,10 @@ export function Sidebar(props: SidebarProps) {
                   <button
                     type="button"
                     className="ghost"
-                    title="Rename"
-                    onClick={() => onRename(sheet)}
+                    title="Rename or colour"
+                    aria-haspopup="menu"
+                    aria-expanded={isEditing('sheet', sheet.id)}
+                    onClick={(event) => toggleEditor('sheet', sheet.id, event)}
                   >
                     ✎
                   </button>
@@ -111,6 +209,32 @@ export function Sidebar(props: SidebarProps) {
                 ×
               </button>
             </span>
+
+            {editing?.kind === 'sheet' && editing.id === sheet.id && (
+              <>
+                <div className="menu-backdrop" onClick={closeEditor} />
+                <div className="edit-flyout" role="menu" style={flyoutStyle(editing.anchor)}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flyout-item"
+                    onClick={() => {
+                      closeEditor();
+                      onRename(sheet);
+                    }}
+                  >
+                    Rename…
+                  </button>
+                  <ColorPalette
+                    current={sheet.color}
+                    onPick={(color) => {
+                      closeEditor();
+                      onColorSheet(sheet, color);
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </li>
         ))}
         {sheets.length === 0 && (
@@ -130,7 +254,7 @@ export function Sidebar(props: SidebarProps) {
         </button>
 
         {folders.map((folder) => (
-          <div key={folder.id} className="folder-row">
+          <div key={folder.id} className={`folder-row${colorClass(folder.color)}`}>
             <button
               type="button"
               className={`folder-link${activeFolder === folder.id ? ' active' : ''}`}
@@ -142,8 +266,10 @@ export function Sidebar(props: SidebarProps) {
               <button
                 type="button"
                 className="ghost"
-                title="Rename folder"
-                onClick={() => onRenameFolder(folder)}
+                title="Rename or colour folder"
+                aria-haspopup="menu"
+                aria-expanded={isEditing('folder', folder.id)}
+                onClick={(event) => toggleEditor('folder', folder.id, event)}
               >
                 ✎
               </button>
@@ -156,6 +282,32 @@ export function Sidebar(props: SidebarProps) {
                 ×
               </button>
             </span>
+
+            {editing?.kind === 'folder' && editing.id === folder.id && (
+              <>
+                <div className="menu-backdrop" onClick={closeEditor} />
+                <div className="edit-flyout" role="menu" style={flyoutStyle(editing.anchor)}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flyout-item"
+                    onClick={() => {
+                      closeEditor();
+                      onRenameFolder(folder);
+                    }}
+                  >
+                    Rename…
+                  </button>
+                  <ColorPalette
+                    current={folder.color}
+                    onPick={(color) => {
+                      closeEditor();
+                      onColorFolder(folder, color);
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         ))}
 

@@ -21,6 +21,14 @@ export interface Sheet {
   content: string;
   version: number;
   owner: UserId;
+  /**
+   * A colour-coding token such as `red`, or null for none.
+   *
+   * A name rather than a hex, because the app follows the reader's light or
+   * dark theme and a colour picked under one would be wrong under the other.
+   * The token is opaque here — which shades it means is the web's business.
+   */
+  color: string | null;
   folderId: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -31,6 +39,8 @@ export interface Folder {
   id: string;
   name: string;
   position: number;
+  /** Colour-coding token, as on a sheet. Null for none. */
+  color: string | null;
 }
 
 export type SheetSummary = Omit<Sheet, 'content'> & { lines: number };
@@ -106,6 +116,7 @@ interface SheetRow {
   content: string;
   version: number;
   owner: string;
+  color: string | null;
   folder_id: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -236,6 +247,11 @@ export class Store {
     // The slug a sheet is currently shared under. Null until it is first
     // shared, so the many sheets that are never sent to anyone mint nothing.
     this.addColumn('sheets', 'slug', 'TEXT');
+    // Colour coding, added later than the tables. Null means uncoloured, which
+    // is why there is no DEFAULT: an existing sheet has not chosen a colour
+    // rather than having chosen a particular one.
+    this.addColumn('sheets', 'color', 'TEXT');
+    this.addColumn('folders', 'color', 'TEXT');
     // Everything that existed before there were spaces belongs to the default
     // one, so nobody opens the app to find their sheets gone.
     //
@@ -409,7 +425,7 @@ export class Store {
     // sheet bodies just to say how long they are.
     const rows = this.db
       .prepare(
-        `SELECT id, title, version, owner, folder_id, deleted_at, created_at, updated_at,
+        `SELECT id, title, version, owner, color, folder_id, deleted_at, created_at, updated_at,
                 CASE WHEN content = '' THEN 0
                      ELSE length(content) - length(replace(content, char(10), '')) + 1
                 END AS lines
@@ -508,11 +524,36 @@ export class Store {
       content,
       version: 1,
       owner,
+      color: null,
       folderId,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  /**
+   * Colours a sheet, without touching its version or `updated_at`.
+   *
+   * Colour is how a sheet is filed, not what it says. Bumping the version
+   * would make a colour change collide with someone else's edit, and touching
+   * `updated_at` would jump the sheet to the top of a list ordered by when it
+   * last changed — for a change that did not alter a single line.
+   */
+  setSheetColor(id: string, color: string | null): boolean {
+    return (
+      this.db.prepare('UPDATE sheets SET color = ? WHERE id = ?').run(color, id)
+        .changes > 0
+    );
+  }
+
+  /** Colours a folder. Scoped to its owner, as renaming one is. */
+  setFolderColor(id: string, color: string | null, owner: UserId): boolean {
+    return (
+      this.db
+        .prepare('UPDATE folders SET color = ? WHERE id = ? AND owner = ?')
+        .run(color, id, owner).changes > 0
+    );
   }
 
   /**
@@ -594,7 +635,7 @@ export class Store {
   listFolders(owner: UserId): Folder[] {
     return this.db
       .prepare(
-        'SELECT id, name, position FROM folders WHERE owner = ? ORDER BY position, name',
+        'SELECT id, name, position, color FROM folders WHERE owner = ? ORDER BY position, name',
       )
       .all(owner) as unknown as Folder[];
   }
@@ -605,7 +646,7 @@ export class Store {
     this.db
       .prepare('INSERT INTO folders (id, name, position, owner) VALUES (?, ?, ?, ?)')
       .run(id, name, position, owner);
-    return { id, name, position };
+    return { id, name, position, color: null };
   }
 
   renameFolder(id: string, name: string, owner: UserId): boolean {
@@ -761,6 +802,7 @@ function toSheet(row: SheetRow): Sheet {
     content: row.content,
     version: row.version,
     owner: row.owner,
+    color: row.color ?? null,
     folderId: row.folder_id ?? null,
     deletedAt: row.deleted_at ?? null,
     createdAt: row.created_at,
@@ -775,6 +817,7 @@ function toSummary(row: Omit<SheetRow, 'content'> & { lines: number }): SheetSum
     version: row.version,
     lines: row.lines,
     owner: row.owner,
+    color: row.color ?? null,
     folderId: row.folder_id ?? null,
     deletedAt: row.deleted_at ?? null,
     createdAt: row.created_at,

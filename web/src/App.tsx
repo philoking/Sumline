@@ -857,6 +857,38 @@ export function App() {
               })
               .catch((cause: unknown) => setError(describe(cause)));
           }}
+          onColorSheet={(sheet, color) => {
+            // Painted immediately and reconciled after, because a colour is
+            // chosen by eye: waiting a round trip to see the result makes
+            // picking through the palette feel broken.
+            setSheets((current) =>
+              current.map((entry) =>
+                entry.id === sheet.id ? { ...entry, color } : entry,
+              ),
+            );
+            void api
+              .setSheetColor(sheet.id, color)
+              .then(() => refreshSheets())
+              .catch((cause: unknown) => {
+                setError(describe(cause));
+                void refreshSheets();
+              });
+          }}
+          onColorFolder={(folder, color) => {
+            setFolders((current) =>
+              current.map((entry) =>
+                entry.id === folder.id ? { ...entry, color } : entry,
+              ),
+            );
+            void api
+              .setFolderColor(folder.id, color)
+              .then(() => api.listFolders())
+              .then(setFolders)
+              .catch((cause: unknown) => {
+                setError(describe(cause));
+                void api.listFolders().then(setFolders);
+              });
+          }}
           onToggleTrash={() => {
             setViewingTrash((viewing) => !viewing);
             setActiveFolder(undefined);

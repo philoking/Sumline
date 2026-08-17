@@ -325,6 +325,20 @@ when deleted rather than destroyed — restore them, or empty the trash to remov
 Deleting a folder keeps its sheets and returns them to the top level. An untitled sheet names
 itself from its first line.
 
+### Colour coding
+
+The ✎ on a sheet or a folder opens a small menu: rename, or pick one of eight colours. The
+colour shows as a bar down the leading edge of the row, and folders take the same eight.
+
+Eight rather than more, because the point of a colour code is being read at a glance, and past
+about eight the hues start needing a second look. A colour is stored as a name rather than a
+value, so it follows the light and dark themes instead of being right in one and wrong in the
+other.
+
+Colouring a sheet does not count as changing it: it leaves the modified time and the version
+alone, so a sheet does not jump to the top of the list for being filed, and tagging one cannot
+collide with someone else editing it.
+
 ### Appearance
 
 The ◐ button in the top bar cycles **system → light → dark**. It starts on
@@ -465,7 +479,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 695 engine tests, 116 server tests
+npm test        # 695 engine tests, 126 server tests
 npm run build   # build all three workspaces
 ```
 

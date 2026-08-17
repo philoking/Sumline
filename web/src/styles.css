@@ -83,6 +83,26 @@
   --selection: #cfe6ee;
 }
 
+/*
+ * The colour-coding palette, shared by both themes.
+ *
+ * One set rather than a light and a dark one, unlike everything above: these
+ * are solid marks, not text, so they only have to stay distinguishable against
+ * both backgrounds rather than readable on them. The warm three are pulled
+ * darker than a dark-only palette would want, since yellow and orange are the
+ * two that disappear against white.
+ */
+:root {
+  --tint-red: #e5484d;
+  --tint-orange: #f2740d;
+  --tint-yellow: #e0a000;
+  --tint-green: #30a46c;
+  --tint-teal: #0d9488;
+  --tint-blue: #3b82f6;
+  --tint-purple: #8e4ec6;
+  --tint-pink: #d6409f;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -351,6 +371,13 @@ button.ghost:hover {
   display: flex;
 }
 
+/* The actions normally appear on hover, but the pointer leaves the row as soon
+   as it reaches the flyout below it — which would take the ✎ out from under
+   the menu it just opened. */
+.sheet-list li:has(.edit-flyout) .sheet-actions {
+  display: flex;
+}
+
 .sheet-actions .ghost {
   font-size: 12px;
   padding: 2px 5px;
@@ -360,6 +387,130 @@ button.ghost:hover {
   color: var(--muted);
   font-size: 13px;
   padding: 8px 11px;
+}
+
+/* ---- colour coding ---- */
+
+.tint-red { --tint: var(--tint-red); }
+.tint-orange { --tint: var(--tint-orange); }
+.tint-yellow { --tint: var(--tint-yellow); }
+.tint-green { --tint: var(--tint-green); }
+.tint-teal { --tint: var(--tint-teal); }
+.tint-blue { --tint: var(--tint-blue); }
+.tint-purple { --tint: var(--tint-purple); }
+.tint-pink { --tint: var(--tint-pink); }
+
+/* A bar down the leading edge rather than a tinted row: the sheet name has to
+   stay as readable as an uncoloured one, and a wash behind it in eight
+   different hues cannot promise that in both themes. */
+.tinted::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--tint);
+}
+
+.sheet-list li.tinted .sheet-link,
+.folder-row.tinted .folder-link {
+  padding-left: 14px;
+}
+
+.folder-row.tinted {
+  position: relative;
+}
+
+/* ---- the edit flyout ---- */
+
+.edit-flyout {
+  /* Fixed and positioned from the button's rect in Sidebar.tsx — see
+     flyoutStyle for why absolute cannot work inside the scrolling list. */
+  position: fixed;
+  z-index: 21;
+  padding: 6px;
+  width: max-content;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
+}
+
+.flyout-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.flyout-item:hover {
+  background: var(--hover);
+}
+
+/* Two rows of four: wide enough to read as a palette, narrow enough not to
+   overhang the sidebar it belongs to. */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--tint);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  /* An inset edge rather than an outline: yellow against a light panel needs
+     a boundary, and this one costs no layout. */
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%);
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+.swatch.picked {
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 20%),
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--tint);
+}
+
+.palette-clear {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.palette-clear:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.palette-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ---- the sheet ---- */
