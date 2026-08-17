@@ -398,18 +398,40 @@ uses a print stylesheet that lays the answer column beside the text on paper.
 
 ### Global variables
 
-Variables available to every sheet in a space — a `day rate` or a `vat` that every sheet can use
-without declaring it.
+Variables every sheet can use without declaring them — a `day rate`, a `vat`, a mileage rate.
 
 Set them in **Space settings**, from the menu behind the initial in the top bar. Each row is a
 name and a value, with what it works out to shown beside it, so a typo is visible there rather
-than discovered later in a sheet that quietly answers nothing. A sheet can shadow a global by
-declaring the same name itself.
+than discovered later in a sheet that quietly answers nothing.
 
-The panel edits the space you are working in; to change another one's variables, switch to it
-first.
+**There are two scopes**, because some values belong to one space and some belong to all of them:
 
-They can also be set through the API, which is worth knowing for scripting an instance:
+| Scope | For |
+| --- | --- |
+| **Everywhere** | Values true across the whole instance — a tax rate, a mileage rate, a home currency. Defined once instead of once per space. |
+| **In this space** | Values that belong to this space alone, like a `day rate` that differs between Consulting and Teaching. |
+
+They resolve most-specific-first, so a sheet beats its space and a space beats Everywhere:
+
+```
+a sheet's own declaration  >  the space's variables  >  the Everywhere variables
+```
+
+Overriding is by name and affects nothing else. Give one space its own `vat` and every other space
+carries on with the Everywhere value; change the Everywhere value afterwards and the spaces that
+never overrode it follow, while the one that did keeps what it chose. **An override is a decision,
+not a copy that keeps tracking its source.**
+
+The panel shows all of it rather than leaving you to work it out. A variable that displaces an
+Everywhere value says so and names the value it displaced; the Everywhere variables a space has
+*not* overridden are listed separately as still in effect, each with an **Override** button that
+copies the value in as the space's own. Nothing about which value wins is hidden.
+
+Two things worth knowing. The panel edits the space you are working in — to change another one's
+own variables, switch to it first. And **Everywhere** reaches past your space, in an app with no
+passwords, so anyone who can open it can change those.
+
+Both scopes can also be set through the API, which is worth knowing for scripting an instance:
 
 ```bash
 curl -X PUT http://localhost:8422/api/settings \
@@ -441,10 +463,25 @@ it to:
 curl localhost:8422/api/settings -H 'cookie: webcalc_user=teaching'
 ```
 
+The **Everywhere** scope has its own endpoint, and is deliberately *not* cookie-scoped — being
+per-instance is the whole point of it:
+
+```bash
+curl -X PUT localhost:8422/api/settings/shared -H 'content-type: application/json' \
+  -d '{"globals": {"vat": "20%", "mileage": "$0.68/mile"}}'
+```
+
+`GET /api/settings` returns three things: `globals`, this space's own; `sharedGlobals`, the
+Everywhere set; and `effectiveGlobals`, the two resolved. The last two are computed, so precedence
+is decided in one place rather than by each client. `PUT` **ignores** them — sending a GET response
+straight back is safe, and cannot quietly promote every inherited value into one of the space's
+own.
+
 A `PUT` merges at the top level only — sending `statistic` leaves `globals` untouched — but
 `globals` is a single value, so **sending it replaces every variable in it**. `{"globals": {"day
 rate": "$600"}}` on a space that also had a `vat` leaves that space with no `vat` at all. Send the
-whole set each time, or read it back first and edit what you get.
+whole set each time, or read it back first and edit what you get. The same is true of
+`/api/settings/shared`.
 
 ## Spaces
 
@@ -565,7 +602,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 695 engine tests, 139 server tests
+npm test        # 695 engine tests, 149 server tests
 npm run build   # build all three workspaces
 ```
 

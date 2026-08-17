@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { User } from './api';
 
-/** One editable global. Kept as a list so a half-typed row can exist. */
+/** One editable global. A list, not a map, so a half-typed row can exist. */
 interface Row {
   name: string;
   value: string;
@@ -11,13 +11,17 @@ export interface SpaceSettingsProps {
   open: boolean;
   /** The space being edited — always the one in use; see below. */
   space: User;
+  /** This space's own globals. */
   globals: Record<string, string>;
+  /** The globals that apply in every space. */
+  sharedGlobals: Record<string, string>;
   /** False when this is the only space, which cannot be removed. */
   canRemove: boolean;
   /** Shows what an expression works out to, for the preview beside each row. */
   preview(expression: string): string;
   onRename(name: string): void;
   onSaveGlobals(globals: Record<string, string>): void;
+  onSaveSharedGlobals(globals: Record<string, string>): void;
   onRemove(): void;
   onClose(): void;
 }
@@ -26,36 +30,182 @@ function toRows(globals: Record<string, string>): Row[] {
   return Object.entries(globals).map(([name, value]) => ({ name, value }));
 }
 
+function named(rows: Row[]): Row[] {
+  return rows.filter((row) => row.name.trim() !== '');
+}
+
+function hasDuplicate(rows: Row[]): boolean {
+  const keys = named(rows).map((row) => row.name.trim());
+  return keys.some((key, index) => keys.indexOf(key) !== index);
+}
+
+function toRecord(rows: Row[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.name.trim();
+    if (key !== '') out[key] = row.value.trim();
+  }
+  return out;
+}
+
+/** Whether the rows still say what the stored set says. */
+function changed(rows: Row[], stored: Record<string, string>): boolean {
+  return JSON.stringify(toRecord(rows)) !== JSON.stringify(toRecord(toRows(stored)));
+}
+
+interface EditorProps {
+  rows: Row[];
+  setRows(next: (current: Row[]) => Row[]): void;
+  stored: Record<string, string>;
+  preview(expression: string): string;
+  onSave(globals: Record<string, string>): void;
+  /** Names defined here that displace a value from the tier above. */
+  shadowing?: Record<string, string>;
+}
+
+function GlobalsEditor({
+  rows,
+  setRows,
+  stored,
+  preview,
+  onSave,
+  shadowing = {},
+}: EditorProps) {
+  const duplicate = hasDuplicate(rows);
+  const dirty = changed(rows, stored);
+
+  return (
+    <>
+      <div className="globals-editor">
+        {rows.map((row, index) => {
+          const answer = row.value.trim() === '' ? '' : preview(row.value);
+          const displaced = shadowing[row.name.trim()];
+          return (
+            <div className="global-row-group" key={index}>
+              <div className="global-row">
+                <input
+                  value={row.name}
+                  placeholder="day rate"
+                  aria-label={`Variable ${index + 1} name`}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((entry, i) =>
+                        i === index ? { ...entry, name: event.target.value } : entry,
+                      ),
+                    )
+                  }
+                />
+                <input
+                  value={row.value}
+                  placeholder="$550"
+                  aria-label={`Variable ${index + 1} value`}
+                  onChange={(event) =>
+                    setRows((current) =>
+                      current.map((entry, i) =>
+                        i === index ? { ...entry, value: event.target.value } : entry,
+                      ),
+                    )
+                  }
+                />
+                {/* What it actually works out to, so a typo shows here rather
+                    than as a sheet that quietly answers nothing. */}
+                <span
+                  className={`global-answer${answer === '' ? ' global-answer-none' : ''}`}
+                  title={answer || 'This does not evaluate to anything'}
+                >
+                  {answer || '—'}
+                </span>
+                <button
+                  type="button"
+                  className="ghost"
+                  title="Remove this variable"
+                  aria-label={`Remove variable ${index + 1}`}
+                  onClick={() =>
+                    setRows((current) => current.filter((_, i) => i !== index))
+                  }
+                >
+                  ×
+                </button>
+              </div>
+              {/* Says what this row displaced. Without it, the same name
+                  meaning different things in different spaces is invisible. */}
+              {displaced !== undefined && (
+                <p className="global-shadow-note">
+                  Overrides <code>{displaced}</code> from Everywhere
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="globals-actions">
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => setRows((current) => [...current, { name: '', value: '' }])}
+        >
+          + Add variable
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={!dirty || duplicate}
+          onClick={() => {
+            if (!duplicate) onSave(toRecord(rows));
+          }}
+        >
+          {dirty ? 'Save' : 'Saved'}
+        </button>
+      </div>
+
+      {duplicate && (
+        <p className="reference-note global-warning">
+          Two variables share a name. Only one could ever win, so nothing is saved
+          until that is settled.
+        </p>
+      )}
+    </>
+  );
+}
+
 /**
- * Everything about one space in one place.
+ * Everything about one space in one place, plus the tier above it.
  *
  * Only the space currently in use can be edited, because the settings API is
  * scoped by the same cookie that decides which sheets you see. Editing another
  * space means switching to it first — said out loud in the panel rather than
- * left for the reader to infer from a name that does not match the switcher.
+ * left for the reader to infer.
+ *
+ * Inherited values are shown rather than hidden. Two silent tiers of globals
+ * would be exactly the invisible state this project avoids elsewhere: a figure
+ * right in one space and wrong in another, with nothing on screen saying why.
  */
 export function SpaceSettings(props: SpaceSettingsProps) {
-  const { open, space, globals, canRemove, preview } = props;
-  const { onRename, onSaveGlobals, onRemove, onClose } = props;
+  const { open, space, globals, sharedGlobals, canRemove, preview } = props;
+  const { onRename, onSaveGlobals, onSaveSharedGlobals, onRemove, onClose } = props;
 
   const [name, setName] = useState(space.name);
-  const [rows, setRows] = useState<Row[]>(() => toRows(globals));
+  const [spaceRows, setSpaceRows] = useState<Row[]>(() => toRows(globals));
+  const [sharedRows, setSharedRows] = useState<Row[]>(() => toRows(sharedGlobals));
 
   // Reset whenever the panel opens, so a cancelled edit is not still sitting
   // there the next time it is opened.
   useEffect(() => {
     if (!open) return;
     setName(space.name);
-    setRows(toRows(globals));
-  }, [open, space.name, space.id, globals]);
+    setSpaceRows(toRows(globals));
+    setSharedRows(toRows(sharedGlobals));
+  }, [open, space.name, space.id, globals, sharedGlobals]);
 
   if (!open) return null;
 
-  const named = rows.filter((row) => row.name.trim() !== '');
-  const duplicate = named.some(
-    (row, index) =>
-      named.findIndex((other) => other.name.trim() === row.name.trim()) !== index,
-  );
+  const ownNames = new Set(named(spaceRows).map((row) => row.name.trim()));
+  const shadowing: Record<string, string> = {};
+  for (const [key, value] of Object.entries(sharedGlobals)) {
+    if (ownNames.has(key)) shadowing[key] = value;
+  }
+  const inherited = Object.entries(sharedGlobals).filter(([key]) => !ownNames.has(key));
 
   const commitName = () => {
     const next = name.trim();
@@ -65,23 +215,6 @@ export function SpaceSettings(props: SpaceSettingsProps) {
     }
     onRename(next);
   };
-
-  const save = () => {
-    if (duplicate) return;
-    // Rebuilt from the rows rather than merged into what was there, which is
-    // how the server stores it: globals is one value, so a save is a
-    // replacement and deleting a row here has to mean deleting the variable.
-    const next: Record<string, string> = {};
-    for (const row of rows) {
-      const key = row.name.trim();
-      if (key !== '') next[key] = row.value.trim();
-    }
-    onSaveGlobals(next);
-  };
-
-  const dirty =
-    JSON.stringify(toRows(globals)) !==
-    JSON.stringify(rows.filter((row) => row.name.trim() !== ''));
 
   return (
     <>
@@ -116,104 +249,81 @@ export function SpaceSettings(props: SpaceSettingsProps) {
           </section>
 
           <section className="reference-group">
-            <h3>Global variables</h3>
+            <h3>Variables in {space.name}</h3>
             <p className="reference-blurb">
-              Available to every sheet in <strong>{space.name}</strong>, as if each
-              had been declared at the top. A sheet can shadow one by declaring the
-              same name itself.
+              Available to every sheet in this space, as if each had declared them
+              at the top. A sheet can shadow one by declaring the same name itself.
             </p>
 
-            <div className="globals-editor">
-              {rows.map((row, index) => {
-                const answer = row.value.trim() === '' ? '' : preview(row.value);
-                return (
-                  <div className="global-row" key={index}>
-                    <input
-                      value={row.name}
-                      placeholder="day rate"
-                      aria-label={`Variable ${index + 1} name`}
-                      onChange={(event) =>
-                        setRows((current) =>
-                          current.map((entry, i) =>
-                            i === index ? { ...entry, name: event.target.value } : entry,
-                          ),
-                        )
-                      }
-                    />
-                    <input
-                      value={row.value}
-                      placeholder="$550"
-                      aria-label={`Variable ${index + 1} value`}
-                      onChange={(event) =>
-                        setRows((current) =>
-                          current.map((entry, i) =>
-                            i === index ? { ...entry, value: event.target.value } : entry,
-                          ),
-                        )
-                      }
-                    />
-                    {/* What it actually works out to, so a typo shows here rather
-                        than as a sheet that quietly answers nothing. */}
-                    <span
-                      className={`global-answer${answer === '' ? ' global-answer-none' : ''}`}
-                      title={answer || 'This does not evaluate to anything'}
-                    >
-                      {answer || '—'}
-                    </span>
-                    <button
-                      type="button"
-                      className="ghost"
-                      title="Remove this variable"
-                      aria-label={`Remove variable ${index + 1}`}
-                      onClick={() =>
-                        setRows((current) => current.filter((_, i) => i !== index))
-                      }
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
+            <GlobalsEditor
+              rows={spaceRows}
+              setRows={setSpaceRows}
+              stored={globals}
+              preview={preview}
+              onSave={onSaveGlobals}
+              shadowing={shadowing}
+            />
 
-              {rows.length === 0 && (
+            {inherited.length > 0 && (
+              <>
                 <p className="reference-note">
-                  None yet. Add one and every sheet in this space can use it.
+                  Also in effect here, from Everywhere:
                 </p>
-              )}
-            </div>
-
-            <div className="globals-actions">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setRows((current) => [...current, { name: '', value: '' }])}
-              >
-                + Add variable
-              </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={!dirty || duplicate}
-                onClick={save}
-              >
-                {dirty ? 'Save variables' : 'Saved'}
-              </button>
-            </div>
-
-            {duplicate && (
-              <p className="reference-note global-warning">
-                Two variables share a name. Only one of them could ever win, so
-                nothing is saved until that is settled.
-              </p>
+                <div className="globals-editor">
+                  {inherited.map(([key, value]) => (
+                    <div className="global-row global-row-inherited" key={key}>
+                      <span className="global-inherited-name">{key}</span>
+                      <span className="global-inherited-value">{value}</span>
+                      <span className="global-answer" title={preview(value)}>
+                        {preview(value) || '—'}
+                      </span>
+                      {/* Copies the value in as this space's own, which is the
+                          only way to differ from Everywhere without editing it
+                          for every other space too. */}
+                      <button
+                        type="button"
+                        className="ghost"
+                        title={`Give ${space.name} its own ${key}`}
+                        onClick={() =>
+                          setSpaceRows((current) => [...current, { name: key, value }])
+                        }
+                      >
+                        Override
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
+          </section>
+
+          <section className="reference-group">
+            <h3>Variables everywhere</h3>
+            <p className="reference-blurb">
+              In effect in <strong>every</strong> space, so a rate you use in all of
+              them is defined once. Any space can override one by name, which leaves
+              the others as they were.
+            </p>
+            <p className="reference-note">
+              This is the one thing here that reaches past the space you are in, and
+              the app has no passwords — anyone who can open it can change these.
+            </p>
+
+            <GlobalsEditor
+              rows={sharedRows}
+              setRows={setSharedRows}
+              stored={sharedGlobals}
+              preview={preview}
+              onSave={onSaveSharedGlobals}
+            />
           </section>
 
           <section className="reference-group">
             <h3>Other spaces</h3>
             <p className="reference-blurb">
               This panel edits the space you are working in. To change another one’s
-              variables, switch to it first — its sheets, folders and variables are
-              only reachable from inside it.
+              own variables, switch to it first — its sheets, folders and variables
+              are only reachable from inside it.
             </p>
 
             <h3>Remove</h3>

@@ -464,6 +464,47 @@ button.ghost:hover {
   color: var(--line-number);
 }
 
+.global-row-group + .global-row-group {
+  margin-top: 2px;
+}
+
+/* Names what a space-level variable displaced, so the same name meaning two
+   things in two spaces is stated rather than left to be discovered. */
+.global-shadow-note {
+  margin: 1px 0 3px;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.global-shadow-note code {
+  padding: 0 3px;
+  background: var(--hover);
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+}
+
+/* Inherited rows are readable but plainly not this space's own, and carry an
+   Override rather than an editable field — editing here would change every
+   other space too, which is not what the row is offering. */
+.global-row-inherited {
+  padding: 4px 0;
+}
+
+.global-inherited-name,
+.global-inherited-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.global-row-inherited .ghost {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .globals-actions {
   display: flex;
   align-items: center;

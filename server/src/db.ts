@@ -182,6 +182,15 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (owner, key)
 );
 
+-- Values that apply across every space, as opposed to user_settings, which is
+-- per space. Deliberately NOT the settings table above: that one is read by
+-- the one-time pre-spaces migration, so anything written there would be
+-- adopted as the first space's own settings rather than shared by all of them.
+CREATE TABLE IF NOT EXISTS instance_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- Who has a space, in the order the switcher lists them.
 --
 -- Rows rather than configuration, so a space can be added from the app without
@@ -765,6 +774,25 @@ export class Store {
       this.db.prepare('UPDATE sheets SET folder_id = NULL WHERE folder_id = ?').run(id);
     }
     return removed;
+  }
+
+  /** Settings that apply everywhere, whichever space is in use. */
+  sharedSettings(): Record<string, unknown> {
+    const rows = this.db
+      .prepare('SELECT key, value FROM instance_settings')
+      .all() as unknown as Array<{ key: string; value: string }>;
+    return Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value)]));
+  }
+
+  saveSharedSettings(values: Record<string, unknown>): Record<string, unknown> {
+    const statement = this.db.prepare(
+      `INSERT INTO instance_settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    );
+    for (const [key, value] of Object.entries(values)) {
+      statement.run(key, JSON.stringify(value));
+    }
+    return this.sharedSettings();
   }
 
   getSettings(owner: UserId): Record<string, unknown> {

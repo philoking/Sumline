@@ -93,9 +93,13 @@ export function App() {
   const statistic = settings.statistic ?? 'total';
   const showTotal = settings.showTotal !== false;
 
+  // The resolved view the server computed, so precedence is not decided twice
+  // and cannot disagree between the panel and the sheets.
+  const activeGlobals = settings.effectiveGlobals ?? settings.globals;
+
   const { engine, rates, holidays } = useEngine({
     largeNumberNotation: siNotation,
-    ...(settings.globals && { globals: settings.globals }),
+    ...(activeGlobals && { globals: activeGlobals }),
   });
   const results = useResults(engine, content);
   const summary = useMemo(
@@ -107,8 +111,13 @@ export function App() {
   const savedContent = useRef('');
 
   const persistSettings = useCallback(async (changes: Settings) => {
+    // Applied locally first so a toggle responds at once, then replaced by what
+    // the server says. That second step is not cosmetic: the response carries
+    // the resolved globals, and merging only the change would leave the engine
+    // running on a stale resolution until the next reload.
     setSettings((current) => ({ ...current, ...changes }));
-    await api.saveSettings(changes).catch(() => undefined);
+    const saved = await api.saveSettings(changes).catch(() => undefined);
+    if (saved) setSettings(saved);
   }, []);
 
   const refreshSheets = useCallback(async () => {
@@ -980,6 +989,7 @@ export function App() {
           open={spaceSettingsOpen}
           space={{ id: space, name: currentUserName || space }}
           globals={settings.globals ?? {}}
+          sharedGlobals={settings.sharedGlobals ?? {}}
           canRemove={users.length > 1}
           // One line through the same engine the sheets use, so the preview
           // cannot disagree with what a sheet would actually compute.
@@ -989,6 +999,16 @@ export function App() {
             if (current) void applySpaceName(current, next);
           }}
           onSaveGlobals={(globals) => void persistSettings({ globals })}
+          onSaveSharedGlobals={(globals) => {
+            // Refetched rather than merged locally: the server owns the resolved
+            // view, and a space that overrides one of these must not appear to
+            // have picked up the new value.
+            void api
+              .saveSharedGlobals(globals)
+              .then(() => api.settings())
+              .then(setSettings)
+              .catch((cause: unknown) => setError(describe(cause)));
+          }}
           onRemove={() => {
             const current = users.find((user) => user.id === space);
             if (!current) return;

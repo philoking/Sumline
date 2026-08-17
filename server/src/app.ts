@@ -49,14 +49,6 @@ const DEFAULT_LOCK_TTL_MS = 45_000;
 /** The cookie naming whose space this browser is working in. */
 export const USER_COOKIE = 'webcalc_user';
 
-/**
- * Reads the space cookie off a request, without judging it.
- *
- * The cookie is set by the client and carries no signature, which is the point
- * — switching space is a preference, not a login, on an app that has no
- * authentication at all. Whether the value names a configured space is settled
- * by the caller, which has the configuration.
- */
 /** Returned by `readColor` for a value it will not store. */
 const INVALID = Symbol('invalid colour');
 
@@ -76,6 +68,14 @@ function readColor(value: unknown): string | null | typeof INVALID {
   return /^[a-z]{2,12}$/.test(value) ? value : INVALID;
 }
 
+/**
+ * Reads the space cookie off a request, without judging it.
+ *
+ * The cookie is set by the client and carries no signature, which is the point
+ * — switching space is a preference, not a login, on an app that has no
+ * authentication at all. Whether the value names a configured space is settled
+ * by the caller, which has the configuration.
+ */
 function readSpaceCookie(request: FastifyRequest): string | undefined {
   const header = request.headers.cookie;
   if (!header) return undefined;
@@ -247,11 +247,69 @@ export function buildApp(options: AppOptions): App {
 
   server.get('/api/holidays', async () => holidays.current());
 
-  server.get('/api/settings', async (request) => store.getSettings(currentUser(request)));
+/**
+   * A space's settings, plus the tier above it and the two resolved together.
+   *
+   * `sharedGlobals` and `effectiveGlobals` are derived, not stored here — they
+   * are returned so precedence is decided in one place rather than in whichever
+   * client happens to be merging. `PUT` refuses them for the same reason.
+   */
+  const settingsFor = (owner: UserId) => {
+    const own = store.getSettings(owner);
+    const shared = (store.sharedSettings()['globals'] ?? {}) as Record<string, string>;
+    const mine = (own['globals'] ?? {}) as Record<string, string>;
+    return {
+      ...own,
+      sharedGlobals: shared,
+      // Most specific wins: a space's own value displaces the shared one of the
+      // same name, and a sheet's own declaration displaces both later on.
+      effectiveGlobals: { ...shared, ...mine },
+    };
+  };
 
-  server.put<{ Body: Record<string, unknown> }>(
-    '/api/settings',
-    async (request) => store.saveSettings(currentUser(request), request.body ?? {}),
+  server.get('/api/settings', async (request) => settingsFor(currentUser(request)));
+
+  server.put<{ Body: Record<string, unknown> }>('/api/settings', async (request) => {
+    // Dropped rather than stored. A client that echoed a GET response back would
+    // otherwise write the merged view into the space, silently promoting every
+    // inherited value into one of its own — and then a change to the shared tier
+    // would stop reaching it.
+    const { sharedGlobals: _s, effectiveGlobals: _e, ...changes } = request.body ?? {};
+    const owner = currentUser(request);
+    store.saveSettings(owner, changes);
+    return settingsFor(owner);
+  });
+
+  /**
+   * The globals that apply in every space.
+   *
+   * Not scoped by the space cookie, because the whole point is that it is not
+   * per space. There is no authentication anywhere in this app, so this is
+   * editable by anyone who can reach it — the one setting here that reaches
+   * past the space you are working in.
+   */
+  server.put<{ Body: { globals?: unknown } }>(
+    '/api/settings/shared',
+    async (request, reply) => {
+      const globals = request.body?.globals;
+      // Arrays are objects, and an array would land as globals named "0", "1"
+      // — accepted, stored, and useless.
+      if (
+        globals === undefined ||
+        globals === null ||
+        typeof globals !== 'object' ||
+        Array.isArray(globals)
+      ) {
+        return reply.code(400).send({ error: 'globals must be an object of names to values' });
+      }
+      const cleaned: Record<string, string> = {};
+      for (const [name, value] of Object.entries(globals as Record<string, unknown>)) {
+        if (name.trim() === '' || typeof value !== 'string') continue;
+        cleaned[name.trim()] = value;
+      }
+      store.saveSharedSettings({ globals: cleaned });
+      return { globals: cleaned };
+    },
   );
 
   server.get('/api/folders', async (request) => ({

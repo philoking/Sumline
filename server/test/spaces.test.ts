@@ -127,7 +127,12 @@ describe('separate spaces', () => {
       payload: { statistic: 'median', globals: { rate: '0.2' } },
     });
     const grace = await app.server.inject({ url: '/api/settings', headers: as('grace') });
-    expect(grace.json()).toEqual({});
+    // Nothing of her own, and nothing inherited either: the shared tier is
+    // empty, so the resolved view is empty too.
+    expect(grace.json()).toEqual({
+      sharedGlobals: {},
+      effectiveGlobals: {},
+    });
   });
 });
 

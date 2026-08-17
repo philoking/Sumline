@@ -45,7 +45,17 @@ export interface Settings {
   showTotal?: boolean;
   largeNumberNotation?: boolean;
   countVariablesInTotal?: boolean;
+  /** This space's own globals. */
   globals?: Record<string, string>;
+  /**
+   * The globals that apply in every space, and the two tiers resolved.
+   *
+   * Both are derived by the server and refused by `PUT`, so precedence lives in
+   * one place. Send them back and they are ignored — which is what stops an
+   * inherited value from being quietly promoted into one of the space's own.
+   */
+  sharedGlobals?: Record<string, string>;
+  effectiveGlobals?: Record<string, string>;
 }
 
 export interface SheetQuery {
@@ -116,6 +126,18 @@ export const api = {
   },
 
   settings: () => request<Settings>('/api/settings'),
+
+  /**
+   * Replaces the globals that apply in every space.
+   *
+   * Not cookie-scoped, unlike everything else here: the point of this tier is
+   * that it is not per space.
+   */
+  saveSharedGlobals: (globals: Record<string, string>) =>
+    request<{ globals: Record<string, string> }>('/api/settings/shared', {
+      method: 'PUT',
+      body: JSON.stringify({ globals }),
+    }),
 
   saveSettings: (values: Settings) =>
     request<Settings>('/api/settings', {
