@@ -2075,6 +2075,29 @@ button.danger-button:disabled {
   border-color: var(--accent);
 }
 
+/*
+ * The instance's own facts, on a strip between the header and the examples.
+ *
+ * Its own row rather than a fourth item in the header, which already holds a
+ * title, a search field and a close button and has no room left on a phone.
+ */
+.reference-status {
+  margin: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one state here worth colouring: rates that could not be refreshed are
+   still used, and saying so quietly is the difference between a stale answer
+   and a wrong one. */
+.reference-status-stale {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 .reference-body {
   flex: 1;
   overflow-y: auto;
@@ -2105,19 +2128,6 @@ button.danger-button:disabled {
   font-size: 12.5px;
   line-height: 1.55;
   opacity: 0.85;
-}
-
-/*
- * The one paragraph in this panel that is a warning rather than a description.
- *
- * Pulled up under the sentence it qualifies, and given the warning colour the
- * banners already use — this is where the stale-rates ⚠ went when it left the
- * top bar, and it has to stay findable now that nothing on the bar carries it.
- */
-.reference-warn {
-  margin-top: -4px;
-  color: var(--warn);
-  opacity: 1;
 }
 
 .reference-note {

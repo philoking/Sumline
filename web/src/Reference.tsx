@@ -81,6 +81,34 @@ export function Reference({
           </button>
         </header>
 
+        {/*
+          What this instance knows, kept in sight.
+
+          Outside the body on purpose, so it survives a search — and above it,
+          so it is not at the far end of 246 examples. #104 moved the rate date
+          off the top bar and the first attempt put it in the section at the
+          bottom, which is in the panel in the sense that a footnote is in a
+          book. Someone who opens this looking for the rate date should meet it.
+        */}
+        <p
+          className={`reference-status${ratesStale ? ' reference-status-stale' : ''}`}
+          {...(ratesStale && {
+            title:
+              'The rate table could not be refreshed. Conversions still work, ' +
+              'at the rates published on this date.',
+          })}
+        >
+          {currencies.length} currencies
+          {' · '}
+          {rateDate === null
+            ? 'no rates'
+            : ratesStale
+              ? `⚠ rates ${rateDate}, not refreshed`
+              : `rates ${rateDate}`}
+          {' · '}
+          {holidayCount} holidays
+        </p>
+
         <div className="reference-body">
           {query === '' && (
             <>
@@ -142,28 +170,6 @@ export function Reference({
 
           {query === '' && (
             <section className="reference-group">
-              <h3>This instance</h3>
-              {/* The rate date used to sit in the top bar. It is reference
-                  material rather than a running status — it changes twice a
-                  day at most and nothing is done about it — so it reads better
-                  beside the rest of what this instance knows than beside
-                  whether the sheet is saved. */}
-              <p className="reference-blurb">
-                {currencies.length} currencies loaded
-                {rateDate ? `, rates from ${rateDate}` : ', no rates available'}.{' '}
-                {holidayCount > 0
-                  ? `${holidayCount} public holidays known, used for workday maths.`
-                  : 'No public holidays loaded, so workdays count weekends only.'}
-              </p>
-              {/* Only when there is something to warn about, so the ordinary
-                  case stays one plain sentence. */}
-              {ratesStale && rateDate && (
-                <p className="reference-blurb reference-warn">
-                  ⚠ Those rates could not be refreshed, so they are the last
-                  ones this instance managed to fetch. Conversions still work
-                  and are as right as {rateDate}.
-                </p>
-              )}
               <h3>Credits</h3>
               <p className="reference-blurb">
                 The notepad calculator is{' '}
