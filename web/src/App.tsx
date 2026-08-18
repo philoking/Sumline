@@ -981,12 +981,6 @@ export function App() {
         <span className={`status status-${status}`} role="status">
           {statusLabel(status, lock)}
         </span>
-        {rates && (
-          <span className="rates" title={`Exchange rates from ${rates.date}`}>
-            {rates.stale ? '⚠ rates ' : 'rates '}
-            {rates.date}
-          </span>
-        )}
         <div className="menu-anchor">
           <button
             type="button"
@@ -1599,6 +1593,9 @@ export function App() {
         open={referenceOpen}
         currencies={engine.currencies}
         rateDate={engine.rateDate}
+        // Carried across with the date, or moving it off the bar would drop
+        // the warning rather than relocate it.
+        ratesStale={rates?.stale === true}
         holidayCount={holidays?.dates.length ?? 0}
         onClose={() => setReferenceOpen(false)}
         onInsert={(line) => {

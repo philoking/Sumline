@@ -220,7 +220,8 @@ whatever it last fetched, so your answers will differ.
 Mixed currencies answer in the **last** one named, matching Soulver. Rates come from
 [Frankfurter](https://frankfurter.dev/) (European Central Bank data, no API key), refreshed on
 start and every 12 hours and cached to disk. A container with no internet access falls back to
-the rates bundled in the image and marks them stale in the header.
+the rates bundled in the image, and the reference panel behind `?` says which day they are from
+and warns that they could not be refreshed.
 
 #### On a past date
 
@@ -783,8 +784,8 @@ server says what changed as it changes:
   thing you tried to do.
 - A read-only view **follows along** as the other person types, instead of showing the sheet as it
   stood when you opened it.
-- The rate date in the corner updates when the server refreshes its rates, including when a failed
-  refresh turns them stale.
+- The rate date in the reference panel updates when the server refreshes its rates, including when
+  a failed refresh turns them stale.
 
 A browser that has the sheet open but not the lock also watches for the lock to lapse, which is the
 case nothing can announce: a tab that crashes, sleeps or loses its network never gets to say it has

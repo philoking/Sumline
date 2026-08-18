@@ -7,6 +7,8 @@ export interface ReferenceProps {
   open: boolean;
   currencies: string[];
   rateDate: string | null;
+  /** True when the table is cached or bundled rather than freshly fetched. */
+  ratesStale: boolean;
   holidayCount: number;
   onClose(): void;
   /** Puts an example into the sheet, which is what makes this explorable. */
@@ -38,6 +40,7 @@ export function Reference({
   open,
   currencies,
   rateDate,
+  ratesStale,
   holidayCount,
   onClose,
   onInsert,
@@ -140,6 +143,11 @@ export function Reference({
           {query === '' && (
             <section className="reference-group">
               <h3>This instance</h3>
+              {/* The rate date used to sit in the top bar. It is reference
+                  material rather than a running status — it changes twice a
+                  day at most and nothing is done about it — so it reads better
+                  beside the rest of what this instance knows than beside
+                  whether the sheet is saved. */}
               <p className="reference-blurb">
                 {currencies.length} currencies loaded
                 {rateDate ? `, rates from ${rateDate}` : ', no rates available'}.{' '}
@@ -147,6 +155,15 @@ export function Reference({
                   ? `${holidayCount} public holidays known, used for workday maths.`
                   : 'No public holidays loaded, so workdays count weekends only.'}
               </p>
+              {/* Only when there is something to warn about, so the ordinary
+                  case stays one plain sentence. */}
+              {ratesStale && rateDate && (
+                <p className="reference-blurb reference-warn">
+                  ⚠ Those rates could not be refreshed, so they are the last
+                  ones this instance managed to fetch. Conversions still work
+                  and are as right as {rateDate}.
+                </p>
+              )}
               <h3>Credits</h3>
               <p className="reference-blurb">
                 The notepad calculator is{' '}
