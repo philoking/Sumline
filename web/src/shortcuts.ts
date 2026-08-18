@@ -7,11 +7,16 @@
  * to guess which key that is. So the bindings go on saying Mod, and only the
  * rendering resolves it.
  *
- * The two platforms are written differently on purpose, because they are
- * written differently everywhere else. A Mac spells shortcuts as joined
- * symbols (⌘⇧U); Windows and Linux spell them out with separators
- * (Ctrl + Shift + U). Printing ⌘ with a `+` between would look native to
- * neither.
+ * Each platform keeps its own key names — the glyphs printed on an Apple
+ * keyboard, the words printed everywhere else — and both are joined with the
+ * same `+`.
+ *
+ * A Mac conventionally runs its symbols together (⌘⇧U), and this deliberately
+ * does not. Set in a reference table rather than a menu bar, three unfamiliar
+ * glyphs with nothing between them read as one character nobody can name; the
+ * separator says how many keys are being asked for. Legibility wins over the
+ * platform idiom here, because the table exists to be read by someone who does
+ * not already know the shortcut.
  */
 
 /** Symbols on an Apple keyboard, which are printed on the keys themselves. */
@@ -69,7 +74,6 @@ export function formatShortcut(
   keys: readonly string[],
   apple: boolean = isApplePlatform(),
 ): string {
-  return apple
-    ? keys.map((key) => APPLE_KEYS[key] ?? key.toUpperCase()).join('')
-    : keys.map((key) => OTHER_KEYS[key] ?? key.toUpperCase()).join(' + ');
+  const named = apple ? APPLE_KEYS : OTHER_KEYS;
+  return keys.map((key) => named[key] ?? key.toUpperCase()).join(' + ');
 }
