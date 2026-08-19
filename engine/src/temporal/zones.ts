@@ -185,6 +185,24 @@ const AIRPORTS: Record<string, string> = {
 };
 
 /**
+ * Every IANA zone the tables above can produce.
+ *
+ * Derived rather than listed, so a zone added to any of them is covered by
+ * whatever reads this without anybody remembering to. `dst.test.ts` generates
+ * daylight-saving transitions per zone from it, which is the case that ages
+ * worst when it is a handful of dates somebody picked.
+ */
+export const SUPPORTED_ZONES: readonly string[] = [
+  ...new Set([
+    ...Object.values(US_ABBREVIATIONS),
+    ...Object.values(WORLD_ABBREVIATIONS),
+    ...Object.values(CITIES),
+    ...Object.values(COUNTRIES),
+    ...Object.values(AIRPORTS),
+  ]),
+].sort();
+
+/**
  * Resolves a place name, abbreviation, airport code or GMT offset to a zone.
  *
  * Airports are checked last: `IST` is both Istanbul's airport and India
