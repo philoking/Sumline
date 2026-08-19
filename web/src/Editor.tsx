@@ -405,39 +405,33 @@ function makeSubtotal(view: EditorView): boolean {
 }
 
 /**
+ * A line's last answer, as a number a sheet can read back.
+ *
+ * Handed in rather than reached for, all the way down: the answers live in
+ * React state, and the component owns them.
+ */
+export type FrozenValue = (target: number) => string | null;
+
+/**
  * ⌘⇧U — freeze the references on this line at their current values.
  *
  * Soulver calls this unlinking: the number stays, the live link goes.
  */
-function unlinkReferences(view: EditorView): boolean {
+function unlinkReferences(view: EditorView, frozenValue: FrozenValue): boolean {
   const line = view.state.doc.lineAt(view.state.selection.main.from);
   const frozen = line.text.replace(
     /\b(?:line\s*\d+|prev(?:ious)?)\b/gi,
-    (token) => resolveReference(view, line.number, token) ?? token,
+    (token) => resolveReference(line.number, token, frozenValue) ?? token,
   );
   if (frozen === line.text) return false;
   view.dispatch({ changes: { from: line.from, to: line.to, insert: frozen } });
   return true;
 }
 
-/** The rendered answer of the line a reference points at. */
-let answersForUnlink: LineResult[] = [];
-
-/**
- * A line's last answer, as a number a sheet can read back.
- *
- * The separators and currency symbols are stripped because the result is
- * substituted into the text as an operand, not shown as an answer.
- */
-function frozenValue(target: number): string | null {
-  const output = answersForUnlink[target - 1]?.output;
-  return output ? output.replace(/[,$€£¥]/g, '') : null;
-}
-
 function resolveReference(
-  _view: EditorView,
   currentLine: number,
   token: string,
+  frozenValue: FrozenValue,
 ): string | null {
   const numbered = /line\s*(\d+)/i.exec(token);
   return frozenValue(numbered ? Number(numbered[1]) : currentLine - 1);
@@ -664,6 +658,30 @@ export function Editor({
    * compartments are re-used rather than remade, so the effects that
    * reconfigure them go on addressing the live state.
    */
+  /**
+   * The answers as they stand, for unlink and for freezing a reference.
+   *
+   * A ref rather than a module variable, which is what this was.
+   * `keepReferencesPointing` explains why the answers are passed in — they live
+   * in React state and a transaction filter has no route to them — and a module
+   * variable routed around that reasoning by putting the value outside React's
+   * lifetime altogether. It worked only because exactly one editor is ever
+   * mounted: a second one's answers would overwrite this one's, and unlink
+   * would write the other sheet's numbers into this sheet's text, with no
+   * throw and no wrong-looking answer to notice. It also survived unmount, so
+   * the last sheet's answers stayed readable by whatever mounted next.
+   */
+  const answers = useRef<LineResult[]>([]);
+
+  /**
+   * The separators and currency symbols are stripped because the result is
+   * substituted into the text as an operand, not shown as an answer.
+   */
+  const frozenValue: FrozenValue = (target) => {
+    const output = answers.current[target - 1]?.output;
+    return output ? output.replace(/[,$€£¥]/g, '') : null;
+  };
+
   const buildExtensions = useRef((): Extension[] => []);
   buildExtensions.current = () => [
     history(),
@@ -672,7 +690,7 @@ export function Editor({
       { key: 'Mod-\\', run: insertPreviousReference },
       { key: 'Mod-t', run: makeSubtotal },
       { key: 'Mod-/', run: toggleComment },
-      { key: 'Mod-Shift-u', run: unlinkReferences },
+      { key: 'Mod-Shift-u', run: (view) => unlinkReferences(view, frozenValue) },
       // Ahead of the default keymap, which claims Mod-d for its own use.
       ...searchKeymap,
       ...defaultKeymap,
@@ -953,7 +971,7 @@ export function Editor({
 
   useEffect(() => {
     requestAnimationFrame(() => measure.current());
-    answersForUnlink = results;
+    answers.current = results;
   }, [results]);
 
   /** Rewrites a line in place, for the answer menu's formatting actions. */
