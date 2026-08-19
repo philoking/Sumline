@@ -156,7 +156,8 @@ describe('the number region', () => {
     const european = computed('1.234,56 + 1', { region: 'western-europe' });
     const american = computed('1,234.56 + 1');
     expect(european).toEqual(american);
-    expect(american[0]).toBeCloseTo(1234.56, 10);
+    // The line's answer, not the literal's: both read the thousand and add one.
+    expect(american[0]).toBeCloseTo(1235.56, 10);
   });
 
   it('agrees about the arithmetic downstream of it', () => {
