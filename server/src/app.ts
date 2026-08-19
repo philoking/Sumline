@@ -16,6 +16,7 @@ import { HolidayService, type HolidayFetcher } from './holidays.js';
 import { Events, frame } from './events.js';
 import {
   SESSION_COOKIE,
+  SignInAttempts,
   clearedSessionCookie,
   issueToken,
   passwordMatches,
@@ -202,6 +203,26 @@ function readSpaceCookie(request: FastifyRequest): string | undefined {
   return readCookie(request, USER_COOKIE);
 }
 
+/**
+ * The path of a URL, with its percent-encoding undone.
+ *
+ * For deciding what an unrouted request *looks* like it was asking for. The
+ * router does this before it matches, so `/%61pi/nope` and `/api/nope` are one
+ * path to Fastify and must be one path to anything reasoning about it too.
+ *
+ * A malformed escape — `/%zz` — is left as it came rather than throwing: the
+ * caller is choosing between two error shapes, and a request nobody can decode
+ * is not an API request.
+ */
+function decodedPath(url: string): string {
+  const path = url.split('?')[0] ?? '';
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
 export function buildApp(options: AppOptions): App {
   const server = Fastify({ logger: options.logger ?? false });
 
@@ -306,7 +327,7 @@ export function buildApp(options: AppOptions): App {
     password === null || tokenIsValid(password, readCookie(request, SESSION_COOKIE));
 
   /**
-   * Paths reachable without signing in.
+   * Routes reachable without signing in.
    *
    * `/api/health` stays open on purpose: the deploy workflow's gate polls it to
    * decide whether the container actually serves, and a health check that needs
@@ -315,16 +336,37 @@ export function buildApp(options: AppOptions): App {
    *
    * Anything outside `/api/` is the built UI, which has to load before anyone
    * can sign in — and holds no sheet data of its own.
+   *
+   * **This reads the route Fastify matched, not the URL the client sent, and
+   * the difference is a hole big enough to walk through.** The router decodes
+   * before it matches, so `/%61pi/sheets` is routed to `/api/sheets` while the
+   * text of it does not begin with `/api/`. A guard testing that text answered
+   * "open" and handed out every sheet on a password-protected instance. The
+   * matched route is what actually decides which handler runs, so it is the
+   * only thing safe to decide access from.
    */
-  const isOpen = (url: string): boolean => {
-    const path = url.split('?')[0] ?? '';
-    if (!path.startsWith('/api/')) return true;
-    return path === '/api/health' || path === '/api/session';
+  const isOpen = (request: FastifyRequest): boolean => {
+    const route = request.routeOptions.url;
+
+    // Two questions, because either one alone has been wrong. The matched route
+    // is what decides which handler runs, and it is the only answer that cannot
+    // be dressed up by encoding. The path is what an *unrouted* request has
+    // instead: with the static plugin registered, `/api/nonexistent` matches its
+    // `/*` wildcard rather than nothing at all, so judging by route alone would
+    // wave it through and let the 404 that came back tell anyone who had not
+    // signed in exactly which endpoints exist.
+    const routedToApi = route !== undefined && route.startsWith('/api/');
+    const asksForApi = decodedPath(request.url).startsWith('/api/');
+    if (!routedToApi && !asksForApi) return true;
+
+    // Under `/api/` by either reading, so only the two open endpoints are open —
+    // named by the route they matched, never by how the caller spelled them.
+    return route === '/api/health' || route === '/api/session';
   };
 
   if (password !== null) {
     server.addHook('onRequest', async (request, reply) => {
-      if (isOpen(request.url) || signedIn(request)) return;
+      if (isOpen(request) || signedIn(request)) return;
       // 401 rather than a redirect: every caller here is either fetch() from the
       // app, which shows the password form on this status, or a script.
       return reply.code(401).send({ error: 'This instance needs a password' });
@@ -341,15 +383,44 @@ export function buildApp(options: AppOptions): App {
     authenticated: signedIn(request),
   }));
 
+  /**
+   * Guessing is slowed down, because there is only ever one thing to guess.
+   *
+   * Held here rather than in the module so that each instance — and each test —
+   * starts with an empty count. See `SignInAttempts` for what this does and does
+   * not defend against.
+   */
+  const attempts = new SignInAttempts();
+
   server.post<{ Body: { password?: unknown } }>(
     '/api/session',
     async (request, reply) => {
       if (password === null) {
         return { required: false, authenticated: true };
       }
+
+      const wait = attempts.delay(request.ip);
+      if (wait > 0) {
+        // 429 with `Retry-After`, not another 401: the password form should say
+        // to come back shortly rather than that this attempt was wrong, and
+        // reporting it as wrong would be a guess about a password never checked.
+        return reply
+          .code(429)
+          .header('retry-after', String(Math.ceil(wait / 1000)))
+          .send({
+            error: 'Too many attempts. Try again shortly.',
+            retryAfter: Math.ceil(wait / 1000),
+          });
+      }
+
       if (!passwordMatches(password, request.body?.password)) {
+        attempts.fail(request.ip);
         return reply.code(401).send({ error: 'That password does not match' });
       }
+
+      // A right answer forgets every wrong one, so someone who mistyped their
+      // own password four times is not carrying those four into next week.
+      attempts.clear(request.ip);
       return reply
         .header('set-cookie', sessionCookie(issueToken(password)))
         .send({ required: true, authenticated: true });
@@ -1149,7 +1220,13 @@ export function buildApp(options: AppOptions): App {
     // Single-page app: unknown non-API paths return the shell, so a deep link
     // or a refresh does not 404.
     server.setNotFoundHandler((request, reply) => {
-      if (request.url.startsWith('/api/')) {
+      // Nothing matched, so there is no route to read here as there is in the
+      // guard above — the path itself is all there is. It is decoded first for
+      // the same reason the guard stopped trusting the raw text: `/%61pi/nope`
+      // is an API path someone typed wrong, and answering it with the app shell
+      // tells a script its endpoint exists. Only the shape of the error rides
+      // on this; nothing is let through either way.
+      if (decodedPath(request.url).startsWith('/api/')) {
         return reply.code(404).send({ error: 'Not found' });
       }
       return reply.sendFile('index.html');

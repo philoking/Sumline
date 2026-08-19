@@ -180,6 +180,20 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * Thrown when the instance is refusing to check any more passwords for now.
+ *
+ * Its own type for the same reason as `UnauthorizedError`: the password form
+ * has to say "wait" rather than "wrong", and a rejected attempt that was never
+ * checked is not evidence about the password that was typed.
+ */
+export class TooManyAttemptsError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Too many attempts');
+    this.name = 'TooManyAttemptsError';
+  }
+}
+
 export interface Session {
   required: boolean;
   authenticated: boolean;
@@ -192,6 +206,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (response.status === 401) throw new UnauthorizedError();
+  if (response.status === 429) {
+    // `Retry-After` is the header the status is defined with, and the body
+    // repeats it so a caller reading JSON does not have to reach for headers.
+    const body = (await response.json().catch(() => ({}))) as { retryAfter?: number };
+    const header = Number(response.headers.get('retry-after'));
+    throw new TooManyAttemptsError(body.retryAfter ?? (header > 0 ? header : 60));
+  }
   if (response.status === 409) {
     const body = (await response.json()) as { current: Sheet };
     throw new ConflictError(body.current);
@@ -217,7 +238,8 @@ export const api = {
 
   /**
    * Offers the password. A 401 comes back as `UnauthorizedError`, which the
-   * caller reads as "wrong password" rather than as a broken request.
+   * caller reads as "wrong password" rather than as a broken request, and a 429
+   * as `TooManyAttemptsError`, which it reads as "not wrong, just too soon".
    */
   signIn: (password: string) =>
     request<Session>('/api/session', {

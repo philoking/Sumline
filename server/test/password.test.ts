@@ -1,8 +1,14 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../src/app.js';
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
+  SIGN_IN_ATTEMPT_LIMIT,
+  SIGN_IN_WINDOW_MS,
+  SignInAttempts,
   issueToken,
   tokenIsValid,
 } from '../src/session.js';
@@ -81,6 +87,46 @@ describe('with a password configured', () => {
     ]) {
       expect((await server.inject({ url })).statusCode, url).toBe(401);
     }
+  });
+
+  it('refuses them just as firmly with the prefix percent-encoded', async () => {
+    // The guard once tested the text of the URL while Fastify routed the
+    // decoded path, so `/%61pi/sheets` read as "not an API path", answered
+    // "open", and handed out every sheet on a password-protected instance.
+    // It now reads the route that was matched, which is the thing that decides
+    // which handler runs. Encoding any character of the prefix is the same
+    // request as far as the router is concerned, and must be the same 401 here.
+    const { server } = build('open sesame');
+    for (const url of [
+      '/%61pi/sheets',
+      '/ap%69/sheets',
+      '/%61%70%69/sheets',
+      '/%61pi/spaces',
+      '/%61pi/settings',
+      '/%61pi/trash',
+      '/%61pi/rates',
+    ]) {
+      expect((await server.inject({ url })).statusCode, url).toBe(401);
+    }
+  });
+
+  it('refuses a write through an encoded prefix, not only a read', async () => {
+    // The bypass created sheets as happily as it listed them.
+    const { server } = build('open sesame');
+    const response = await server.inject({
+      method: 'POST',
+      url: '/%61pi/sheets',
+      payload: { title: 'let me in' },
+    });
+    expect(response.statusCode).toBe(401);
+    expect((await server.inject({ url: '/api/sheets' })).statusCode).toBe(401);
+  });
+
+  it('still answers an encoded health check, which is not a way in', async () => {
+    // The rule is the matched route, not the spelling: `/%61pi/health` routes
+    // to the open endpoint and stays open, the same as typing it plainly.
+    const { server } = build('open sesame');
+    expect((await server.inject({ url: '/%61pi/health' })).statusCode).toBe(200);
   });
 
   it('refuses to write instance-wide globals, which is the point of it', async () => {
@@ -202,6 +248,187 @@ describe('with a password configured', () => {
     const header = Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '');
     expect(header).toContain('Max-Age=0');
     expect(response.json()).toEqual({ required: true, authenticated: false });
+  });
+});
+
+describe('with a password configured and the UI being served', () => {
+  // Every other suite here builds with `staticRoot: null`, which is why this one
+  // exists: registering the static plugin adds a `/*` wildcard that matches
+  // paths no API route claims. A guard reading only the matched route sees that
+  // wildcard, decides the request is for the UI, and lets `/api/nonexistent`
+  // through to answer 404 — telling anyone who has not signed in which
+  // endpoints are real. The app under test has to be serving something for that
+  // to be reachable at all.
+  let root: string | null = null;
+
+  afterEach(() => {
+    if (root) rmSync(root, { recursive: true, force: true });
+    root = null;
+  });
+
+  function serving(password: string): App {
+    root = mkdtempSync(join(tmpdir(), 'sumline-static-'));
+    writeFileSync(join(root, 'index.html'), '<!doctype html><title>Sumline</title>');
+    app = buildApp({
+      dbPath: ':memory:',
+      staticRoot: root,
+      autoRefreshRates: false,
+      seedWelcomeSheet: false,
+      rateFetcher: async () => ({ base: 'USD', date: '2026-08-14', rates: { EUR: 0.8 } }),
+      holidayFetcher: async () => [],
+      password,
+    });
+    return app;
+  }
+
+  it('serves the shell and its assets without a password', async () => {
+    const { server } = serving('open sesame');
+    expect((await server.inject({ url: '/' })).statusCode).toBe(200);
+    expect((await server.inject({ url: '/some/deep/link' })).statusCode).toBe(200);
+  });
+
+  it('does not let the wildcard answer for an API path that has no route', async () => {
+    const { server } = serving('open sesame');
+    for (const url of ['/api/nonexistent', '/%61pi/nonexistent', '/api/sheets/../nope']) {
+      // 401, not 404: whether the endpoint exists is not a question this
+      // instance answers to someone who has not signed in.
+      expect((await server.inject({ url })).statusCode, url).toBe(401);
+    }
+  });
+
+  it('still refuses the real routes, encoded or not', async () => {
+    const { server } = serving('open sesame');
+    for (const url of ['/api/sheets', '/%61pi/sheets', '/api/settings']) {
+      expect((await server.inject({ url })).statusCode, url).toBe(401);
+    }
+    expect((await server.inject({ url: '/api/health' })).statusCode).toBe(200);
+  });
+});
+
+describe('guessing the password', () => {
+  const wrong = (server: App['server'], remoteAddress = '10.0.0.1') =>
+    server.inject({
+      method: 'POST',
+      url: '/api/session',
+      payload: { password: 'not it' },
+      remoteAddress,
+    });
+
+  it('refuses to keep checking after too many wrong answers', async () => {
+    const { server } = build('open sesame');
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT; attempt += 1) {
+      expect((await wrong(server)).statusCode, `attempt ${attempt + 1}`).toBe(401);
+    }
+    const blocked = await wrong(server);
+    expect(blocked.statusCode).toBe(429);
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('refuses the right password too, once it is throttled', async () => {
+    // The point is that no password is being checked at all. Letting the
+    // correct one through would make the form an oracle: the throttle would
+    // answer "wrong" fast and "right" slowly, which is the question being asked.
+    const { server } = build('open sesame');
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT; attempt += 1) {
+      await wrong(server);
+    }
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/session',
+      payload: { password: 'open sesame' },
+      remoteAddress: '10.0.0.1',
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('counts one address at a time', async () => {
+    const { server } = build('open sesame');
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT; attempt += 1) {
+      await wrong(server, '10.0.0.1');
+    }
+    expect((await wrong(server, '10.0.0.1')).statusCode).toBe(429);
+    // Somebody else's browser is not locked out by the guessing next door.
+    expect((await wrong(server, '10.0.0.2')).statusCode).toBe(401);
+  });
+
+  it('lets someone who mistypes their own password keep going', async () => {
+    // The wait is for guessing, not for fumbling: a handful of wrong answers
+    // followed by the right one must sign in, and must leave nothing behind.
+    const { server } = build('open sesame');
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT - 1; attempt += 1) {
+      await wrong(server);
+    }
+    const signIn = await server.inject({
+      method: 'POST',
+      url: '/api/session',
+      payload: { password: 'open sesame' },
+      remoteAddress: '10.0.0.1',
+    });
+    expect(signIn.statusCode).toBe(200);
+    expect(cookieFrom(signIn.headers['set-cookie'])).toContain(SESSION_COOKIE);
+
+    // Counted from zero again, so the next mistake is the first one.
+    expect((await wrong(server)).statusCode).toBe(401);
+  });
+
+  it('does not throttle an instance with no password', async () => {
+    const { server } = build();
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT + 5; attempt += 1) {
+      const response = await server.inject({
+        method: 'POST',
+        url: '/api/session',
+        payload: { password: 'anything' },
+        remoteAddress: '10.0.0.1',
+      });
+      expect(response.statusCode).toBe(200);
+    }
+  });
+});
+
+describe('the attempt counter itself', () => {
+  const now = 1_000_000_000_000;
+
+  it('allows anything up to the limit', () => {
+    const attempts = new SignInAttempts();
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT; attempt += 1) {
+      expect(attempts.delay('a', now)).toBe(0);
+      attempts.fail('a', now);
+    }
+    expect(attempts.delay('a', now)).toBe(SIGN_IN_WINDOW_MS);
+  });
+
+  it('forgives once the window has passed', () => {
+    const attempts = new SignInAttempts();
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT; attempt += 1) {
+      attempts.fail('a', now);
+    }
+    expect(attempts.delay('a', now + SIGN_IN_WINDOW_MS - 1)).toBe(1);
+    expect(attempts.delay('a', now + SIGN_IN_WINDOW_MS)).toBe(0);
+  });
+
+  it('starts counting again after a quiet spell rather than accumulating', () => {
+    // Nine wrong answers today and nine next week is not eighteen: the count is
+    // over a window, or a long-lived instance would eventually lock out anyone
+    // who had ever fumbled.
+    const attempts = new SignInAttempts();
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT - 1; attempt += 1) {
+      attempts.fail('a', now);
+    }
+    const later = now + SIGN_IN_WINDOW_MS + 1;
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT - 1; attempt += 1) {
+      attempts.fail('a', later);
+    }
+    expect(attempts.delay('a', later)).toBe(0);
+  });
+
+  it('is cleared by a correct password', () => {
+    const attempts = new SignInAttempts();
+    for (let attempt = 0; attempt < SIGN_IN_ATTEMPT_LIMIT; attempt += 1) {
+      attempts.fail('a', now);
+    }
+    attempts.clear('a');
+    expect(attempts.delay('a', now)).toBe(0);
   });
 });
 

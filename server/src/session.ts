@@ -86,6 +86,93 @@ export function passwordMatches(expected: string, given: unknown): boolean {
   return typeof given === 'string' && given !== '' && sameSecret(given, expected);
 }
 
+/** Wrong answers one address may give before it has to wait. */
+export const SIGN_IN_ATTEMPT_LIMIT = 10;
+
+/**
+ * How long the counter remembers a wrong answer, and how long the wait is once
+ * the limit is reached — deliberately the same number, so there is one thing to
+ * reason about rather than two.
+ */
+export const SIGN_IN_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Wrong passwords, counted per address.
+ *
+ * The shared password is the only credential the instance has, and a form that
+ * answers as fast as it is asked turns it into whatever an attacker is willing
+ * to spend an afternoon enumerating. Ten tries per five minutes leaves someone
+ * who mistyped their own password entirely unbothered and makes guessing at any
+ * useful rate impossible.
+ *
+ * What it is not: a defence against a distributed attacker. The count is per
+ * address and lives in this process, so it is forgotten on restart and says
+ * nothing about a thousand addresses trying once each. Like the password
+ * itself, it raises the bar rather than closing the door — see the note at the
+ * top of this file.
+ *
+ * Behind a reverse proxy, every request arrives from the proxy and the whole
+ * instance shares one counter. That is less wrong than it sounds here: there is
+ * exactly one password, so an attacker guessing it and a user typing it are the
+ * same event as far as this can tell, and locking out "everyone" is locking out
+ * the one credential. It does mean an instance behind a proxy should be reading
+ * the forwarded address if it wants this per-user, which needs Fastify's
+ * `trustProxy` and a proxy that is actually trustworthy.
+ */
+export class SignInAttempts {
+  private readonly failures = new Map<string, { count: number; until: number }>();
+
+  /**
+   * Milliseconds this address must wait, or 0 if it may try now.
+   *
+   * Expiry is checked on the way past rather than swept on a timer: an entry
+   * exists only because someone got the password wrong, and it is dropped the
+   * first time it is looked at after its window.
+   */
+  delay(address: string, now: number = Date.now()): number {
+    const seen = this.failures.get(address);
+    if (!seen) return 0;
+    if (now >= seen.until) {
+      this.failures.delete(address);
+      return 0;
+    }
+    return seen.count >= SIGN_IN_ATTEMPT_LIMIT ? seen.until - now : 0;
+  }
+
+  /**
+   * Records a wrong password.
+   *
+   * A blocked attempt is never recorded, so hammering the form does not extend
+   * the wait indefinitely: someone locked out by an attacker sharing their
+   * address still gets back in five minutes after the last wrong answer that
+   * was actually checked.
+   */
+  fail(address: string, now: number = Date.now()): void {
+    const seen = this.failures.get(address);
+    const count = seen && now < seen.until ? seen.count + 1 : 1;
+    this.failures.set(address, { count, until: now + SIGN_IN_WINDOW_MS });
+    this.prune(now);
+  }
+
+  /** Forgets an address, which a correct password does. */
+  clear(address: string): void {
+    this.failures.delete(address);
+  }
+
+  /**
+   * Drops expired entries once the map is larger than any real instance needs.
+   *
+   * Only reached from `fail`, so the cost falls on whoever is guessing rather
+   * than on the people signing in successfully.
+   */
+  private prune(now: number): void {
+    if (this.failures.size <= 1000) return;
+    for (const [address, seen] of this.failures) {
+      if (now >= seen.until) this.failures.delete(address);
+    }
+  }
+}
+
 /**
  * The `Set-Cookie` value for a signed-in browser.
  *

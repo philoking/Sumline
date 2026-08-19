@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, UnauthorizedError } from './api';
+import { api, TooManyAttemptsError, UnauthorizedError } from './api';
 
 export interface LoginProps {
   /** Called once the password has been accepted. */
@@ -16,7 +16,10 @@ export interface LoginProps {
  */
 export function Login({ onSignedIn }: LoginProps) {
   const [password, setPassword] = useState('');
-  const [status, setStatus] = useState<'idle' | 'checking' | 'wrong' | 'error'>('idle');
+  const [status, setStatus] = useState<
+    'idle' | 'checking' | 'wrong' | 'throttled' | 'error'
+  >('idle');
+  const [retryAfter, setRetryAfter] = useState(0);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -26,7 +29,12 @@ export function Login({ onSignedIn }: LoginProps) {
       await api.signIn(password);
       onSignedIn();
     } catch (cause) {
-      setStatus(cause instanceof UnauthorizedError ? 'wrong' : 'error');
+      if (cause instanceof TooManyAttemptsError) {
+        setRetryAfter(cause.retryAfterSeconds);
+        setStatus('throttled');
+      } else {
+        setStatus(cause instanceof UnauthorizedError ? 'wrong' : 'error');
+      }
       setPassword('');
     }
   };
@@ -55,9 +63,21 @@ export function Login({ onSignedIn }: LoginProps) {
             one screen where a user may be typing with their eyes elsewhere. */}
         <p className="login-problem" role="status" aria-live="polite">
           {status === 'wrong' && 'That password does not match.'}
+          {/* Not "wrong": this attempt was refused before the password was
+              looked at, and saying otherwise would report a verdict nobody
+              reached. */}
+          {status === 'throttled' &&
+            `Too many attempts. Try again in ${waitInWords(retryAfter)}.`}
           {status === 'error' && 'Could not reach the server.'}
         </p>
       </form>
     </div>
   );
+}
+
+/** A wait in the units someone would say it in, rather than always in seconds. */
+function waitInWords(seconds: number): string {
+  if (seconds < 60) return `${Math.max(seconds, 1)} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes === 1 ? 'a minute' : `${minutes} minutes`;
 }
