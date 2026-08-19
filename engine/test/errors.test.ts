@@ -185,3 +185,96 @@ describe('did you mean', () => {
     expect(line('100 USD in XYZ').error).toBe('No unit or currency called XYZ');
   });
 });
+
+/*
+ * Issue #88 — the mapping only covered the shapes somebody had happened to
+ * meet. Generating 400,000 lines and collecting every distinct message that
+ * reached a line turned up the rest: the engine's own placeholders, math.js's
+ * internal function names, and its matrix vocabulary.
+ */
+describe('the engine’s own placeholders', () => {
+  const hidden: Array<[string, string]> = [
+    ['line 1(25k)', 'No function called line 1'],
+    ['prev(100)', 'No function called prev'],
+  ];
+
+  for (const [input, message] of hidden) {
+    it(`${input} — ${message}`, () => {
+      // `__line1` and `__prev` are how a reference reaches math.js. Every
+      // branch that words a message composes it out of raw captures, so they
+      // used to arrive in the tooltip exactly as the rewriter wrote them.
+      expect(line(input).error).toBe(message);
+    });
+  }
+
+  it('never shows a doubled underscore, whichever branch worded the message', () => {
+    const sheet = ['200', 'line 1(2)', 'prev(2)', 'line 1 % of 50'].join('\n');
+    for (const result of engine.evaluate(sheet)) {
+      expect(result.error ?? '').not.toContain('__');
+    }
+  });
+});
+
+describe('math.js’s internal names for arithmetic', () => {
+  it('names the operation the line wrote, not the primitive that refused', () => {
+    // "multiplyScalar cannot be used with those values" was the single most
+    // common message in the sweep. Nobody writes multiplyScalar; they write *.
+    expect(line('0% as fraction 1').error).toBe('Those values cannot be multiplied');
+  });
+
+  it('leaves alone the names a sheet can actually contain', () => {
+    // `mod` is documented and typed by hand, so naming it is help rather than
+    // implementation detail leaking out.
+    expect(line('¥400 mod €20').error).toBe('mod cannot be used with those values');
+  });
+});
+
+describe('arguments a function did not get', () => {
+  it('does not recite math.js’s list of accepted types', () => {
+    const message = line('atan2(1)').error ?? '';
+    expect(message).toBe('atan2 needs more values than that');
+    expect(message).not.toContain('DenseMatrix');
+  });
+
+  it('says how many were wanted and how many arrived', () => {
+    expect(line('sqrt(5, 1)').error).toBe('sqrt takes 1 value, not 2');
+    expect(line('nthRoot(1, 2, 3)').error).toBe('nthRoot takes 2 values, not 3');
+  });
+});
+
+describe('anything still describing math.js itself', () => {
+  it('is replaced rather than shown', () => {
+    // `16:00 to 03:04:05` is a line somebody could plausibly write, and it
+    // answered "Dimension mismatch. Matrix A (0) must match Matrix B (1)".
+    expect(line('16:00 to 03:04:05').error).toBe('That cannot be worked out');
+  });
+
+  it('does not swallow a good sentence about a word the writer chose', () => {
+    // The guard runs only where nothing was mapped. Matrix and Fraction are
+    // math.js vocabulary and also words someone can type, and a message naming
+    // what they typed is the useful one.
+    expect(line('10 + Matrix').error).toBe('No unit, currency or variable called Matrix');
+    expect(line('Fraction(1, 2)').error).toBe('No function called Fraction');
+  });
+});
+
+describe('values that did not survive the arithmetic', () => {
+  it('refuses them on the prose-retry path too', () => {
+    // The retry that drops surrounding prose formatted its result directly,
+    // skipping the checks the first attempt makes — so a line that reached it
+    // could answer NaN.
+    for (const input of [
+      "10 lunch - 'text' today sqrt",
+      'true 3 weeks ^ 5k',
+      '1e3 ^ 2026-03-01 per',
+    ]) {
+      const result = line(input);
+      expect(result.output, input).toBe('');
+      expect(result.error, input).toBeDefined();
+    }
+  });
+
+  it('refuses a matrix of them', () => {
+    expect(line('[1, 2](1e31,000)').output).toBe('');
+  });
+});

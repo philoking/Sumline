@@ -7,10 +7,19 @@
  * currency code is the likeliest way anyone meets one, and "DenseMatrix" tells
  * them nothing about what to do next.
  *
- * Only the shapes that actually occur are mapped. Anything else keeps math.js's
- * wording, which for the parser errors ("Unexpected end of expression") is
- * already a sentence in plain English; inventing a second phrasing for those
- * would add a translation table to maintain and no clarity.
+ * Which shapes occur was settled by generating 400,000 lines through the fuzz
+ * generator and collecting every distinct message that reached a line's error
+ * — rather than by what anyone happened to notice. Anything left unmapped
+ * keeps math.js's wording, which for the parser errors ("Unexpected end of
+ * expression") is already a sentence in plain English; inventing a second
+ * phrasing for those would add a translation table to maintain and no clarity.
+ *
+ * Two things catch what enumeration cannot. `tidy` runs over every message
+ * rather than only the unmapped ones, so the engine's own placeholders never
+ * appear whichever branch worded the sentence. And a message still carrying
+ * math.js's implementation vocabulary after all of that is replaced wholesale:
+ * a reader told about a DenseMatrix has been told nothing, and the next such
+ * phrase to appear is caught without anyone having to meet it first.
  */
 
 /**
@@ -46,8 +55,50 @@ export interface Explained {
   unknown?: string;
 }
 
+/**
+ * math.js's internal names for the arithmetic somebody actually wrote.
+ *
+ * These reach `Unexpected type of argument in function X` as the name of the
+ * primitive that refused, not as anything the line said: nobody writes
+ * `multiplyScalar`, they write `*`. Naming the operation instead describes
+ * the line, which is the whole point of this file.
+ *
+ * `mod` and `fraction` are deliberately absent — those are words a sheet can
+ * contain, so the writer recognises them.
+ */
+const OPERATIONS: Record<string, string> = {
+  add: 'added together',
+  addScalar: 'added together',
+  subtract: 'subtracted',
+  subtractScalar: 'subtracted',
+  multiply: 'multiplied',
+  multiplyScalar: 'multiplied',
+  divide: 'divided',
+  divideScalar: 'divided',
+  unaryMinus: 'negated',
+  range: 'made into a range',
+};
+
+/**
+ * Vocabulary that belongs to math.js's implementation and to nothing a person
+ * writes: matrix types, its numeric classes, its dispatch machinery.
+ */
+const IMPLEMENTATION =
+  /(?:Dense|Sparse)?Matrix|BigNumber|bigint|\bFraction\b|Scalar|\[object|signature:|elementwise|unaryMinus|unsupported type|Cannot apply (?:a numeric )?index/;
+
+/** When the wording cannot be rescued, say the true thing and stop. */
+const UNWORKABLE = 'That cannot be worked out';
+
 /** Turns a thrown value into a sentence, and says whether it is worth retrying. */
 export function describeError(error: unknown, vocabulary: Vocabulary): Explained {
+  const explained = explain(error, vocabulary);
+  // Over every message, not only the unmapped ones: the branches below compose
+  // sentences out of raw captures, so `__prev` and `__line1` reached the
+  // answer column through any of them that matched.
+  return { ...explained, message: tidy(explained.message) };
+}
+
+function explain(error: unknown, vocabulary: Vocabulary): Explained {
   if (error instanceof UnknownUnitError) {
     return { message: unknownUnit(error.token, vocabulary), unknown: error.token };
   }
@@ -106,15 +157,47 @@ export function describeError(error: unknown, vocabulary: Vocabulary): Explained
 
   const argument = /^Unexpected type of argument in function (\w+)/.exec(raw);
   if (argument) {
+    const name = argument[1]!;
+    const operation = OPERATIONS[name];
+    if (operation) return { message: `Those values cannot be ${operation}` };
     return {
       message:
-        argument[1] === 'to'
+        name === 'to'
           ? 'That cannot be converted'
-          : `${argument[1]} cannot be used with those values`,
+          : `${name} cannot be used with those values`,
     };
   }
 
-  return { message: tidy(raw) };
+  /*
+   * "Too few arguments in function atan2 (expected: number or Array or
+   * DenseMatrix or SparseMatrix or BigNumber or bigint or string or Matrix or
+   * boolean or Fraction, index: 1)" — the list is math.js enumerating its own
+   * accepted types, and the one fact in it a writer can act on is that the
+   * function wanted another value.
+   */
+  const tooFew = /^Too few arguments in function (\w+)/.exec(raw);
+  if (tooFew) return { message: `${tooFew[1]} needs more values than that` };
+
+  const tooMany = /^Too many arguments in function (\w+) \(expected: (\d+), actual: (\d+)\)/.exec(raw);
+  if (tooMany) {
+    const values = tooMany[2] === '1' ? 'value' : 'values';
+    return { message: `${tooMany[1]} takes ${tooMany[2]} ${values}, not ${tooMany[3]}` };
+  }
+
+  const message = tidy(raw);
+  /*
+   * Unmapped, and still describing math.js's own machinery: a matrix type, one
+   * of its numeric classes, a dispatch signature. `16:00 to 03:04:05` reaching
+   * "Dimension mismatch. Matrix A (0) must match Matrix B (1)" is the shape of
+   * it — a line somebody could plausibly write, answered in the vocabulary of
+   * something they have never heard of.
+   *
+   * Only here, never over a mapped message: "No unit or currency called
+   * Fraction" is a good sentence about a word the writer chose, and a guard
+   * running over everything would throw it away. A mapped branch that starts
+   * leaking is a test failure rather than something quietly reworded.
+   */
+  return { message: IMPLEMENTATION.test(message) ? UNWORKABLE : message };
 }
 
 /** `No unit or currency called EURO — did you mean EUR?` */
@@ -194,6 +277,12 @@ function tidy(message: string): string {
     .replace(/^Error:\s*/, '')
     .replace(/\s*\(char \d+\)$/, '')
     .replace(/__v\d+/g, 'value')
-    .replace(/__line(\d+)/g, 'line $1')
+    // The number is optional because a line that named no line still gets
+    // the placeholder: `line 1 % of 50` reaches math.js as a bare `__line`,
+    // and "No function called __line" is not a sentence about anything the
+    // writer typed.
+    .replace(/__line(\d*)/g, (_match, number: string) =>
+      number ? `line ${number}` : 'line',
+    )
     .replace(/__prev/g, 'prev');
 }

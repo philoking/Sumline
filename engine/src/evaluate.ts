@@ -486,8 +486,16 @@ function compute(
     }),
   });
 
-  try {
-    const value = ctx.math.evaluate(resolved, state.scope);
+  /**
+   * A value on its way to the answer column.
+   *
+   * Both routes to an answer go through here — this one and the retry after
+   * prose is stripped — because what may be shown does not depend on which
+   * attempt produced it. The retry used to call `format` directly and so
+   * skipped every check below, which is how `10 lunch - 'text' today sqrt`
+   * came to answer `NaN`.
+   */
+  const present = (value: unknown): Computed => {
     if (value === undefined || typeof value === 'function') return { output: '' };
     // `0/0` and `10^1000` are arithmetic that did not survive. Showing "NaN"
     // or "Infinity" in the answer column is noise; a quiet error is honest.
@@ -495,6 +503,10 @@ function compute(
       return { output: '', error: 'That does not work out to a number' };
     }
     return format(value);
+  };
+
+  try {
+    return present(ctx.math.evaluate(resolved, state.scope));
   } catch (error) {
     const explained = describeError(error, {
       currencies: ctx.currencies,
@@ -513,7 +525,7 @@ function compute(
       const withoutProse = stripProse(resolved, (word) => isKnownWord(ctx, state, word));
       if (withoutProse) {
         try {
-          return format(ctx.math.evaluate(withoutProse, state.scope));
+          return present(ctx.math.evaluate(withoutProse, state.scope));
         } catch {
           // fall through to the original error, which is the more useful one
         }
@@ -594,14 +606,25 @@ function applyAssignment(
  */
 function isFinitePresentable(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value);
+  // A matrix reaches the answer column as `[Infinity, Infinity]`, which is
+  // both of the things this function exists to keep out at once.
+  if (Array.isArray(value)) return value.every(isFinitePresentable);
   if (value instanceof Percentage) return Number.isFinite(value.ratio);
   if (value instanceof Multiplier) return Number.isFinite(value.factor);
   if (value instanceof Labelled) return Number.isFinite(value.value);
   if (value instanceof Rate) return isFinitePresentable(value.amount);
 
+  const matrix = value as { toArray?: () => unknown[] };
+  if (typeof matrix?.toArray === 'function') return isFinitePresentable(matrix.toArray());
+
   const unit = value as { formatUnits?: () => string; toNumeric?: (u: string) => number };
   if (typeof unit?.formatUnits === 'function' && unit.toNumeric) {
-    return Number.isFinite(unit.toNumeric(unit.formatUnits()));
+    try {
+      return Number.isFinite(unit.toNumeric(unit.formatUnits()));
+    } catch {
+      // A unit whose own value cannot be measured is not one to show either.
+      return false;
+    }
   }
   return true;
 }

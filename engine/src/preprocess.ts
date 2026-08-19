@@ -384,8 +384,20 @@ function rewritePercentages(s: string): string {
     (_m, a: string) => `pct((${a}) * 100)`,
   );
 
-  // Anything still carrying a % is a plain percentage value.
-  return s.replace(new RegExp(String.raw`(${NUM})\s*%`, 'g'), 'pct($1)');
+  /*
+   * Anything still carrying a % is a plain percentage value.
+   *
+   * Not when the digits sit inside a longer word, though. By this point a
+   * reference has become `__line1`, and `line 1 % of 50` would otherwise have
+   * its `1` rewritten out of the middle of that placeholder to give
+   * `__linepct(1)` — a name that reached the reader as "No function called
+   * __linepct". The exponent in `1e3%` is the same shape: the `3` is not the
+   * number either.
+   */
+  return s.replace(
+    new RegExp(String.raw`(?<![\w.])(${NUM})\s*%`, 'g'),
+    'pct($1)',
+  );
 }
 
 /** Multipliers (`4x`) and fractions, which share the percentage grammar. */
