@@ -105,7 +105,7 @@ phrasing the rest of the engine accepts.
 | You type | You get |
 | --- | --- |
 | `log(100, 10)`, `log10(1000)`, `log2(1024)` | `2`, `3`, `10` |
-| `exp(1)` | `2.718282` |
+| `exp(1)` | `2.7182818285` |
 | `nthRoot(27, 3)`, `hypot(3, 4)` | `3`, `5` |
 | `abs(-5)`, `sign(-3)` | `5`, `-1` |
 | `square(4)`, `cube(3)` | `16`, `27` |
@@ -124,9 +124,9 @@ composes like any other.
 | `sin(30 deg)`, `cos(60 deg)` | `0.5` |
 | `tan(45 deg)` | `1` |
 | `sin(pi / 2)` | `1` |
-| `asin(0.5)` | `0.523599` |
-| `atan2(1, 1)` | `0.785398` |
-| `45 deg in rad` | `0.785398 rad` |
+| `asin(0.5)` | `0.5235987756` |
+| `atan2(1, 1)` | `0.7853981634` |
+| `45 deg in rad` | `0.7853981634 rad` |
 
 ### Number bases and bitwise operators
 
@@ -178,14 +178,14 @@ A percentage is a real value, so it survives arithmetic. Order matters and is no
 | You type | You get |
 | --- | --- |
 | `65 mph in km/h` | `104.60736 km/h` |
-| `180 lbs in kg` | `81.646627 kg` |
+| `180 lbs in kg` | `81.6466266 kg` |
 | `meters in 10 km` | `10,000 meters` |
 | `seconds in a day` | `86,400 seconds` |
 | `5 hours 30 minutes to seconds` | `19,800 seconds` |
 | `km m` | `1,000 m` |
 | `300 + 20 km` | `320 km` |
 | `1km + 1,000m` | `2 km` |
-| `100 km * 2 in miles` | `124.274238 miles` |
+| `100 km * 2 in miles` | `124.274238447 miles` |
 
 A bare number takes on the unit beside it, which Soulver calls unit assimilation.
 
@@ -210,12 +210,12 @@ reading of it that is obviously the one you meant. Bracket that case: `(100 km i
 | You type | You get |
 | --- | --- |
 | `$42.50 * 3` | `$127.50` |
-| `100 USD in EUR` | `€86.45` |
+| `100 USD in EUR` | `€80.00` |
 | `20% of $250` | `$50.00` |
 | `$100 + €80` | `€160.00` |
 
-The figures above use the rates bundled with the image (14 August 2026); a running instance uses
-whatever it last fetched, so your answers will differ.
+The figures above use the same fixed table as the in-app reference, dated 14 August 2026; a
+running instance uses whatever it last fetched, so your answers will differ.
 
 Mixed currencies answer in the **last** one named, matching Soulver. Rates come from
 [Frankfurter](https://frankfurter.dev/) (European Central Bank data, no API key), refreshed on
@@ -261,6 +261,9 @@ this morning's rate, silently, is the mistake worth going out of the way to avoi
 | `week of year` / `week number on march 12, 2021` | `33` / `10` |
 | `days in Q3` / `days in February 2020` | `92 days` / `29 days` |
 | `day of the week on January 24, 1984` | `Tuesday` |
+
+Answers involving today are written as of **Saturday 15 August 2026**, the day the in-app
+reference pins, so a table can be read against a fixed calendar rather than the day you read it.
 
 A range answers in calendar components; `days between` answers in whole days. A date written
 without a year picks whichever year puts it nearest today, so in December `January 12` is next
