@@ -7,6 +7,11 @@ export default defineConfig({
     /*
      * Coverage as a gap-finder, not a tracked number.
      *
+     * Run on demand with `npm run coverage`, not with the suite. The v8
+     * instrumentation put the 20,000-line fuzz sweep over its five-second
+     * budget, so every deploy would have paid for a table nobody reads on the
+     * way past — the same cost the number itself was rejected for.
+     *
      * The useful output is the list of branches nothing has ever executed —
      * `preprocess.ts` and `evaluate.ts` are where most of the engine's own
      * decisions live, and with no measurement at all nobody could say which of

@@ -941,6 +941,10 @@ npm test        # 870 engine tests, 250 server tests, 38 web tests
 npm run build   # build all three workspaces
 ```
 
+`npm run coverage -w @webcalc/engine` prints which branches of the engine the tests have never
+reached. Not part of `npm test` and not gated on a number: the list is worth reading now and again
+and turning into cases, and instrumenting the fuzz sweep on every run costs more than it returns.
+
 | Workspace | What it is |
 | --- | --- |
 | [engine/](engine/) | The calculation engine. Pure TypeScript, no DOM or Node APIs, covered by a golden table of `input → answer` cases in [engine/test/](engine/test/). |

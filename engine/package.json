@@ -19,8 +19,9 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "pretest": "npm run build",
-    "test": "vitest run --coverage",
+    "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
