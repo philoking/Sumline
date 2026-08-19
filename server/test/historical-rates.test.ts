@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp, type App } from '../src/app.js';
-import { isUsableDate, type RateFetcher } from '../src/rates.js';
+import { RatesService, isUsableDate, type RateFetcher } from '../src/rates.js';
+import { Store } from '../src/db.js';
 
 let app: App | null = null;
 
@@ -100,5 +101,74 @@ describe('which dates are worth asking about', () => {
     expect(isUsableDate('20-01-01')).toBe(false);
     expect(isUsableDate('today')).toBe(false);
     expect(isUsableDate('')).toBe(false);
+  });
+});
+
+describe('the fan-out one evaluate call can cause', () => {
+  const on = (day: number) => `100 USD in EUR on 2020-01-${String(day).padStart(2, '0')}`;
+
+  const evaluate = (server: App['server'], lines: string[]) =>
+    server.inject({ method: 'POST', url: '/api/evaluate', payload: { input: lines } });
+
+  it('refuses a body naming more past dates than the cap, before fetching any', async () => {
+    // The line cap guards this process's own time. Nothing guarded the
+    // requests it makes of somebody else: one date per distinct date named,
+    // all at once, from an endpoint that needs no authentication.
+    const fetcher = vi.fn<RateFetcher>(async (_base, date) => (date ? PAST : CURRENT));
+    const { server } = build(fetcher);
+
+    const lines = Array.from({ length: 31 }, (_unused, index) => on(index + 1));
+    const response = await evaluate(server, lines);
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json().error).toContain('past dates');
+    expect(fetcher.mock.calls.filter(([, date]) => date !== undefined)).toHaveLength(0);
+  });
+
+  it('answers a body just inside the cap', async () => {
+    const { server } = build(async (_base, date) => (date ? PAST : CURRENT));
+    const lines = Array.from({ length: 30 }, (_unused, index) => on(index + 1));
+    expect((await evaluate(server, lines)).statusCode).toBe(200);
+  });
+
+  it('asks about a date the provider could not answer once, not once per call', async () => {
+    // A sheet full of dates nobody can cover is evaluated on every keystroke.
+    // Without remembering the failure, so is the burst of requests behind it.
+    const fetcher = vi.fn<RateFetcher>(async (_base, date) => {
+      if (date) throw new Error('offline');
+      return CURRENT;
+    });
+    const { server } = build(fetcher);
+
+    const lines = [on(2), on(3)];
+    expect((await evaluate(server, lines)).statusCode).toBe(200);
+    expect((await evaluate(server, lines)).statusCode).toBe(200);
+
+    expect(fetcher.mock.calls.filter(([, date]) => date !== undefined)).toHaveLength(2);
+  });
+
+  it('tries a failed date again once the failure has aged out', async () => {
+    // Deliberately not remembered in `rate_history`, which only ever holds
+    // published rates: an outage must not permanently poison a date that will
+    // be answerable tomorrow.
+    let offline = true;
+    const fetcher = vi.fn<RateFetcher>(async () => {
+      if (offline) throw new Error('offline');
+      return PAST;
+    });
+    const rates = new RatesService({
+      store: new Store(':memory:'),
+      fetcher,
+      missTtlMs: 10,
+    });
+
+    expect(await rates.historical('2020-01-02')).toBeNull();
+    expect(await rates.historical('2020-01-02')).toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    offline = false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(await rates.historical('2020-01-02')).toMatchObject({ date: '2019-12-31' });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

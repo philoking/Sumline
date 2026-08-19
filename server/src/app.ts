@@ -85,6 +85,17 @@ const EVENT_HEARTBEAT_MS = 20_000;
  */
 const MAX_EVALUATE_LINES = 1_000;
 
+/**
+ * How many distinct past dates one `POST /api/evaluate` may ask about.
+ *
+ * The line cap guards the time this process spends; this guards the requests it
+ * makes of somebody else. `ratesNeeded` returns one date per distinct date
+ * named, so without it a 1000-line body naming 1000 dates turns one
+ * unauthenticated POST into 1000 outbound fetches. Generous against any sheet a
+ * person writes — a sheet comparing a dozen invoices is nowhere near it.
+ */
+const MAX_EVALUATE_DATES = 30;
+
 /** The cookie naming whose space this browser is working in. */
 export const USER_COOKIE = 'webcalc_user';
 
@@ -704,6 +715,12 @@ export function buildApp(options: AppOptions): App {
     // with them in hand. Skipped entirely by a sheet that names no date.
     let engine = createEngine(base);
     const wanted = engine.ratesNeeded(lines);
+    if (wanted.length > MAX_EVALUATE_DATES) {
+      // Refused before a single fetch goes out, which is the whole point.
+      return reply
+        .code(413)
+        .send({ error: `input is limited to ${MAX_EVALUATE_DATES} past dates` });
+    }
     if (wanted.length > 0) {
       const fetched = await Promise.all(
         wanted.map(async (date) => [date, await rates.historical(date)] as const),

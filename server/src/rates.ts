@@ -84,7 +84,21 @@ export interface RatesServiceOptions {
    * it turns the corner of the app from a date into a staleness warning.
    */
   onUpdate?: (table: RateTable) => void;
+  /**
+   * How long a date the provider could not answer is left alone. Tests shorten
+   * it; nothing else sets it.
+   */
+  missTtlMs?: number;
 }
+
+/**
+ * How long a failed past-date lookup is remembered.
+ *
+ * Long enough that a sheet full of dates nobody can answer is asked about once
+ * rather than on every evaluation, short enough that an outage does not
+ * outlive itself by much.
+ */
+const DEFAULT_MISS_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Owns the rate cache and its refresh timer.
@@ -95,6 +109,16 @@ export interface RatesServiceOptions {
 export class RatesService {
   private table: RateTable;
   private timer: NodeJS.Timeout | null = null;
+  /**
+   * Dates the provider could not answer, and when to try them again.
+   *
+   * In memory rather than in `rate_history`, deliberately: that table holds
+   * published rates, which never change, so a hit in it is permanent. A
+   * failure is the opposite kind of fact — the provider was down, or the date
+   * is not covered yet — and persisting it would let one outage poison a date
+   * that will be answerable tomorrow.
+   */
+  private readonly misses = new Map<string, number>();
 
   constructor(private readonly options: RatesServiceOptions) {
     const base = options.base ?? DEFAULT_BASE;
@@ -148,6 +172,17 @@ export class RatesService {
     const cached = this.options.store.getHistoricalRates(onDate, base);
     if (cached) return cached as RateTable;
 
+    // A date that just failed is not asked about again. Without this, a sheet
+    // naming dates the provider cannot cover — anything the series does not
+    // reach, or any date at all while the network is down — refetches every
+    // one of them on every evaluation, which is once a keystroke.
+    const key = `${base}|${onDate}`;
+    const until = this.misses.get(key);
+    if (until !== undefined) {
+      if (until > Date.now()) return null;
+      this.misses.delete(key);
+    }
+
     const fetcher = this.options.fetcher ?? fetchFromFrankfurter;
     try {
       const table = await fetcher(base, onDate);
@@ -156,6 +191,7 @@ export class RatesService {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.options.log?.warn(`No exchange rates for ${onDate} (${reason})`);
+      this.misses.set(key, Date.now() + (this.options.missTtlMs ?? DEFAULT_MISS_TTL_MS));
       return null;
     }
   }
