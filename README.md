@@ -358,6 +358,24 @@ workday counts. Three things deliberately do not:
 - **A zone written in the line always wins.** `6pm Sydney in Chicago` means the same thing from
   anywhere; a space setting is a default, not an override.
 
+#### A day and twenty-four hours are not the same thing
+
+Twice a year they come apart, and the answers below are both right:
+
+| You type | You get |
+| --- | --- |
+| `2026-03-08 00:00 + 1 day` | `Mon 9 Mar 2026 at 12:00 am` |
+| `2026-03-08 00:00 + 24 hours` | `Mon 9 Mar 2026 at 1:00 am` |
+| `2026-11-01 00:00 + 24 hours` | `Sun 1 Nov 2026 at 11:00 pm` |
+
+A **day** is a calendar day: the same clock time on the next date, whatever happened to the clocks
+in between. A **duration** is an amount of time, so it counts hours. The morning the clocks go
+forward is 23 hours long and the evening they go back is 25, which is why twenty-four hours can
+land at 1 am or at 11 pm the same evening.
+
+Which zone's clocks is the space's, not the reader's — so a sheet pinned to New York does New York's
+daylight saving from anywhere.
+
 ### Timestamps
 
 | You type | You get |

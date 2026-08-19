@@ -40,7 +40,13 @@ const engine = createEngine({
  * built from local parts, so a date answer is the same in Tokyo as in CI; a
  * zone forced over the top of that would break the rows it was meant to fix.
  */
-const ZONED: Record<string, string> = { Timestamps: 'America/Los_Angeles' };
+const ZONED: Record<string, string> = {
+  Timestamps: 'America/Los_Angeles',
+  // The section is about a sheet pinned to a zone, and says so; reading it in
+  // the reader's own would answer the reader's daylight saving, which is the
+  // thing it exists to distinguish.
+  'A day and twenty-four hours are not the same thing': 'America/New_York',
+};
 
 const zoned = new Map<string, ReturnType<typeof createEngine>>();
 
