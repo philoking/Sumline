@@ -2,6 +2,8 @@
 
 A notepad calculator you run yourself, in the browser.
 
+<img width="2900" height="1792" alt="Sumline-08-19-2026_01_17_PM" src="https://github.com/user-attachments/assets/704b0aac-74bb-4c97-9873-687a66dac65c" />
+
 Type in plain language on the left; answers appear in a column on the right, updating as you
 type. Units, currencies, percentages, dates, variables and running totals all work the way you'd
 write them on paper. It is an open-source take on the idea [Soulver](https://soulver.app/)
@@ -731,6 +733,8 @@ whole set each time, or read it back first and edit what you get. The same is tr
 
 A space is a separate set of sheets, with its own folders, trash, settings and global variables.
 Nothing about it says a space has to be a person.
+
+<img width="2900" height="1792" alt="Sumline Spaces" src="https://github.com/user-attachments/assets/564d8037-11c8-434f-a1ea-f13e2cdd293e" />
 
 Two people sharing an instance is the obvious use, but one person with several spaces is just as
 reasonable — **Work** and **Personal**, a space per client, a space per project, or one for
