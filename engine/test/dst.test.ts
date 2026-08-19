@@ -356,7 +356,7 @@ describe('a duration across a transition', () => {
 });
 
 /*
- * Still #113's, and still not pinned here: a wall clock that does not exist.
+ * Deliberately not pinned here: a wall clock that does not exist.
  *
  * 2:30 am never happens in New York on the morning the clocks go forward, and
  * which existing time it becomes still depends on the reader's zone — because
@@ -365,7 +365,12 @@ describe('a duration across a transition', () => {
  * to 1:30; on a machine that also springs forward that morning, the host has
  * already moved it to 3:30.
  *
- * What is fixed, and is why the three ways of asking are no longer worth
- * pinning separately, is that they now agree with each other: the displayed
- * time, the timestamp and the ISO form named three different moments before.
+ * A test either way would pin one host's answer, which is not a fact about the
+ * engine. It is deferred rather than overlooked — see "A wall-clock time that
+ * does not exist in the space's zone" in `docs/decisions.md`, which records
+ * what it would cost to fix and what would make it worth fixing.
+ *
+ * What *was* fixed is that the three ways of asking now agree with each other:
+ * the displayed time, the timestamp and the ISO form named three different
+ * moments before.
  */

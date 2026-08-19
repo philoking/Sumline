@@ -76,6 +76,38 @@ naming its arguments, fixing their order and their sign convention, and then mai
 against no specification but this file. A formula in the reference costs nothing and can be copied.
 If sheets turn out to carry the same formula by hand, that is the evidence to build on.
 
+### A wall-clock time that does not exist in the space's zone
+
+The morning the clocks go forward, 2:30 am never happens. A sheet pinned to New York can still be
+asked about it — somebody types it, or a range lands on it — and which *existing* time it becomes
+depends on who is reading:
+
+| The reader's own zone | `2026-03-08 02:30` in a New York sheet |
+| --- | --- |
+| `UTC`, or anywhere without that transition | `1:30 am` |
+| A zone that springs forward the same morning | `3:30 am` |
+
+Both are real times either side of a gap, and there is no correct answer for a moment that does not
+occur. What is wrong is that the answer is the *reader's* business at all.
+
+The cause is one layer below where daylight saving is otherwise handled. The engine computes in
+wall-clock space — a `Date` whose *local* fields read as the space's clock — and the parser builds
+those with `new Date(y, m, d, h, min)`, so a time that does not exist **on the host** is normalised
+by the host's own calendar before the engine can apply the space's. Everything downstream of the
+parser was fixed: a duration now shifts the real instant in the space's zone, and the displayed
+time, the timestamp and `as iso8601` agree with each other where they once named three different
+moments.
+
+Fixing the parser too means wall-clock space stops being local-field space — building and reading
+every one of those dates through UTC fields instead, which reaches `startOfDay`, `addDays`,
+`weekNumber` and the date parser. That is a large change to the part of the engine with the most
+tests standing on it, and it buys one line shape, on two mornings a year, in a space pinned to a
+zone that is not the reader's.
+
+So it waits. A second symptom is the signal worth acting on: it would mean the local-field design
+has a cost beyond this one case, which is the argument for the sweep that this case alone does not
+make.
+
 ### Live stock prices, weather, knowledge lookups
 
 Every usable provider needs an API key. That would compromise the guarantee that the container
