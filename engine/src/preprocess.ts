@@ -90,6 +90,7 @@ export function preprocess(input: string, ctx: PreprocessContext): Preprocessed 
   const rounding = extractRounding(s);
   s = rounding.expr;
 
+  s = spellOutShadowedUnits(s);
   s = rewriteStatistics(s);
   s = rewritePercentages(s);
   s = rewriteMultipliersAndFractions(s);
@@ -397,6 +398,51 @@ function rewritePercentages(s: string): string {
   return s.replace(
     new RegExp(String.raw`(?<![\w.])(${NUM})\s*%`, 'g'),
     'pct($1)',
+  );
+}
+
+/**
+ * Unit names math.js also has a function for, and what to call them instead.
+ *
+ * Three of the 271 registered unit names are shadowed by a function on the
+ * instance — `min`, `sec` and `chain` — and two of them actually break. A
+ * function shadows the unit, so `20 min` is read as twenty times the *minimum
+ * function*, and math.js refuses to multiply a number by a function:
+ * `300 + 20 min` and even `20 min + 10 min` had no answer. (`chain` survives
+ * for reasons of math.js's own resolution order, and is left alone; it is
+ * listed here so the next person to check knows it was checked.)
+ *
+ * A standalone `20 min` always worked, because the temporal parser claims a
+ * bare duration before math.js sees it. That made the two inconsistent with
+ * each other rather than uniformly broken, which is the worse state.
+ */
+const SHADOWED_UNITS: Record<string, string> = {
+  min: 'minutes',
+  sec: 'seconds',
+};
+
+/**
+ * `20 min` is twenty minutes; `min(2, 3)` is still the smaller of two.
+ *
+ * The rule is the one a reader already has in their head: a number in front of
+ * it means the unit, a bracket after it means the function. Spelling the unit
+ * out in full is enough, because nothing shadows `minutes`, and every other
+ * position is left exactly as it was written.
+ *
+ * A bare `20 min` never arrives here at all — the temporal parser claims a
+ * lone duration before any of this runs, which is why that form always worked
+ * and `300 + 20 min` did not. This is the arithmetic half catching up.
+ *
+ * The unit wins even where the sheet has declared a variable of the same name.
+ * That is deliberate rather than overlooked: `20 min` already meant minutes in
+ * the bare form, so letting a declaration change what it means a line later
+ * would be the surprising reading, and `min` on its own is still the variable.
+ */
+function spellOutShadowedUnits(s: string): string {
+  return s.replace(
+    /(\d)(\s*)(min|sec)\b(?!\s*\()/g,
+    (_match, digit: string, gap: string, unit: string) =>
+      `${digit}${gap || ' '}${SHADOWED_UNITS[unit]}`,
   );
 }
 

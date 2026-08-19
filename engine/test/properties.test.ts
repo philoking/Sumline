@@ -170,22 +170,12 @@ describe('converting there and back', () => {
 });
 
 describe('a bare number beside a unit', () => {
-  /**
-   * The two names math.js also has functions for — minimum and secant.
-   *
-   * Listed rather than skipped quietly: this is the failing case written down,
-   * and #112 closing means deleting these two words. Everything else in the
-   * registered set passes, which is what makes them worth naming.
-   */
-  const SHADOWED = new Set(['min', 'sec']);
-
   it('takes the unit of the thing it is added to, for every unit', () => {
     // `300 + 20 km` is `320 km`, documented once and true generally.
     const random = mulberry32(0x1234);
     const broken: string[] = [];
     for (let i = 0; i < 200; i += 1) {
       const unit = pick(random, UNITS);
-      if (SHADOWED.has(unit)) continue;
       const output = answer(`300 + 20 ${unit}`);
       const value = numeric(output);
       if (value === null || Math.abs(value - 320) > 1e-9) {

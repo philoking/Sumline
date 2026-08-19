@@ -128,3 +128,50 @@ describe('units', () => {
     }
   });
 });
+
+/*
+ * Issue #112 — three of the 271 registered unit names are also functions on
+ * this math.js instance: `min`, `sec` and `chain`. A function shadows the
+ * unit, so `20 min` was read as twenty times the minimum *function*, and
+ * math.js will not multiply a number by a function.
+ *
+ * A bare `20 min` always worked, because the temporal parser claims a lone
+ * duration before math.js sees it. That made the two forms inconsistent with
+ * each other rather than uniformly broken.
+ */
+describe('a unit math.js also has a function for', () => {
+  const abbreviations: Array<[string, string]> = [
+    ['300 + 20 min', '320 minutes'],
+    ['300 + 20 sec', '320 seconds'],
+    ['20 min + 10 min', '30 minutes'],
+    ['20 sec + 10 sec', '30 seconds'],
+    ['5 hours 30 min', '5 hours 30 minutes'],
+    ['2 * 30 min', '60 minutes'],
+  ];
+
+  for (const [input, expected] of abbreviations) {
+    it(`${input} -> ${expected}`, () => {
+      expect(answer(input)).toBe(expected);
+    });
+  }
+
+  it('agrees with the bare form the temporal parser already answered', () => {
+    expect(answer('20 min')).toBe('20 minutes');
+    expect(answer('20 sec')).toBe('20 seconds');
+  });
+
+  it('leaves the function alone where a function is what was written', () => {
+    // The bracket is the whole distinction: a number in front means the unit,
+    // a bracket after means the function.
+    expect(answer('min(1000, 2000)')).toBe('1,000');
+    expect(answer('max(1000, 2000)')).toBe('2,000');
+    expect(answer('sec(0)')).toBe('1');
+  });
+
+  it('leaves `chain` alone, which never needed the help', () => {
+    // Shadowed by a function too, and resolves as a unit regardless — listed
+    // in the source so the next person knows it was checked rather than
+    // missed.
+    expect(answer('300 + 20 chain')).toBe('320 chain');
+  });
+});
