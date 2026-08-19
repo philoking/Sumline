@@ -366,3 +366,79 @@ describe('GET /api/events', () => {
     base = await listen(app);
   });
 });
+
+describe('a lock that simply ran out', () => {
+  /*
+   * Every other lock transition is announced — taken, let go, the sheet
+   * trashed. Expiry was not, because it happened inside a store read that had
+   * no access to the event bus, and expiry is the only thing that frees a
+   * sheet whose editor crashed, slept or lost its network. The browser copes
+   * either way, by scheduling a re-ask timed to the holder's expiry; being
+   * told makes that timer a fallback rather than the mechanism.
+   */
+  it('says so, the first time anybody asks about the sheet', async () => {
+    // Long enough to be taken, short enough to have lapsed by the next line.
+    app = build({ lockTtlMs: 1 });
+    base = await listen(app);
+    const sheet = await createSheet();
+
+    await app.server.inject({
+      method: 'POST',
+      url: `/api/sheets/${sheet.id}/lock`,
+      payload: { clientId: 'a-tab-that-vanished', clientName: 'Ada' },
+    });
+
+    const stream = await openStream();
+    expect(await stream.next()).toMatchObject({ type: 'hello' });
+
+    // A plain read of the sheet, which is what a browser does when it opens
+    // one. Nothing here asks for the lock to be cleaned up.
+    await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+
+    expect(await stream.next()).toMatchObject({
+      type: 'lock',
+      sheetId: sheet.id,
+      holder: null,
+    });
+    stream.close();
+  });
+
+  it('says it once, not on every read after that', async () => {
+    app = build({ lockTtlMs: 1 });
+    base = await listen(app);
+    const sheet = await createSheet();
+    await app.server.inject({
+      method: 'POST',
+      url: `/api/sheets/${sheet.id}/lock`,
+      payload: { clientId: 'a-tab-that-vanished' },
+    });
+
+    const stream = await openStream();
+    expect(await stream.next()).toMatchObject({ type: 'hello' });
+    await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+    expect(await stream.next()).toMatchObject({ type: 'lock', holder: null });
+
+    // The row is gone, so there is nothing left to expire and nothing to say.
+    await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+    await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+    await expect(stream.next(300)).rejects.toThrow();
+    stream.close();
+  });
+
+  it('leaves a live lock exactly where it is', async () => {
+    app = build({ lockTtlMs: 60_000 });
+    base = await listen(app);
+    const sheet = await createSheet();
+    await app.server.inject({
+      method: 'POST',
+      url: `/api/sheets/${sheet.id}/lock`,
+      payload: { clientId: 'still-here', clientName: 'Grace' },
+    });
+
+    const read = await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+    // Reading is a read: the holder is reported and nothing is deleted.
+    expect(read.json()).toMatchObject({ lock: { clientId: 'still-here' } });
+    const again = await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+    expect(again.json()).toMatchObject({ lock: { clientId: 'still-here' } });
+  });
+});

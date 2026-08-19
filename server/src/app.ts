@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { createEngine, engineOptionsFrom, type EngineSettings } from '@webcalc/engine';
-import { Store, VersionConflictError, type UserId } from './db.js';
+import { Store, VersionConflictError, type Lock, type UserId } from './db.js';
 import {
   FALLBACK_SPACE,
   deriveSpaceId,
@@ -965,12 +965,31 @@ export function buildApp(options: AppOptions): App {
    * same gesture — was already scoped, because folders have no share link to
    * be reached by. The two halves of one gesture now agree.
    */
+  /**
+   * Who is editing a sheet, expiring a lapsed lock on the way and saying so.
+   *
+   * Every other lock transition emits an event — acquired, released, the sheet
+   * trashed — and expiry did not, because it happened inside a store read with
+   * no access to `events`. A tab that crashes, sleeps or loses its network
+   * never gets to say it has let go, so expiry is the only thing that frees
+   * the sheet, and it was the one transition nobody heard about.
+   *
+   * The browser copes either way: a read-only tab schedules a re-ask timed to
+   * the holder's expiry. Announcing it makes that timer the fallback rather
+   * than the mechanism, which is how the heartbeat poll is already framed.
+   */
+  const lockNow = (sheetId: string): Lock | null => {
+    const lapsed = store.expireLock(sheetId);
+    if (lapsed) events.emit({ type: 'lock', sheetId, holder: null });
+    return store.lockAsOf(sheetId);
+  };
+
   server.get<{ Params: { id: string } }>(
     '/api/sheets/:id',
     async (request, reply) => {
       const sheet = store.getSheet(request.params.id);
       if (!sheet) return reply.code(404).send({ error: 'Sheet not found' });
-      return { ...sheet, lock: store.getLock(sheet.id) };
+      return { ...sheet, lock: lockNow(sheet.id) };
     },
   );
 
@@ -1064,7 +1083,7 @@ export function buildApp(options: AppOptions): App {
       // share link reports 404 here rather than being deleted out from under
       // the person it belongs to.
       const owner = currentUser(request);
-      const held = store.getLock(request.params.id) !== null;
+      const held = lockNow(request.params.id) !== null;
       const removed =
         request.query?.purge === '1'
           ? store.deleteSheet(request.params.id, owner)
@@ -1091,7 +1110,7 @@ export function buildApp(options: AppOptions): App {
       return reply.code(404).send({ error: 'Sheet not found' });
     }
 
-    const before = store.getLock(request.params.id);
+    const before = lockNow(request.params.id);
     const result = store.acquireLock(
       request.params.id,
       clientId,
@@ -1113,7 +1132,7 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const clientId = request.query?.clientId;
       if (!clientId) return reply.code(400).send({ error: 'clientId is required' });
-      const before = store.getLock(request.params.id);
+      const before = lockNow(request.params.id);
       store.releaseLock(request.params.id, clientId);
       // Silent unless this really was the holder letting go — every tab that
       // closes calls this for the sheet it had open, whether or not it was the

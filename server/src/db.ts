@@ -1018,15 +1018,41 @@ export class Store {
     });
   }
 
-  getLock(sheetId: string, now = Date.now()): Lock | null {
+  /**
+   * Who holds the lock on a sheet, as of now. A read, and only a read.
+   *
+   * This used to release an expired lock on its way past, which made
+   * `GET /api/sheets/:id` a `DELETE` under some conditions and handed the same
+   * surprise to every future caller. Lazy expiry is still the strategy — there
+   * is no sweeper and none is needed — but it is `expireLock` below that does
+   * it, where the name says so and the caller can announce it.
+   */
+  lockAsOf(sheetId: string, now = Date.now()): Lock | null {
     const row = this.db
       .prepare('SELECT * FROM locks WHERE sheet_id = ?')
       .get(sheetId) as unknown as LockRow | undefined;
-    if (!row) return null;
-    if (row.expires_at <= now) {
-      this.releaseLock(sheetId, row.client_id);
-      return null;
-    }
+    if (!row || row.expires_at <= now) return null;
+    return {
+      sheetId: row.sheet_id,
+      clientId: row.client_id,
+      clientName: row.client_name,
+      expiresAt: row.expires_at,
+    };
+  }
+
+  /**
+   * Drops a lock whose time is up, and reports the holder it dropped.
+   *
+   * The return value is what makes expiry announceable: a lock that lapses is
+   * a sheet becoming editable, and until now that happened silently in the
+   * store with nobody to tell.
+   */
+  expireLock(sheetId: string, now = Date.now()): Lock | null {
+    const row = this.db
+      .prepare('SELECT * FROM locks WHERE sheet_id = ?')
+      .get(sheetId) as unknown as LockRow | undefined;
+    if (!row || row.expires_at > now) return null;
+    this.releaseLock(sheetId, row.client_id);
     return {
       sheetId: row.sheet_id,
       clientId: row.client_id,
@@ -1049,7 +1075,7 @@ export class Store {
     force = false,
     now = Date.now(),
   ): { granted: boolean; lock: Lock } {
-    const existing = this.getLock(sheetId, now);
+    const existing = this.lockAsOf(sheetId, now);
     if (existing && existing.clientId !== clientId && !force) {
       return { granted: false, lock: existing };
     }
