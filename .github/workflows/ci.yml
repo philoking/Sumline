@@ -1,0 +1,60 @@
+name: CI
+
+# The verdict on a change, for GitHub. It does not deploy anything and cannot:
+# Sumline deploys to a self-hosted runner on the target host, which is what
+# `.gitea/workflows/deploy.yml` is for and which GitHub has no route to. This
+# says whether the code is good; that one puts it on the machine.
+#
+# Both suites are also run inside the image by the deploy, against exactly the
+# Node that ships. This runs them on the host instead, because a pull request
+# wants a readable failure more than it wants a faithful runtime.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A force-push or a quick second commit should not leave two runs racing on the
+# same ref. The older one is abandoned — unlike the deploy, where cancelling a
+# run midway would leave a half-updated host.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing here writes anywhere. Stated rather than assumed, so a workflow added
+# later has to ask for what it needs.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22, not `latest`: the server stores sheets through the built-in
+          # `node:sqlite` module, which is behind --experimental-sqlite on 22 and
+          # is what the image ships. Testing on a newer Node would be testing
+          # something nobody runs.
+          node-version: '22'
+          cache: npm
+
+      # `ci`, not `install`: the lockfile decides, and a lockfile that has
+      # drifted from package.json should fail the run rather than be quietly
+      # rewritten.
+      - run: npm ci
+
+      # The engine suite includes `readme.test.ts`, which evaluates the README's
+      # example tables against the engine. Documentation is tested here like
+      # code, which is why no path filter excludes it.
+      - run: npm test
+
+      - run: npm run typecheck
+
+      # Last, and not redundant: `npm test` builds the engine through its
+      # pretest hook but never builds the web bundle, so a broken import in the
+      # UI would otherwise reach main with every check green.
+      - run: npm run build
