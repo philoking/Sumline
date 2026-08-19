@@ -5,6 +5,28 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     environment: 'node',
     /*
+     * Thirty seconds, not vitest's five.
+     *
+     * This suite is mostly sweeps rather than unit tests: 20,000 generated
+     * lines across twenty seeds, every daylight-saving transition of every
+     * supported zone for a year, every registered unit against every other.
+     * The slowest take one to two seconds on a developer's machine, which
+     * looks like comfortable headroom against five and is not. A shared CI
+     * runner under contention is easily several times slower, and the fuzz
+     * sweep duly timed out on GitHub having passed the four runs before it.
+     *
+     * A flaky red build teaches people to re-run rather than to read, which
+     * costs more than the thing the tight budget was buying. Thirty still
+     * catches a genuine hang, which is the only failure a timeout should be
+     * detecting here.
+     *
+     * Speed itself is asserted where it actually matters, and not by this.
+     * `fuzz.test.ts` times the tokenizer against a two-second bound directly,
+     * because that one runs on every keystroke and a slow one is a frozen
+     * editor.
+     */
+    testTimeout: 30_000,
+    /*
      * Coverage as a gap-finder, not a tracked number.
      *
      * Run on demand with `npm run coverage`, not with the suite. The v8
