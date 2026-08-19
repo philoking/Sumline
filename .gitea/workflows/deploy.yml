@@ -19,9 +19,11 @@ name: Deploy
 on:
   push:
     branches: [main]
-    # Docs-only changes don't need a rebuild/redeploy.
+    # Docs-only changes don't need a rebuild/redeploy. README.md is not one of
+    # them: `engine/test/readme.test.ts` runs its example tables against the
+    # engine, so editing it can fail the suite and has to be tested like code.
     paths-ignore:
-      - "**.md"
+      - "docs/**"
       - "LICENSE"
   workflow_dispatch:
 
