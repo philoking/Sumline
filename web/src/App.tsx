@@ -44,6 +44,7 @@ import { useSheetLock } from './useSheetLock';
 import { useActiveSheet, type Status } from './useActiveSheet';
 import { useSheetList } from './useSheetList';
 import { useSpaces } from './useSpaces';
+import { useAsk } from './Ask';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 
@@ -104,6 +105,10 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   /** Something worth saying that is not a failure — see removeSpace. */
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Every naming and confirmation step in the app. See Ask.tsx for why these
+  // are not `window.prompt` and `window.confirm` any more.
+  const ask = useAsk();
 
   const {
     users,
@@ -652,16 +657,16 @@ export function App() {
   };
 
   const addSpace = async () => {
-    const name = window.prompt('Name for the new space');
-    if (name === null || name.trim() === '') return;
-    await addSpaceNamed(name.trim());
+    const name = await ask.name({ title: 'Name for the new space', value: '', confirm: 'Add space' });
+    if (name === null) return;
+    await addSpaceNamed(name);
   };
 
   /** The switcher's rename, which has to ask for the name first. */
   const renameSpace = async (user: User) => {
-    const next = window.prompt('Rename space', user.name);
+    const next = await ask.name({ title: 'Rename space', value: user.name, confirm: 'Rename' });
     if (next === null) return;
-    await applySpaceName(user, next.trim());
+    await applySpaceName(user, next);
   };
 
   /**
@@ -673,18 +678,21 @@ export function App() {
    * feel more dangerous than it is.
    */
   const removeSpace = async (user: User) => {
-    const warning =
-      `Remove the space “${user.name}”? Any sheets in it are kept, but stay ` +
-      `hidden until a space is added back under the same name.`;
-    if (!window.confirm(warning)) return;
-    await removeSpaceConfirmed(user);
+    const agreed = await ask.confirm({
+      title: `Remove the space “${user.name}”?`,
+      body:
+        'Any sheets in it are kept, but stay hidden until a space is added ' +
+        'back under the same name.',
+      confirm: 'Remove space',
+    });
+    if (agreed) await removeSpaceConfirmed(user);
   };
 
   const renameSheet = async (sheet: SheetSummary) => {
-    const next = window.prompt('Rename sheet', sheet.title);
-    if (next === null || next.trim() === '' || next === sheet.title) return;
+    const next = await ask.name({ title: 'Rename sheet', value: sheet.title, confirm: 'Rename' });
+    if (next === null || next === sheet.title) return;
     try {
-      await api.saveSheet(sheet.id, { title: next.trim() }, sheet.version);
+      await api.saveSheet(sheet.id, { title: next }, sheet.version);
       if (sheet.id === activeId) await openSheet(sheet.id);
       await refreshSheets();
     } catch (cause) {
@@ -694,11 +702,13 @@ export function App() {
 
   const deleteSheet = async (sheet: SheetSummary) => {
     const permanent = viewingTrash;
-    if (
-      permanent &&
-      !window.confirm(`Permanently delete "${sheet.title}"? This cannot be undone.`)
-    ) {
-      return;
+    if (permanent) {
+      const agreed = await ask.confirm({
+        title: `Permanently delete “${sheet.title}”?`,
+        body: 'This one cannot be undone — the sheet does not go to the trash first.',
+        confirm: 'Delete permanently',
+      });
+      if (!agreed) return;
     }
     try {
       await api.deleteSheet(sheet.id, permanent);
@@ -1154,6 +1164,11 @@ export function App() {
         </div>
       )}
 
+      {/* Whatever is being asked, if anything. One place, near the root, so a
+          question sits over the app rather than inside whichever panel raised
+          it. */}
+      {ask.dialog}
+
       {conflict && (
         <Conflict
           mine={content}
@@ -1194,17 +1209,29 @@ export function App() {
           onMove={moveSheet}
           onQuery={setQuery}
           onCreateFolder={() => {
-            const name = window.prompt('Folder name');
-            if (name?.trim()) createFolder(name.trim());
+            void ask
+              .name({ title: 'Name for the new folder', value: '', confirm: 'Create folder' })
+              .then((name) => {
+                if (name !== null) createFolder(name);
+              });
           }}
           onRenameFolder={(folder) => {
-            const name = window.prompt('Rename folder', folder.name);
-            if (name?.trim()) renameFolder(folder, name.trim());
+            void ask
+              .name({ title: 'Rename folder', value: folder.name, confirm: 'Rename' })
+              .then((name) => {
+                if (name !== null) renameFolder(folder, name);
+              });
           }}
           onDeleteFolder={(folder) => {
-            if (window.confirm(`Delete "${folder.name}"? Its sheets are kept.`)) {
-              deleteFolder(folder);
-            }
+            void ask
+              .confirm({
+                title: `Delete the folder “${folder.name}”?`,
+                body: 'The sheets in it are kept, and return to the top level.',
+                confirm: 'Delete folder',
+              })
+              .then((agreed) => {
+                if (agreed) deleteFolder(folder);
+              });
           }}
           onColorSheet={colorSheet}
           onColorFolder={colorFolder}
@@ -1217,8 +1244,15 @@ export function App() {
           }}
           onToggleTrash={() => setViewingTrash((viewing) => !viewing)}
           onEmptyTrash={() => {
-            if (!window.confirm('Permanently delete everything in the trash?')) return;
-            void api.emptyTrash().then(() => refreshSheets());
+            void ask
+              .confirm({
+                title: 'Empty the trash?',
+                body: 'Everything in it is deleted for good. This cannot be undone.',
+                confirm: 'Empty trash',
+              })
+              .then((agreed) => {
+                if (agreed) void api.emptyTrash().then(() => refreshSheets());
+              });
           }}
         />
         <div className="sheet-pane">
