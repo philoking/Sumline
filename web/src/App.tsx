@@ -9,12 +9,10 @@ import {
 import {
   api,
   clientIdentity,
-  ConflictError,
   switchUser,
   type Folder,
   type Lock,
   type Settings,
-  type Sheet,
   type SheetSummary,
   type Session,
   type Statistic,
@@ -43,11 +41,9 @@ import { useEngine, useResults } from './useEngine';
 import { useLive, type LiveEvent } from './live';
 import { useTheme } from './useTheme';
 import { useSheetLock } from './useSheetLock';
+import { useActiveSheet, type Status } from './useActiveSheet';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
-type Status = 'idle' | 'unsaved' | 'saving' | 'saved' | 'readonly' | 'error';
-
-const AUTOSAVE_DELAY_MS = 800;
 
 
 
@@ -98,18 +94,13 @@ export function App() {
   /** Which space we are working in. Null until the first load settles. */
   const [space, setSpace] = useState<string | null>(null);
   /** Which space the open sheet belongs to — differs after a share link. */
-  const [sheetOwner, setSheetOwner] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>({});
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [viewingTrash, setViewingTrash] = useState(false);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [version, setVersion] = useState(0);
 
-  const [conflict, setConflict] = useState<Sheet | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   /** Something worth saying that is not a failure — see removeSpace. */
@@ -201,6 +192,38 @@ export function App() {
   // The engine clamps this too; here it only decides which button looks picked.
   const precision = settings.precision ?? DEFAULT_PRECISION;
 
+  const refreshSheets = useCallback(async () => {
+    const list = await api.listSheets({
+      ...(query && { query }),
+      ...(viewingTrash && { trashed: true }),
+    });
+    setSheets(list);
+    return list;
+  }, [query, viewingTrash]);
+
+  const {
+    title,
+    setTitle,
+    content,
+    setContent,
+    version,
+    sheetOwner,
+    conflict,
+    savedContent,
+    open: openSheet,
+    save,
+    keepBoth,
+    takeTheirs,
+  } = useActiveSheet({
+    activeId,
+    canEdit: lock.granted,
+    refreshSheets,
+    folderOf: (id) => sheets.find((sheet) => sheet.id === id)?.folderId ?? null,
+    onStatus: setStatus,
+    onError: (cause) => setError(describe(cause)),
+    onNotice: setNotice,
+  });
+
   // Everything the engine is told, derived in one named place — see
   // engineOptions.ts for why that is not a spread written inline here.
   const engineOptions = useMemo(() => engineOptionsFrom(settings), [settings]);
@@ -249,7 +272,6 @@ export function App() {
   );
 
   /** The content the server last confirmed, so we never save a no-op. */
-  const savedContent = useRef('');
 
   /** Lets ⌘F open the sheet's find panel from anywhere in the app. */
   const editorRef = useRef<EditorHandle>(null);
@@ -275,27 +297,6 @@ export function App() {
     setSettings((current) => ({ ...current, ...changes }));
     const saved = await api.saveSettings(changes).catch(() => undefined);
     if (saved) setSettings(saved);
-  }, []);
-
-  const refreshSheets = useCallback(async () => {
-    const list = await api.listSheets({
-      ...(query && { query }),
-      ...(viewingTrash && { trashed: true }),
-    });
-    setSheets(list);
-    return list;
-  }, [query, viewingTrash]);
-
-  const openSheet = useCallback(async (id: string) => {
-    const sheet = await api.getSheet(id);
-    setTitle(sheet.title);
-    setContent(sheet.content);
-    setVersion(sheet.version);
-    setSheetOwner(sheet.owner);
-    savedContent.current = sheet.content;
-    setConflict(null);
-    setStatus('idle');
-    return sheet;
   }, []);
 
   // First load: settings, folders, then whichever sheet a share link asked
@@ -520,81 +521,6 @@ export function App() {
     const timer = setInterval(refreshListSoon, FALLBACK_POLL_MS);
     return () => clearInterval(timer);
   }, [live, refreshListSoon]);
-
-  const save = useCallback(
-    async (
-      changes: { title?: string; content?: string; folderId?: string | null },
-      useVersion = version,
-    ) => {
-      if (!activeId) return;
-      setStatus('saving');
-      try {
-        const sheet = await api.saveSheet(activeId, changes, useVersion);
-        setVersion(sheet.version);
-        savedContent.current = sheet.content;
-        setTitle(sheet.title);
-        setStatus('saved');
-        setConflict(null);
-        void refreshSheets();
-      } catch (cause) {
-        if (cause instanceof ConflictError) {
-          setConflict(cause.current);
-          setStatus('error');
-          return;
-        }
-        setError(describe(cause));
-        setStatus('error');
-      }
-    },
-    [activeId, version, refreshSheets],
-  );
-
-  /**
-   * The current `save`, reachable from the autosave timer below.
-   *
-   * `save` is remade whenever the version changes and whenever the sidebar’s
-   * query does, since it refreshes the list. An effect that listed it among
-   * its dependencies would therefore tear down its timer and start it again
-   * on every keystroke in the search box — pushing an unsaved sheet’s save out
-   * by however long someone spent typing somewhere else entirely.
-   */
-  const saveRef = useRef(save);
-  saveRef.current = save;
-
-  useEffect(() => {
-    if (!activeId || !lock.granted || conflict) return;
-    if (content === savedContent.current) return;
-    setStatus('unsaved');
-    // Deliberately not depending on `save`: the debounce belongs to the thing
-    // being debounced, which is the content and the guards around saving it.
-    const handle = setTimeout(() => void saveRef.current({ content }), AUTOSAVE_DELAY_MS);
-    return () => clearTimeout(handle);
-  }, [content, activeId, lock.granted, conflict]);
-
-  /**
-   * Resolves a conflict by keeping the server's copy as a sheet of its own.
-   *
-   * The copy is made *before* ours overwrites it, so a failure to create it
-   * leaves the server's version where it is rather than destroying it on the
-   * way to preserving it. It goes in the same folder, since that is where
-   * someone will look for it.
-   */
-  const keepBoth = useCallback(async () => {
-    if (!conflict || !activeId) return;
-    try {
-      const folderId = sheets.find((sheet) => sheet.id === activeId)?.folderId ?? null;
-      const copy = await api.createSheet(
-        `${title || 'Untitled'} (conflicted copy)`,
-        conflict.content,
-        folderId,
-      );
-      await save({ content }, conflict.version);
-      await refreshSheets();
-      setNotice(`The server’s version is kept as “${copy.title}”. Nothing was lost.`);
-    } catch (cause) {
-      setError(describe(cause));
-    }
-  }, [conflict, activeId, sheets, title, content, save, refreshSheets]);
 
   const createSheet = useCallback(async () => {
     try {
@@ -1248,13 +1174,7 @@ export function App() {
           mine={content}
           theirs={conflict.content}
           onKeepMine={() => void save({ content }, conflict.version)}
-          onTakeTheirs={() => {
-            setContent(conflict.content);
-            setVersion(conflict.version);
-            savedContent.current = conflict.content;
-            setConflict(null);
-            setStatus('idle');
-          }}
+          onTakeTheirs={takeTheirs}
           onKeepBoth={() => void keepBoth()}
         />
       )}
