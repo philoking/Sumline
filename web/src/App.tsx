@@ -646,13 +646,27 @@ export function App() {
     [activeId, version, refreshSheets],
   );
 
+  /**
+   * The current `save`, reachable from the autosave timer below.
+   *
+   * `save` is remade whenever the version changes and whenever the sidebar’s
+   * query does, since it refreshes the list. An effect that listed it among
+   * its dependencies would therefore tear down its timer and start it again
+   * on every keystroke in the search box — pushing an unsaved sheet’s save out
+   * by however long someone spent typing somewhere else entirely.
+   */
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
   useEffect(() => {
     if (!activeId || !lock.granted || conflict) return;
     if (content === savedContent.current) return;
     setStatus('unsaved');
-    const handle = setTimeout(() => void save({ content }), AUTOSAVE_DELAY_MS);
+    // Deliberately not depending on `save`: the debounce belongs to the thing
+    // being debounced, which is the content and the guards around saving it.
+    const handle = setTimeout(() => void saveRef.current({ content }), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(handle);
-  }, [content, activeId, lock.granted, conflict, save]);
+  }, [content, activeId, lock.granted, conflict]);
 
   /**
    * Resolves a conflict by keeping the server's copy as a sheet of its own.
