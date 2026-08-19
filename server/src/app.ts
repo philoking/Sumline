@@ -88,38 +88,52 @@ const MAX_EVALUATE_LINES = 1_000;
 /** The cookie naming whose space this browser is working in. */
 export const USER_COOKIE = 'webcalc_user';
 
-/** Returned by `readColor` for a value it will not store. */
-const INVALID = Symbol('invalid colour');
+/** Returned by a shape check for a value it will not store. */
+const INVALID = Symbol('invalid setting');
 
 /**
- * Checks a colour-coding token on its way in.
+ * Builds a check on the shape of a free-text setting, and nothing more.
  *
- * The server never interprets the token — it reaches the browser as part of a
- * class name and the stylesheet decides what it looks like. So what matters
- * here is the charset, not the membership: a name outside this alphabet could
- * escape the class attribute, while an unknown-but-harmless name simply
- * matches no rule and shows no colour. Keeping the palette itself in the web,
- * where the shades live, avoids two lists that have to be kept in step.
+ * Three of them arrive that way — a colour token, a number region, a zone name
+ * — and all three are checked for their charset rather than their membership,
+ * for one reason: each list of valid values lives somewhere this file does not
+ * depend on. The palette is in the web, with the shades it decides; the regions
+ * and the zone table are in the engine, which the server does not depend on at
+ * runtime. Checking membership here would mean a second copy of each, kept in
+ * step by hand.
+ *
+ * A well-formed name nobody recognises is harmless in all three cases: the
+ * stylesheet matches no rule and shows no colour, and the engine coerces what
+ * it does not know back to its default — the number region it started with, the
+ * reader's own zone. What the shape is protecting against is narrower and real:
+ * a colour token reaches the browser inside a class name, so a value outside
+ * its alphabet could escape the attribute.
+ *
+ * Trimmed before testing, all three, a trailing space being a typo rather than
+ * a different setting.
  */
+const shaped =
+  (pattern: RegExp) =>
+  (value: unknown): string | typeof INVALID => {
+    if (typeof value !== 'string') return INVALID;
+    const name = value.trim();
+    return pattern.test(name) ? name : INVALID;
+  };
+
+/** An alphabet safe to put in a class name, since that is where it ends up. */
+const readColorName = shaped(/^[a-z]{2,12}$/);
+
+/** As above, except that nothing at all means no colour rather than a bad one. */
 function readColor(value: unknown): string | null | typeof INVALID {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') return INVALID;
-  return /^[a-z]{2,12}$/.test(value) ? value : INVALID;
+  return readColorName(value);
 }
 
-/**
- * Checks a number-region token on its way in.
- *
- * Shape, not membership — the same call as `readColor` above and for the same
- * reason. The list of regions lives in the engine, which the server does not
- * depend on at runtime, so validating membership here would mean a second copy
- * to keep in step. An unrecognised-but-well-formed name is harmless: the engine
- * coerces anything it does not know back to its default.
- */
-function readRegion(value: unknown): string | typeof INVALID {
-  if (typeof value !== 'string') return INVALID;
-  return /^[a-z]{2,20}(?:-[a-z]{2,20})?$/.test(value) ? value : INVALID;
-}
+/** A name like `western-europe`. */
+const readRegion = shaped(/^[a-z]{2,20}(?:-[a-z]{2,20})?$/);
+
+/** An IANA name like `Europe/Berlin`, or one of the aliases the engine reads. */
+const readZone = shaped(/^[A-Za-z][A-Za-z0-9_+\-/ ]{1,60}$/);
 
 /**
  * The settings that change what a sheet computes, rather than how it looks.
@@ -154,20 +168,6 @@ const COMPUTED_HELP: Record<string, string> = {
   region: 'region must be a name like western-europe, or null to inherit',
   zone: 'zone must be a name like Europe/Berlin, or null to inherit',
 };
-
-/**
- * Checks a timezone name on its way in.
- *
- * Shape, not membership, for the third time and the same reason: the zone table
- * lives in the engine, which this server does not depend on at runtime. An
- * unrecognised-but-well-formed name is harmless — the engine falls back to the
- * reader's own zone, which is what it would have used anyway.
- */
-function readZone(value: unknown): string | typeof INVALID {
-  if (typeof value !== 'string') return INVALID;
-  const name = value.trim();
-  return /^[A-Za-z][A-Za-z0-9_+\-/ ]{1,60}$/.test(name) ? name : INVALID;
-}
 
 /**
  * Reads the space cookie off a request, without judging it.
