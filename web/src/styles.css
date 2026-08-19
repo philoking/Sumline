@@ -1127,7 +1127,13 @@ button.danger-button:disabled {
     0 0 0 4px var(--tint);
 }
 
-.palette-clear {
+/* `color-palette`, not `palette`: the command palette below owns that name and
+   its whole family of children. This one is a swatch grid inside the sheet's
+   edit flyout, and when the two shared a name it inherited `position: fixed`,
+   a 560px width and a panel of its own — a picker that tore itself out of the
+   menu and spread eight swatches across the middle of the sheet. Two unrelated
+   things called a palette is the whole of the bug; only the name fixes it. */
+.color-palette-clear {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -1141,12 +1147,12 @@ button.danger-button:disabled {
   font-size: 11.5px;
 }
 
-.palette-clear:hover:not(:disabled) {
+.color-palette-clear:hover:not(:disabled) {
   color: var(--text);
   background: var(--hover);
 }
 
-.palette-clear:disabled {
+.color-palette-clear:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -1912,6 +1918,8 @@ button.danger-button:disabled {
 /* Placed high rather than centred: the list grows downwards as you type, and a
    box pinned to the middle of the window would shift under the reader's eyes
    with every keystroke. */
+/* The command palette — Cmd+K. Named before the sheet colour picker existed;
+   that one is `color-palette` above, and the two must not converge again. */
 .palette {
   position: fixed;
   z-index: 21;

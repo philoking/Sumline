@@ -31,7 +31,7 @@ function ColorPalette({
   onPick(color: string | null): void;
 }) {
   return (
-    <div className="palette" role="group" aria-label="Colour">
+    <div className="color-palette" role="group" aria-label="Colour">
       <div className="swatches">
         {SHEET_COLORS.map((color) => (
           <button
@@ -47,7 +47,7 @@ function ColorPalette({
       </div>
       <button
         type="button"
-        className="palette-clear"
+        className="color-palette-clear"
         disabled={current === null}
         onClick={() => onPick(null)}
       >
