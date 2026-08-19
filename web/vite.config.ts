@@ -16,6 +16,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // No source map in the built bundle. It was six megabytes — several times
+    // the bundle it describes — and every one of them sits in the runtime
+    // image. Nothing is lost by leaving it out: `npm run dev` serves original
+    // sources through esbuild regardless of this setting, so the map only ever
+    // helped someone opening devtools against a deployed instance, and the
+    // sources it would have shown them are in this repository.
+    sourcemap: false,
   },
 });
