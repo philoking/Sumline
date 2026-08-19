@@ -14,8 +14,7 @@ name: Deploy
 #
 # The compose project name is pinned with `-p sumline` so the volume keeps a
 # stable name. Changing either from here on would silently start the app on an
-# empty database — which is exactly what the rename from webcalc did, on
-# purpose and with the sheets of that instance declared expendable first.
+# empty database rather than failing, which is why both are fixed.
 
 on:
   push:
@@ -26,6 +25,9 @@ on:
     paths-ignore:
       - "docs/**"
       - "LICENSE"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "CODE_OF_CONDUCT.md"
   workflow_dispatch:
 
 # Two pushes landing within a run of each other would otherwise put two
@@ -61,32 +63,6 @@ jobs:
         run: |
           DIR="$HOME/sumline"
           mkdir -p "$DIR"
-
-          # One-time changeover from the instance this replaced, and the only
-          # thing in the repository that still says the old name. Delete this
-          # block once a deploy has run: it does nothing on a host where there
-          # is no `~/webcalc` left to find.
-          #
-          # It ran as the `webcalc` compose project on the same port, so it has
-          # to go before the new stack can bind — otherwise the deploy fails on
-          # something that looks unrelated to a rename.
-          #
-          # Its sheets go with it, which was the decision that allowed the
-          # rename to take the storage names too. Its *configuration* does not:
-          # the password and the zone are settings somebody chose, they live
-          # only on this host, and there is no copy of them in the repository.
-          # So the env file moves across with its one renamed key.
-          OLD="$HOME/webcalc"
-          if [ -d "$OLD" ]; then
-            if [ -f "$OLD/.env" ] && [ ! -f "$DIR/.env" ]; then
-              sed 's/^WEBCALC_PASSWORD=/SUMLINE_PASSWORD=/' "$OLD/.env" > "$DIR/.env"
-            fi
-            if [ -f "$OLD/docker-compose.prod.yml" ]; then
-              docker compose -p webcalc -f "$OLD/docker-compose.prod.yml" down --volumes || true
-            fi
-            rm -rf "$OLD"
-          fi
-          docker rm -f webcalc 2>/dev/null || true
 
           cp docker-compose.prod.yml "$DIR/"
           cd "$DIR"
