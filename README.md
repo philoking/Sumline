@@ -937,7 +937,7 @@ Requires Node 22.5 or newer.
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 870 engine tests, 250 server tests, 38 web tests
+npm test        # 1,110 engine tests, 271 server tests, 53 web tests
 npm run build   # build all three workspaces
 ```
 
