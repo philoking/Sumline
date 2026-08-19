@@ -4,8 +4,7 @@ This is a small project. The whole standard is: be decent to the people you are 
 
 In practice that means assuming the person you are replying to is acting in good faith, keeping
 criticism aimed at the code rather than at whoever wrote it, and accepting that a decision can go
-against you without that being an injustice — [docs/decisions.md](docs/decisions.md) exists so
-those arguments are had once, in the open, with reasons.
+against you without that being an injustice, so long as a reason was given.
 
 Not welcome, and the list is not exhaustive: harassment of any kind, insults, personal or
 political attacks, publishing anyone's private information, and sexual attention or imagery

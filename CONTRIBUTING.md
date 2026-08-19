@@ -1,23 +1,13 @@
 # Contributing
 
-Sumline is a small project with a strong opinion about what it is, so the most useful thing
-before writing code is to know which changes are welcome and which have already been argued
-about.
+Sumline is a small project with a strong opinion about what it is. Small changes and bug fixes
+are welcome as pull requests; for anything larger, open an issue first, because some of what
+looks missing is missing on purpose.
 
-## Read `docs/decisions.md` first
-
-[docs/decisions.md](docs/decisions.md) records what Soulver does that this deliberately does
-not, split into **declined**, **deferred**, **reversed** and **reachable but not supported**.
-The distinction is the point of the file:
-
-- **Deferred** is an open door. The reasoning still holds, but the answer could change, and a
-  good argument or a good patch is how it changes.
-- **Declined** is a decision. It can still be revisited, but the conversation starts with the
-  reasoning already written down rather than from scratch — open an issue before building it.
-- **Reachable** is neither: it works today without being promised, and may stop.
-
-New syntax, in particular, is drawn from Soulver's own documented behaviour rather than invented.
-That is a declined item, and it is the one most likely to catch someone out.
+The one most likely to catch you out: **new syntax is drawn from Soulver's own documented
+behaviour rather than invented.** Guessing at what someone might type means a rule to maintain
+for every guess, and rules that collide with each other. If Soulver documents a phrasing, it is
+fair game; if nobody does, it needs an issue before it needs a patch.
 
 ## Getting set up
 
@@ -80,7 +70,7 @@ linter config to run; follow the surrounding file.
 
 ## Pull requests
 
-Say what changes and why. If it touches something `docs/decisions.md` covers, say which entry and
-what moved it. Keep `npm test` and `npm run typecheck` green — CI runs both, plus the full build.
+Say what changes and why. Keep `npm test` and `npm run typecheck` green — CI runs both, plus the
+full build.
 
 Security problems go to [SECURITY.md](SECURITY.md) rather than to a public pull request.
