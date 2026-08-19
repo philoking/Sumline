@@ -66,12 +66,10 @@ license. That single decision is where nearly every difference below comes from.
 |  | Sumline | Soulver |
 | --- | --- | --- |
 | Runs on | Any browser, against a container you host | Native apps for Mac, iPhone and iPad |
-| Getting it | `git clone` and `docker compose up`, MIT licensed | A paid one-time purchase, or Setapp |
 | Where sheets live | On the server, in one SQLite volume | In a `.sheetbook` file on the device |
 | Between devices | Every browser reaches one instance, so there is nothing to sync | iCloud sync across your own Apple devices |
 | More than one person | What it is built for | One person, across their own devices |
 | The engine | math.js, evaluated in the browser | Soulver's own |
-| Source | Open | Closed |
 
 Because it is a server rather than a document, it gains things a single-user app has no reason
 to have: **spaces** (separate sets of sheets, settings and global variables, for two people or
