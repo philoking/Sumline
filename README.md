@@ -7,8 +7,8 @@ A notepad calculator you run yourself, in the browser.
 Type in plain language on the left; answers appear in a column on the right, updating as you
 type. Units, currencies, percentages, dates, variables and running totals all work the way you'd
 write them on paper. It is an open-source take on the idea [Soulver](https://soulver.app/)
-popularised — with the differences that it runs in Docker, is reachable from any browser on your
-network, and keeps every sheet in one shared place instead of on one Mac.
+popularized, built to run in Docker and to be reachable from any browser on your network, with
+every sheet kept in one shared place instead of on one Mac.
 
 ```
 groceries $86.40 #home              $86.40
@@ -17,6 +17,112 @@ electricity $94.10 #home            $94.10
 sum                                $193.30
 sum #home                          $180.50
 ```
+
+## How this differs from Soulver
+
+Sumline is an independent implementation of the notepad calculator, an idea
+[Soulver](https://soulver.app/) created and refined. Soulver's own
+[documentation](https://documentation.soulver.app/) was the specification this was built against,
+and the credit belongs there: see [Acknowledgment](#acknowledgment). What follows is the practical
+comparison. The reasoning behind each omission is recorded in
+[docs/decisions.md](docs/decisions.md).
+
+### The shape of the two
+
+|  | Sumline | Soulver |
+| --- | --- | --- |
+| Runs on | Any browser, against a container you host | Native apps for Mac, iPhone and iPad |
+| Getting it | `git clone` and `docker compose up`, MIT licensed | A paid one-time purchase, or Setapp, after a trial |
+| Where sheets live | On the server, in one SQLite volume shared by everyone | In a `.sheetbook` library file on the device |
+| Between devices | Every browser reaches the same instance, so there is nothing to sync | iCloud sync across your own Apple devices |
+| More than one person | What it is built for: spaces, share links, live updates and editing locks | One person, across their own devices |
+| The engine | math.js, evaluated in the browser | Soulver's own, also licensed as SoulverCore |
+| Source | Open, and the reference panel is generated from the test suite | Closed |
+
+The trade is straightforward. Soulver is a polished native app you buy and open. Sumline asks you
+to run a container, and in exchange the sheets sit in one place every browser on your network can
+reach.
+
+### What Sumline adds
+
+Most of these exist because it is a shared server application rather than a document on one
+machine:
+
+- **Spaces.** A separate set of sheets, folders, trash, settings and global variables. Useful for
+  two people on one instance, and just as useful for one person keeping Work and Personal apart.
+  It is not a login, and does not pretend to be: see [Spaces](#spaces).
+- **Live sheets.** Every browser holds an event stream open, so a sheet created, renamed, colored
+  or moved anywhere appears everywhere at once, and a read-only view follows the editor keystroke
+  by keystroke.
+- **An editing lock, with a conflict panel behind it.** Opening a sheet someone else has open
+  gives you a read-only view and a **Take over editing** button. The real protection is a version
+  check on save, which shows **which lines differ** and offers **Keep both**, so nothing is
+  discarded.
+- **Share links that do not rot.** `/s/kitchen-remodel`, named from the title. Every slug a sheet
+  has ever held keeps pointing at it, so a link you already sent still works after a rename.
+- **Folders that shorten the list.** A folder is a heading you can collapse rather than a filter
+  beside the list, so filing something makes the sidebar shorter, and a shut folder says how many
+  sheets are inside. Searching flattens the tree, since a collapsed folder would otherwise hide
+  matches.
+- **Color coding.** Eight colors for sheets and folders, shown as a bar down the leading edge of
+  the row. A color is stored as a name rather than a value, so it stays right in both light and
+  dark. Coloring counts as filing rather than editing, so it leaves the modified time and the
+  version alone, and tagging a sheet cannot collide with someone else editing it.
+- **Select lines to total them.** The figure in the corner cycles between total, average, count
+  and median. Select more than one line and the same statistic appears for those lines alone,
+  while the corner keeps showing the whole sheet, so you can read one against the other.
+- **A command palette.** `Mod`+`K` searches sheet titles and the text inside every sheet in one
+  list, because the answer to either question regularly turns out to be the other one.
+- **A trash.** Deleting sets a sheet aside instead of destroying it. Restore it, or empty the
+  trash to be rid of it.
+- **An order you choose.** Sheets sort by whatever changed last until you drag one, which switches
+  that space to a custom order seeded from what was already on screen. Flipping back to recency to
+  find something does not throw your arrangement away.
+- **Region and timezone per space.** Both change what a sheet *computes*, so they belong to the
+  space rather than to a browser. By default anything meaning "here" resolves in the reader's own
+  timezone, so two people in different countries each get their own `today`.
+- **Global variables, including instance-wide ones.** A `day rate` or a `vat` every sheet can use
+  without declaring it, with an **Everywhere** tier defined once for every space at once.
+- **An HTTP API and a CLI.** `POST /api/evaluate` and the `sumline` command answer a line the way
+  a sheet would, resolving the caller's own globals so a launcher and a sheet cannot disagree
+  about what `day rate * 3` means.
+- **A reference panel generated from the golden tests.** Press `?`. Every example shown is a
+  passing test, so the documentation cannot claim behavior the engine lacks.
+- **Sheets that are plain text all the way down.** Formatting picked from the answer menu is
+  written into the line as text (`to 2 dp`, `in full`) rather than stored invisibly against it, so
+  it survives being copied, exported, or having its lines moved around.
+- **An optional shared password**, export to text, Markdown and CSV, a print stylesheet that lays
+  the answer column beside the text on paper, and a theme you can set from a link.
+
+### What Soulver has that this does not
+
+None of it was forgotten. [docs/decisions.md](docs/decisions.md) records which were declined and
+which are only deferred:
+
+- **Conditionals and comparisons.** Declined. A sheet that can branch is no longer something you
+  read top to bottom and trust.
+- **Trip planning and time points.** Declined. Soulver marks a line as a time point through a
+  contextual menu, which is state living outside the text. Sheets here are plain text, and that is
+  the property making copy, export, search and conflict diffing work at all.
+- **Live weather, stock prices, and Wolfram|Alpha answers.** Declined, because every usable
+  provider needs an API key, and that would cost the guarantee that the container works with no
+  internet at all. Exchange rates and public holidays are the only two network dependencies, both
+  picked for needing no key, and both fall back to bundled data. Historical exchange rates are
+  supported for the same reason.
+- **Named financial functions.** Deferred. A loan repayment answers today if you write the formula
+  out, and the formula is in the reference, but there is no `pmt()` to call.
+- **Custom units.** Soulver lets you define your own in its settings. Here the unit list is
+  whatever the engine ships with.
+- **Cooking conversions needing an ingredient's density.** Deferred.
+- **Everything native.** Alfred and Raycast, macOS Services, URL schemes, Soulver Studio, and the
+  iPhone and iPad apps. A server offers an HTTP API and a CLI instead.
+
+### Where the two agree on purpose
+
+The phrasings this engine accepts are the ones with worked examples in Soulver's documentation,
+and inventing further ones was declined rather than overlooked. So unit assimilation, mixed
+currencies answering in the last one named, `sum` closing a section, `prev` and `line N`, and
+SI-style abbreviation above 100,000 all behave the way Soulver established.
 
 ## Quick start
 
@@ -29,16 +135,16 @@ docker compose up -d --build
 Open <http://localhost:8422>. Sheets are stored in the `sumline-data` volume and survive
 restarts and rebuilds.
 
-Date maths resolves in **your browser's** timezone, not the container's, so `today` is your today
+Date math resolves in **your browser's** timezone, not the container's, so `today` is your today
 wherever the instance is hosted. Nothing needs setting for that, though a space can pin a zone of
-its own — see [Time zones and the clock](#time-zones-and-the-clock).
+its own. See [Time zones and the clock](#time-zones-and-the-clock).
 
 ## Syntax
 
-Everything below is a line you can type. Anything the engine doesn't recognise is left as plain
+Everything below is a line you can type. Anything the engine doesn't recognize is left as plain
 text with no answer, so a sheet can mix notes and sums freely.
 
-The same reference is **built into the app** — press `?`, click the `?` button, or open
+The same reference is **built into the app**: press `?`, click the `?` button, or open
 `/?help`. Clicking any example there drops it into your sheet.
 
 ### Arithmetic
@@ -81,7 +187,7 @@ Number conventions follow a **region**, set per space in Space settings:
 Underscores group digits in every region, so `1_000_000` works wherever you are.
 
 The region decides how a sheet is **read**, not only how its answers look. `1.234 + 1` is
-`1.235` under Western Europe and `2.234` under North America — so changing it changes what
+`1.235` under Western Europe and `2.234` under North America, so changing it changes what
 sheets you have already written compute, which is why it belongs to a space rather than to a
 browser.
 
@@ -96,7 +202,7 @@ browser.
 | `$490 rounded to nearest hundred` | `$500.00` |
 | `21 rounded up to nearest 5` | `25` |
 
-`to N dp` is cosmetic — totals and line references still use the unrounded value. `to nearest N`
+`to N dp` is cosmetic: totals and line references still use the unrounded value. `to nearest N`
 genuinely changes the number.
 
 ### Functions and constants
@@ -118,7 +224,7 @@ phrasing the rest of the engine accepts.
 
 ### Trigonometry
 
-Angles are radians unless you write `deg`, which is an ordinary unit here — so it converts and
+Angles are radians unless you write `deg`, which is an ordinary unit here, so it converts and
 composes like any other.
 
 | You type | You get |
@@ -142,7 +248,7 @@ composes like any other.
 | `~5` | `-6` |
 
 A literal in another base reads back as a decimal; `hex`, `bin` and `oct` write one out. `255 in hex`
-does **not** work — `in` is the unit-conversion word, so that line reads as inches.
+does **not** work: `in` is the unit-conversion word, so that line reads as inches.
 
 ### Percentages
 
@@ -162,7 +268,7 @@ does **not** work — `in` is the unit-conversion word, so that line reads as in
 | `20% as dec` | `0.2` |
 
 A percentage is a real value, so it survives arithmetic. Order matters and is not an accident:
-`50 + 20%` grows fifty by a fifth, while `20% + 50` is percentage maths.
+`50 + 20%` grows fifty by a fifth, while `20% + 50` is percentage math.
 
 ### Fractions and multipliers
 
@@ -192,7 +298,7 @@ A percentage is a real value, so it survives arithmetic. Order matters and is no
 A bare number takes on the unit beside it, which Soulver calls unit assimilation.
 
 A conversion at the end of a line applies to the whole line, so `100 km * 2 in miles` converts the
-product rather than the `2`. Arithmetic written *after* a conversion is the other way round —
+product rather than the `2`. Arithmetic written *after* a conversion is the other way around:
 `100 km in miles * 2` reads the `miles * 2` as the target and is refused, because there is no
 reading of it that is obviously the one you meant. Bracket that case: `(100 km in miles) * 2`.
 
@@ -236,7 +342,7 @@ and warns that they could not be refreshed.
 Add `on <date>` to a conversion and it uses the rate published that day. Every date form the
 [Dates](#dates) section lists works here.
 
-A weekend or a public holiday has no published rate, so the last day before it is used — which is
+A weekend or a public holiday has no published rate, so the last day before it is used, which is
 why `on 2020-01-01` answers with 31 December 2019 data. Each date is fetched once and kept for
 good, since a past rate never changes; a date already asked about therefore keeps working with no
 network at all.
@@ -272,7 +378,7 @@ without a year picks whichever year puts it nearest today, so in December `Janua
 January. ISO dates (`2026-08-15`) are unambiguous; slashes read as month/day/year and dots as the
 European day.month.year.
 
-A slash or dot date standing on its own needs a four-digit year — `12/25/2026` is Christmas,
+A slash or dot date standing on its own needs a four-digit year: `12/25/2026` is Christmas,
 where `3/4/5` stays chained division, because nothing distinguishes the two otherwise. A short
 year is still read as one where the rest of the line has already established a date, as in
 `12/25/26 + 3 days`.
@@ -289,10 +395,10 @@ year is still read as one where the rest of the line has already established a d
 Public holidays are excluded. The list comes from [Nager.Date](https://date.nager.at/), refreshed
 weekly and cached. With no network it falls back to a small bundled set of fixed-date holidays.
 
-**The country is instance-wide**, set by `HOLIDAY_COUNTRY` — a two-letter code like `DE`. Every
-space on the instance does workday maths against the same calendar; a space cannot pin its own.
+**The country is instance-wide**, set by `HOLIDAY_COUNTRY`, a two-letter code like `DE`. Every
+space on the instance does workday math against the same calendar; a space cannot pin its own.
 The reference panel reports how many holidays actually loaded, because a code the provider does
-not cover would otherwise show up much later as workday maths quietly counting a holiday.
+not cover would otherwise show up much later as workday math quietly counting a holiday.
 
 ### Clock times, timespans and timecode
 
@@ -311,7 +417,7 @@ not cover would otherwise show up much later as workday maths quietly counting a
 | `00:30:10:00 @ 24 fps in frames` | `43,440 frames` |
 
 A laptime needs two colons and a timecode three, which is how they are told apart from a clock
-time. The compact `3h 5m 10s` form needs at least two components, so a lone `5m` stays five metres.
+time. The compact `3h 5m 10s` form needs at least two components, so a lone `5m` stays five meters.
 
 A timecode that names no frame rate is read at 24 fps. Writing `@ 30 fps` on the line changes it.
 
@@ -332,24 +438,24 @@ the platform's own timezone database.
 
 #### Time zones and the clock
 
-Anything that means "here" — `today`, `now`, `4pm`, `current timestamp`, and the offset in
-`as iso8601` — resolves in **the browser's** timezone. Evaluation runs entirely client-side, so
+Anything that means "here" (`today`, `now`, `4pm`, `current timestamp`, and the offset in
+`as iso8601`) resolves in **the browser's** timezone. Evaluation runs entirely client-side, so
 the machine hosting the container never enters into it.
 
 That is usually what you want, and it is why nothing needs configuring: two people in different
 countries reading the same shared instance each get their own `today`, and a laptop that travels
 follows along by itself.
 
-It also means the container's `TZ` does **not** decide date maths, whatever it is set to. It sets
-the container's own clock — log timestamps, and which years of public holidays get fetched — and
+It also means the container's `TZ` does **not** decide date math, whatever it is set to. It sets
+the container's own clock (log timestamps, and which years of public holidays get fetched) and
 nothing else.
 
-**A space can pin a zone** when that default is wrong for it — a client in another country whose
+**A space can pin a zone** when that default is wrong for it: a client in another country whose
 sheets should resolve there no matter who opens them. Set it in Space settings, as an IANA name
 (`Europe/Berlin`) or any place name a line would accept (`Berlin`, `Tokyo`). Leave it empty and the
 reader's own zone applies, which stays the default.
 
-With a zone set, everything meaning "here" moves to it — `today`, `now`, `4pm`, week numbers,
+With a zone set, everything meaning "here" moves to it: `today`, `now`, `4pm`, week numbers,
 workday counts. Three things deliberately do not:
 
 - **Timestamps stay absolute.** `current timestamp` is the same number in every zone, because it
@@ -375,7 +481,7 @@ in between. A **duration** is an amount of time, so it counts hours. The morning
 forward is 23 hours long and the evening they go back is 25, which is why twenty-four hours can
 land at 1 am or at 11 pm the same evening.
 
-Which zone's clocks is the space's, not the reader's — so a sheet pinned to New York does New York's
+Which zone's clocks is the space's, not the reader's, so a sheet pinned to New York does New York's
 daylight saving from anywhere.
 
 ### Timestamps
@@ -403,7 +509,7 @@ written by `as iso8601` follow **the browser's** timezone. The examples above as
 
 ### Notes, labels and comments
 
-Four ways to keep text out of the maths:
+Four ways to keep text out of the math:
 
 | Form | Example |
 | --- | --- |
@@ -413,7 +519,7 @@ Four ways to keep text out of the maths:
 | Quotes | `Boeing "747" is $386.8M` |
 
 Loose prose around a sum is ignored too, so `I spent $128 + $45 on clothes` answers `$173.00`.
-A colon marks a **label**, not a variable — use `=` to declare one.
+A colon marks a **label**, not a variable: use `=` to declare one.
 
 ### Variables, references and totals
 
@@ -425,7 +531,7 @@ line 1 + 100               1,600
 ```
 
 - Variable names can be several words: `take home pay = 4200`.
-- `prev` is the line above; `line N` is any line by number — the gutter numbers on the left tell
+- `prev` is the line above; `line N` is any line by number. The gutter numbers on the left tell
   you which is which. Click an answer to insert a reference to it.
 - `sum` (or `total` / `subtotal`) adds every value line since the last heading, then closes that
   section so stacked totals don't double-count. `average` and `count` work the same way.
@@ -444,7 +550,7 @@ line 1 + 100               1,600
 | `Mod`+`\` | Insert a reference to the line above |
 | `Mod`+`T` | Turn the current blank line into a subtotal |
 | `Mod`+`/` | Comment the line out |
-| `Mod`+`Shift`+`U` | Unlink — freeze this line's references at their values |
+| `Mod`+`Shift`+`U` | Unlink: freeze this line's references at their values |
 | `Mod`+`Shift`+`N` | New sheet |
 | `Mod`+`F` | Search sheets |
 
@@ -462,12 +568,12 @@ not survive being copied, exported, or having its lines moved around.
 
 ### Highlighting
 
-The sheet is coloured by what the engine makes of it, not by a set of patterns the editor keeps
+The sheet is colored by what the engine makes of it, not by a set of patterns the editor keeps
 of its own: numbers, units and currencies, variables and references, operators, tags, headings
 and comments each get a shade, and anything left plain is text the engine is ignoring.
 
-That makes the colour a **reading of the line**, which is the useful part. A word you meant as a
-note but that turns out to be a unit is coloured as a unit. `128 GB` inside a label stays plain,
+That makes the color a **reading of the line**, which is the useful part. A word you meant as a
+note but that turns out to be a unit is colored as a unit. `128 GB` inside a label stays plain,
 because a label is never evaluated. And a variable that shares a name with a unit shows you
 which one won:
 
@@ -477,7 +583,7 @@ hours * 2                    13          hours is the variable
 2 hours + 30 minutes          2.5 hours  hours is the unit
 ```
 
-The palette is deliberately quiet — five close-toned colours, with numbers keeping the blue the
+The palette is deliberately quiet: five close-toned colors, with numbers keeping the blue the
 sheet has always used for what you type. It follows the light and dark appearances, and prints
 as plain black.
 
@@ -489,13 +595,13 @@ All of it is stored per space, so it follows you between browsers.
 
 Under **Number format**:
 
-- **Precision** — how many decimal places an answer may show: 0–5, 10 or 15, defaulting to 10.
+- **Precision** sets how many decimal places an answer may show: 0-5, 10 or 15, defaulting to 10.
   A ceiling rather than a width, so `20.50` still answers `20.5`. Large numbers spend the
   available digits on the whole part first, so `1,234,567.89` stays itself rather than
   becoming `1,234,567.8899999999`.
-- **Thousands separators** — `1,234` against `1234`. The decimal point stays the region's own.
-- **Notation for large numbers** — `300k` against `300,000`.
-- **Currency rounding** — money held to its currency's usual decimals, so `$3.33` rather than
+- **Thousands separators**: `1,234` against `1234`. The decimal point stays the region's own.
+- **Notation for large numbers**: `300k` against `300,000`.
+- **Currency rounding**: money held to its currency's usual decimals, so `$3.33` rather than
   `$3.3333333333`, and no fraction on yen. A line that asks for `to 4 dp` still gets it: what
   is written in the sheet outranks a preference set in a menu.
 
@@ -506,25 +612,25 @@ can be hidden. Both choices persist across sheets and browsers.
 
 Under **View → Total options** are the two questions of what feeds it, both counted by default:
 
-- **Include variable declaration lines** — whether `monthly rent = 1500` counts like any other
+- **Include variable declaration lines**: whether `monthly rent = 1500` counts like any other
   value. Untick it for a sheet that declares a few amounts and then works with them, where
   counting the declarations reads high by exactly the sum of the things the answer was built
   from. A sheet that *is* a list of named amounts needs them counted, which is why it is a
   setting rather than a rule.
-- **Include referenced lines** — whether a line that a later line reads still counts on its own.
+- **Include referenced lines**: whether a line that a later line reads still counts on its own.
   Untick it and `10 / 20 / prev + 5` totals 35 rather than 55: the 20 counts once inside the 25
   instead of once there and once again by itself.
 
 **Select more than one line** and the same figure appears beside the selection, for those lines
 alone. It follows whichever statistic the corner is set to, so the two never disagree about what
-"the figure" means, and the corner keeps showing the whole sheet — the point is to read one
+"the figure" means, and the corner keeps showing the whole sheet, since the point is to read one
 against the other. Selecting inside a single line shows nothing: that line's answer is already
 sitting beside it.
 
 ### Sheets
 
 Sheets can be searched by title or content, and are moved to a **trash** when deleted rather
-than destroyed — restore them, or empty the trash to remove them for good. An untitled sheet
+than destroyed: restore them, or empty the trash to remove them for good. An untitled sheet
 names itself from its first line.
 
 ### Folders
@@ -540,40 +646,40 @@ Move a sheet in or out with the dropdown beside it. Deleting a folder keeps its 
 returns them to the top level.
 
 **Searching flattens the list.** Matches appear as one run regardless of folder, each naming the
-folder it lives in — a tree would hide matches inside collapsed folders, which would make search
+folder it lives in, because a tree would hide matches inside collapsed folders, which would make search
 lie about what it found. The trash is flat for the same kind of reason: it is not a place with
 structure.
 
 ### Order
 
 Sheets are listed with whatever changed last at the top. Drag one to put the list in your own
-order instead — or use **Move up** / **Move down** in the ✎ menu, which do the same thing from a
+order instead, or use **Move up** / **Move down** in the ✎ menu, which do the same thing from a
 keyboard, and are easier on a phone where the sidebar is an overlay.
 
 The first drag switches that space to a custom order, seeded from the order that was already on
-screen, so nothing jumps around the moment you touch it — the list simply stops rearranging
+screen, so nothing jumps around the moment you touch it; the list simply stops rearranging
 itself. A **Custom order** line then appears above the sheets with a way back to sorting by
 recency, and switching back does not throw the arrangement away: flip to recent to find
 something, flip back, and your order is still there.
 
 A sheet made after you arranged things has no place in that arrangement yet, so it appears at
-the top — the same place the recency order would have put it.
+the top, the same place the recency order would have put it.
 
 Each folder is its own run, and so is the top level: dragging inside a folder rearranges that
 folder and leaves everything outside it exactly where it was. Search results and the trash
 cannot be reordered, since neither is a list whose order means anything.
 
-### Colour coding
+### Color coding
 
-The ✎ on a sheet or a folder opens a small menu: rename, or pick one of eight colours. The
-colour shows as a bar down the leading edge of the row, and folders take the same eight.
+The ✎ on a sheet or a folder opens a small menu: rename, or pick one of eight colors. The
+color shows as a bar down the leading edge of the row, and folders take the same eight.
 
-Eight rather than more, because the point of a colour code is being read at a glance, and past
-about eight the hues start needing a second look. A colour is stored as a name rather than a
+Eight rather than more, because the point of a color code is being read at a glance, and past
+about eight the hues start needing a second look. A color is stored as a name rather than a
 value, so it follows the light and dark themes instead of being right in one and wrong in the
 other.
 
-Colouring a sheet does not count as changing it: it leaves the modified time and the version
+Coloring a sheet does not count as changing it: it leaves the modified time and the version
 alone, so a sheet does not jump to the top of the list for being filed, and tagging one cannot
 collide with someone else editing it.
 
@@ -589,7 +695,7 @@ sitting at. `?theme=light` (or `dark`, or `system`) sets it from a link.
 Press `?` for a searchable list of everything the calculator understands, grouped, with each
 example's answer beside it. Clicking one inserts it into the sheet.
 
-Its contents are **generated from the golden tests** — [`engine/src/examples.ts`](engine/src/examples.ts)
+Its contents are **generated from the golden tests**: [`engine/src/examples.ts`](engine/src/examples.ts)
 is imported both by [`engine/test/examples.test.ts`](engine/test/examples.test.ts), which asserts
 every answer shown, and by the UI that renders them. An example cannot claim something the engine
 doesn't do, because the same line is a passing test. Adding one to the docs means adding a test.
@@ -613,7 +719,7 @@ what it would otherwise inherit, so an unset field never leaves you guessing.
 
 An override is a decision, not a copy. Change the global value afterwards and the
 spaces that never overrode it follow along, while the one that did keeps what it
-chose. Choosing the **Global —** option puts a space back on the global value.
+chose. Choosing the **Global** option puts a space back on the global value.
 
 Region and timezone are per space rather than per browser because they change what
 a sheet *computes*: two browsers open on the same space must not disagree about
@@ -638,12 +744,12 @@ curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
 ```
 
 `GET /api/settings` returns the space's own keys, `shared` (the global tier) and
-`effective` (the two resolved) — computed server-side so the panel and the sheets
+`effective` (the two resolved), computed server-side so the panel and the sheets
 cannot disagree about which value is winning.
 
 ### Global variables
 
-Variables every sheet can use without declaring them — a `day rate`, a `vat`, a mileage rate.
+Variables every sheet can use without declaring them: a `day rate`, a `vat`, a mileage rate.
 
 Set them in **Space settings**, from the menu behind the initial in the top bar. Each row is a
 name and a value, with what it works out to shown beside it, so a typo is visible there rather
@@ -653,7 +759,7 @@ than discovered later in a sheet that quietly answers nothing.
 
 | Scope | For |
 | --- | --- |
-| **Everywhere** | Values true across the whole instance — a tax rate, a mileage rate, a home currency. Defined once instead of once per space. |
+| **Everywhere** | Values true across the whole instance: a tax rate, a mileage rate, a home currency. Defined once instead of once per space. |
 | **In this space** | Values that belong to this space alone, like a `day rate` that differs between Consulting and Teaching. |
 
 They resolve most-specific-first, so a sheet beats its space and a space beats Everywhere:
@@ -672,9 +778,9 @@ Everywhere value says so and names the value it displaced; the Everywhere variab
 *not* overridden are listed separately as still in effect, each with an **Override** button that
 copies the value in as the space's own. Nothing about which value wins is hidden.
 
-Two things worth knowing. The panel edits the space you are working in — to change another one's
+Two things worth knowing. The panel edits the space you are working in, so to change another one's
 own variables, switch to it first. And **Everywhere** reaches past your space, so on an instance with
-no password anyone who can open it can change those — which is the main thing
+no password anyone who can open it can change those, which is the main thing
 [`SUMLINE_PASSWORD`](#the-password-if-you-want-one) exists to close.
 
 Both scopes can also be set through the API, which is worth knowing for scripting an instance:
@@ -688,7 +794,7 @@ curl -X PUT http://localhost:8422/api/settings \
 
 **The cookie decides which space you are writing to**, and it is not optional on an instance with
 more than one: without it the request resolves to whichever space is listed first, so globals meant
-for `school` land in `work` and nothing reports a problem. `sumline_user` takes a space **id** —
+for `school` land in `work` and nothing reports a problem. `sumline_user` takes a space **id**:
 the lowercase, dashed form of its name, which is what `SPACES="Work,Personal"` derives and what
 the switcher sets in your browser.
 
@@ -709,7 +815,7 @@ it to:
 curl localhost:8422/api/settings -H 'cookie: sumline_user=teaching'
 ```
 
-The **Everywhere** scope has its own endpoint, and is deliberately *not* cookie-scoped — being
+The **Everywhere** scope has its own endpoint, and is deliberately *not* cookie-scoped, because being
 per-instance is the whole point of it:
 
 ```bash
@@ -719,11 +825,11 @@ curl -X PUT localhost:8422/api/settings/shared -H 'content-type: application/jso
 
 `GET /api/settings` returns three things: `globals`, this space's own; `sharedGlobals`, the
 Everywhere set; and `effectiveGlobals`, the two resolved. The last two are computed, so precedence
-is decided in one place rather than by each client. `PUT` **ignores** them — sending a GET response
+is decided in one place rather than by each client. `PUT` **ignores** them: sending a GET response
 straight back is safe, and cannot quietly promote every inherited value into one of the space's
 own.
 
-A `PUT` merges at the top level only — sending `statistic` leaves `globals` untouched — but
+A `PUT` merges at the top level only (sending `statistic` leaves `globals` untouched), but
 `globals` is a single value, so **sending it replaces every variable in it**. `{"globals": {"day
 rate": "$600"}}` on a space that also had a `vat` leaves that space with no `vat` at all. Send the
 whole set each time, or read it back first and edit what you get. The same is true of
@@ -737,7 +843,7 @@ Nothing about it says a space has to be a person.
 <img width="2900" height="1792" alt="Sumline Spaces" src="https://github.com/user-attachments/assets/564d8037-11c8-434f-a1ea-f13e2cdd293e" />
 
 Two people sharing an instance is the obvious use, but one person with several spaces is just as
-reasonable — **Work** and **Personal**, a space per client, a space per project, or one for
+reasonable: **Work** and **Personal**, a space per client, a space per project, or one for
 school and one for everything else. What a space gives you is a clean list and its own global
 variables: a `day rate` that means one thing in Consulting and another in Teaching, without the
 two ever seeing each other's sheets.
@@ -747,7 +853,7 @@ the others. The choice is kept in a cookie, so a browser stays where it was last
 space gets its own Welcome sheet when it is created.
 
 **This is not a login.** There are no passwords, and anyone who can reach the app can switch to
-any space — the same footing as an instance with no authentication at all. Spaces keep unrelated
+any space, the same footing as an instance with no authentication at all. Spaces keep unrelated
 sheets from piling up in one list; they do not keep anyone out.
 
 ### Adding and removing spaces
@@ -756,7 +862,7 @@ From the space menu: **Add space…** creates one, and **Rename or remove…** t
 an editable one. There is no limit on how many there are, and a fresh instance starts with a
 single space called "Me" rather than assuming there is a second.
 
-`SPACES` **seeds** an instance that has none, which is the only thing it does — spaces then live
+`SPACES` **seeds** an instance that has none, which is the only thing it does. Spaces then live
 in the database, so one added in the app is not undone by the next deploy, and one removed does
 not come back because the variable still names them:
 
@@ -766,11 +872,11 @@ SPACES="ada:Ada,grace:Dr Hopper"   # ids stated outright
 ```
 
 Every sheet, folder and setting is stamped with a space's **id**, not its name, which is why the
-two are separable. Renaming a space in the app changes only what is displayed — "Work" can become
+two are separable. Renaming a space in the app changes only what is displayed: "Work" can become
 "Consulting" without a single sheet moving. The `id:Name` form matters when seeding an instance
 whose database already uses particular ids.
 
-**Removing a space keeps its sheets.** They are not deleted — no space owns them any more, so
+**Removing a space keeps its sheets.** They are not deleted: no space owns them any more, so
 they drop out of every list, and adding a space back under the same id shows them again. The
 app says how many went out of sight when you remove one, and the server logs any owner id it
 finds with no space at startup. The last space cannot be removed, since every request has to
@@ -780,14 +886,14 @@ Sheets that existed before spaces belong to the first space the instance ever ha
 upgraded from a version without them adopts the ids already stamped on its data, so nothing opens
 on an empty-looking list.
 
-A share link crosses spaces — that is the point of it. Following a link into another space shows
+A share link crosses spaces, which is the point of it. Following a link into another space shows
 that sheet, badged with the space it came from, and you can edit it under the usual lock. What
-you cannot do from outside is destroy it or file it: trashing, purging, restoring, colouring, and
+you cannot do from outside is destroy it or file it: trashing, purging, restoring, coloring, and
 renaming or deleting a folder are refused unless the thing belongs to the space you are in, so
 following a link never puts you one mis-click from deleting something you were only visiting.
 
-Colour sits on that side of the line because it is filing rather than content: it changes how a
-row looks in a sidebar you cannot see, and unlike an edit the lock does not serialise it.
+Color sits on that side of the line because it is filing rather than content: it changes how a
+row looks in a sidebar you cannot see, and unlike an edit the lock does not serialize it.
 
 ## Sharing and concurrent editing
 
@@ -795,8 +901,8 @@ Sheets live on the server, so every browser reaching the same space sees the sam
 you open one your browser takes a short-lived editing lock; anything else that opens it gets a
 read-only view plus a **Take over editing** button.
 
-The banner names the **space** holding the lock rather than the browser — "Work is editing this
-sheet" — which is the useful thing to know when the other tab is your own, and reads as a person
+The banner names the **space** holding the lock rather than the browser ("Work is editing this
+sheet"), which is the useful thing to know when the other tab is your own, and reads as a person
 when the spaces happen to be people.
 
 ### Everything is live
@@ -804,10 +910,10 @@ when the spaces happen to be people.
 Nothing here waits for you to act. Each browser holds an event stream open to the server, and the
 server says what changed as it changes:
 
-- A sheet created, renamed, coloured, moved, trashed or restored anywhere appears in **everyone's**
+- A sheet created, renamed, colored, moved, trashed or restored anywhere appears in **everyone's**
   sidebar in the same space.
 - Opening a sheet someone else has open puts the read-only banner up in *their* browser's terms
-  straight away — and takes it down again the moment they close the tab, rather than at the next
+  straight away, and takes it down again the moment they close the tab, rather than at the next
   thing you tried to do.
 - A read-only view **follows along** as the other person types, instead of showing the sheet as it
   stood when you opened it.
@@ -820,23 +926,23 @@ let go, and the lock simply ages out.
 
 The stream carries notice, not data. An event says *what* moved and each browser refetches through
 the same endpoints it always used, so there is no second path by which a sheet can arrive. Missing
-events therefore costs freshness rather than correctness — and a browser that reconnects is told to
+events therefore costs freshness rather than correctness, and a browser that reconnects is told to
 re-read everything rather than trying to replay a gap it cannot see the edges of.
 
 If a proxy in front of the instance buffers responses, the stream will connect and then deliver
-nothing. The app notices that — it waits for messages, not for a socket — and falls back to asking
+nothing. The app notices that (it waits for messages, not for a socket) and falls back to asking
 on a timer, which is how it behaved before any of this. `/api/events` sets `X-Accel-Buffering: no`,
 which nginx reads; if yours needs something else, `proxy_buffering off` for that path does it.
 
 ### Links to a sheet
 
 The address bar stays at `/` while you work. Which sheet is open is remembered per tab, so two
-tabs left on different sheets each come back to their own after a refresh — something a single
+tabs left on different sheets each come back to their own after a refresh, something a single
 URL cannot express.
 
 The 🔗 button mints a link to the sheet you are on and copies it: `/s/kitchen-remodel`, named
 from the title. Slugs are created the first time a sheet is shared rather than when it is
-created, so the sheets you never send anyone — and every sheet still called "Untitled" — never
+created, so the sheets you never send anyone, and every sheet still called "Untitled", never
 take a name. Two sheets with the same title get `budget` and `budget-2`.
 
 Renaming a shared sheet mints a fresh link and **keeps the old one working**: every slug a sheet
@@ -844,17 +950,17 @@ has ever held stays pointed at it, so a link already sent to someone does not ro
 can never be issued a retired slug, which would otherwise hijack that link.
 
 Opening a share link loads that sheet and returns the address bar to `/`. The link is an input,
-not a mirror of state — left up, it would start lying the moment the reader opened another sheet.
+not a mirror of state: left up, it would start lying the moment the reader opened another sheet.
 
 Copying needs a secure context. On an instance reached over plain HTTP the link is shown selected
 for you to copy by hand instead.
 
-The lock is advisory — the real protection is a version check on every save. If a sheet changed
+The lock is advisory: the real protection is a version check on every save. If a sheet changed
 while you were editing, the save is refused and you're shown **which lines differ**: what yours
-has that the server's does not, and the other way round.
+has that the server's does not, and the other way around.
 
 Three ways out. **Keep both** saves your version and puts the server's in a new sheet beside it,
-so nothing is discarded — it leads because it is the only one that cannot lose work. **Keep
+so nothing is discarded, and it leads because it is the only one that cannot lose work. **Keep
 mine** and **Take the server's** each throw one version away, and say so.
 
 ### The password, if you want one
@@ -869,21 +975,21 @@ SUMLINE_PASSWORD='something long' docker compose up -d
 ```
 
 The app then asks for it before showing anything, and remembers the answer in a cookie for 30 days.
-**Sign out** appears in the space menu. There are still no accounts — this is a door, not a login:
+**Sign out** appears in the space menu. There are still no accounts. This is a door, not a login:
 it says whether you may look at the sheets, while a space still only says which ones you are looking
 at. Changing the password signs every browser out, since the password is what signs the cookie.
 
 Guessing is slowed down: ten wrong answers from one address buys a five-minute wait, and the right
 password clears the count, so mistyping your own four times costs you nothing. The count is per
 address and lives in memory, so it is forgotten on restart and does nothing about a thousand
-addresses trying once each — it stops the form being enumerated, not a determined attacker. Behind
+addresses trying once each: it stops the form being enumerated, not a determined attacker. Behind
 a reverse proxy every request arrives from the proxy and the whole instance shares one count, which
 matters less than it sounds when there is only one password to get wrong.
 
 Two things it deliberately does not do. `/api/health` stays open, because the deploy's health gate
 polls it and a check that needed a credential would fail every good deploy. And the cookie is not
 marked `Secure`, because a self-hosted instance is usually reached over plain HTTP and marking it
-would make signing in impossible there — so on plain HTTP the password crosses the network in the
+would make signing in impossible there, so on plain HTTP the password crosses the network in the
 clear. This raises the bar from "anyone who can reach the port" to "anyone who knows the password";
 for more than that, put it behind a reverse proxy that terminates TLS and handles auth itself.
 
@@ -909,13 +1015,13 @@ curl -X POST localhost:8422/api/evaluate -H 'content-type: application/json' \
 ```
 
 `input` is either a string, which is split on newlines, or an array of lines. Every line comes back
-in order with its own answer, and a line that cannot be answered carries an `error` instead — the
+in order with its own answer, and a line that cannot be answered carries an `error` instead. The
 request still succeeds, because one bad line in a sheet is not a bad sheet. Up to 1,000 lines per
 call: evaluation is synchronous, so a longer one would hold the server up for everyone.
 
 **It answers in a space.** The `sumline_user` cookie picks the space, exactly as it does everywhere
 else, and the globals, number region and time zone that apply are the ones that space's sheets
-compute with. That is the point of the endpoint rather than a detail of it — `day rate * 3` has to
+compute with. That is the point of the endpoint rather than a detail of it: `day rate * 3` has to
 mean the same thing in a launcher, in a script and in a sheet, and it only can if all three read the
 same settings. It also fetches any past exchange rates the lines ask for, which the browser cannot
 do in one call.
@@ -926,14 +1032,14 @@ The same thing from a shell, and the front end a launcher (Raycast, Alfred, Shor
 
 ```bash
 sumline "5 hours 30 minutes in minutes"      # 330 minutes
-sumline 10 km in miles                       # 6.2137119224 miles — quoting optional
+sumline 10 km in miles                       # 6.2137119224 miles, quoting optional
 sumline "subtotal = 480" -- "subtotal + 20%" --total
 echo "100 USD in EUR" | sumline
 ```
 
 `--` separates one line from the next, so a several-line sheet is one invocation. One line prints
 its answer bare, for `$(sumline "…")`; several print in a column beside the lines they answer. A
-line that could not be answered goes to stderr rather than stdout, and the exit status is 1 — so a
+line that could not be answered goes to stderr rather than stdout, and the exit status is 1, so a
 script can tell a wrong answer from no answer.
 
 | Variable | Meaning |
@@ -942,7 +1048,7 @@ script can tell a wrong answer from no answer.
 | `SUMLINE_SPACE` | Space whose globals apply. `--space` overrides. |
 | `SUMLINE_PASSWORD` | Sent only after the instance has asked for it with a 401. |
 
-It ships in the server workspace, so a deployed container already has it — asking itself on the
+It ships in the server workspace, so a deployed container already has it, asking itself on the
 port it listens on inside the container rather than the one the host publishes:
 
 ```bash
@@ -954,7 +1060,7 @@ docker exec -e SUMLINE_URL=http://127.0.0.1:8080 sumline \
 
 Everything in a sheet is text you typed, its formatting included: `1/3 to 2 dp` and
 `100,000 in full` are written **into** the line rather than stored invisibly against it. Hidden
-per-line state would not survive a copy, an export, a search, or a line being moved — and plain
+per-line state would not survive a copy, an export, a search, or a line being moved, and plain
 text is what makes diffing two versions of a sheet possible at all.
 
 That principle decided several things this does not do, which [docs/decisions.md](docs/decisions.md)
@@ -964,7 +1070,7 @@ since been **reversed** on finding the reasoning was wrong.
 ## Development
 
 Requires Node 22.5 or newer. [CONTRIBUTING.md](CONTRIBUTING.md) covers what a change has to do to
-land — chiefly that a documented example *is* a test — and [SECURITY.md](SECURITY.md) covers what
+land (chiefly that a documented example *is* a test) and [SECURITY.md](SECURITY.md) covers what
 to do instead of opening an issue.
 
 ```bash
@@ -981,8 +1087,8 @@ and turning into cases, and instrumenting the fuzz sweep on every run costs more
 | Workspace | What it is |
 | --- | --- |
 | [engine/](engine/) | The calculation engine. Pure TypeScript, no DOM or Node APIs, covered by a golden table of `input → answer` cases in [engine/test/](engine/test/). |
-| [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. Its tests cover the editor's *state* logic — CodeMirror keeps that separate from the view, so they run headlessly with no jsdom. |
-| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, static hosting of the built UI, and the [`sumline` command](#the-sumline-command). It runs the engine too, behind `/api/evaluate`. |
+| [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. Its tests cover the editor's *state* logic: CodeMirror keeps that separate from the view, so they run headlessly with no jsdom. |
+| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite`, with no native modules), exchange rates, public holidays, settings, static hosting of the built UI, and the [`sumline` command](#the-sumline-command). It runs the engine too, behind `/api/evaluate`. |
 
 ### How the engine fits together
 
@@ -992,36 +1098,36 @@ what they need:
 
 | Module | Why it exists |
 | --- | --- |
-| [`values.ts`](engine/src/values.ts) | Percentages, multipliers and rates as real types. `15%` reduced to `0.15` forgets it was a percentage, so `10% + 20%` could not answer `30%`. Also holds the unit-precedence rules — a bare number adopting the unit beside it, and mixed currencies answering in the last one named. |
-| [`temporal/`](engine/src/temporal/) | Dates, clock times, durations, zones and timecode. math.js has no calendar type at all, so these are recognised and evaluated before the expression parser is reached. |
+| [`values.ts`](engine/src/values.ts) | Percentages, multipliers and rates as real types. `15%` reduced to `0.15` forgets it was a percentage, so `10% + 20%` could not answer `30%`. Also holds the unit-precedence rules: a bare number adopting the unit beside it, and mixed currencies answering in the last one named. |
+| [`temporal/`](engine/src/temporal/) | Dates, clock times, durations, zones and timecode. math.js has no calendar type at all, so these are recognized and evaluated before the expression parser is reached. |
 | [`numberFormat.ts`](engine/src/numberFormat.ts) | Region conventions and large-number notation, on both input and output. |
-| [`historical.ts`](engine/src/historical.ts) | Converting money at a past date. Currency units are registered per math.js instance, so a table per date would mean an *instance* per date — too expensive to build per line. A dated conversion is self-contained, so it is done arithmetically instead. Evaluation is synchronous and fetching is not, so the engine reports which dates a sheet wants through `ratesNeeded` and the host supplies them. |
+| [`historical.ts`](engine/src/historical.ts) | Converting money at a past date. Currency units are registered per math.js instance, so a table per date would mean an *instance* per date, which is too expensive to build per line. A dated conversion is self-contained, so it is done arithmetically instead. Evaluation is synchronous and fetching is not, so the engine reports which dates a sheet wants through `ratesNeeded` and the host supplies them. |
 
 If you're adding syntax, the rewriters live in
 [`preprocess.ts`](engine/src/preprocess.ts) and every phrasing needs a case in the golden table.
 
 One thing sits beside that pipeline rather than in it.
 [`tokenize.ts`](engine/src/tokenize.ts) answers *where* on a line each thing the engine
-recognises is, which the pipeline cannot: it rewrites the text as it goes, so by the time a line
+recognizes is, which the pipeline cannot: it rewrites the text as it goes, so by the time a line
 evaluates, the positions in the text the reader is looking at are gone. It reads a line through
-the same predicates the classifier and the rewriters use — one rule for what a tag is, what an
-aside is, what a label is — because the editor draws its
+the same predicates the classifier and the rewriters use (one rule for what a tag is, what an
+aside is, what a label is), because the editor draws its
 [highlighting](#highlighting) straight from the result, and a second opinion about what a token
-is would show as a sheet coloured as though it meant something it does not. New syntax that
+is would show as a sheet colored as though it meant something it does not. New syntax that
 introduces a new kind of token belongs here as well as there.
 
 ### Adding to the reference
 
 [`examples.ts`](engine/src/examples.ts) is the single source for both the in-app reference and
 [`examples.test.ts`](engine/test/examples.test.ts), which evaluates every entry against a pinned
-context and asserts the answer shown. An example cannot claim behaviour the engine lacks, because
-the same line is a passing test — so adding to the documentation means adding a test.
+context and asserts the answer shown. An example cannot claim behavior the engine lacks, because
+the same line is a passing test, so adding to the documentation means adding a test.
 
 ## Deployment
 
 The simplest deployment is the [Quick start](#quick-start) above: `docker compose up -d --build`
 on whatever machine should host it. Everything below describes one *particular* way of automating
-that, kept in the repository because it is what this project was built against — not because it
+that, kept in the repository because it is what this project was built against, not because it
 is the way you have to do it.
 
 ### The bundled pipeline
@@ -1030,24 +1136,24 @@ is the way you have to do it.
 is written for [Gitea Actions](https://docs.gitea.com/usage/actions/overview) with a **self-hosted
 runner on the target host itself**, which is why there is no registry and no SSH anywhere in it.
 
-`runs-on:` names that runner's label. Change it to your own runner, or delete the file — nothing
+`runs-on:` names that runner's label. Change it to your own runner, or delete the file; nothing
 else in the project depends on it. A fork on GitHub or GitLab will ignore it entirely, since
 neither reads `.gitea/`.
 
 The four steps are worth copying whatever CI you use:
 
-1. **Test** — `docker build --target test` runs the whole suite inside the image, so the host
+1. **Test**: `docker build --target test` runs the whole suite inside the image, so the host
    needs no Node of its own and the tests run against the Node that actually ships. A failure
    here stops the deploy.
-2. **Build** — the runtime image, reusing the layers the test stage just built.
-3. **Deploy** — copies `docker-compose.prod.yml` to the deploy directory and brings the stack up
+2. **Build**: the runtime image, reusing the layers the test stage just built.
+3. **Deploy**: copies `docker-compose.prod.yml` to the deploy directory and brings the stack up
    with a pinned project name.
-4. **Smoke test** — polls `/api/health` and fails the run with container logs if the app doesn't
+4. **Smoke test**: polls `/api/health` and fails the run with container logs if the app doesn't
    actually serve. A container that starts isn't the same as an app that works.
 
 Docs-only pushes are skipped. The workflow can also be run by hand from the Actions tab.
 
-`docker-compose.prod.yml` has no `build:` stanza — it only runs the image the runner built, so
+`docker-compose.prod.yml` has no `build:` stanza: it only runs the image the runner built, so
 the deploy directory never holds source. The compose project name is pinned to `sumline` so the
 sheets volume keeps its existing name; **renaming the project or the volume key would start the
 app on an empty database.**
@@ -1060,15 +1166,15 @@ app on an empty database.**
 | `HOST` | `0.0.0.0` | Bind address |
 | `DATA_DIR` | `/data` | Directory holding `sumline.db` |
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
-| `TZ` | `UTC` | The **container's** clock: log timestamps, and which years of public holidays get fetched. It does **not** decide how sheets do date maths — that follows the reader's browser. See [Time zones and the clock](#time-zones-and-the-clock). |
-| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths, for the whole instance |
-| `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
-| `SUMLINE_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
+| `TZ` | `UTC` | The **container's** clock: log timestamps, and which years of public holidays get fetched. It does **not** decide how sheets do date math, which follows the reader's browser. See [Time zones and the clock](#time-zones-and-the-clock). |
+| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday math, for the whole instance |
+| `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any, since spaces are managed in the app after that. |
+| `SUMLINE_PASSWORD` | unset | One shared password for the whole instance. Unset (or blank) means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
 
-## Acknowledgement
+## Acknowledgment
 
 The idea is [Soulver](https://soulver.app/)'s. Soulver created and refined the notepad
-calculator — a sheet you type into line by line with the answers in a column beside it — and
+calculator (a sheet you type into line by line with the answers in a column beside it) and
 most of what makes this app pleasant to use was worked out there first: unit assimilation, the
 last-currency-wins rule, `sum` closing a section, `prev` and `line N`, per-line formatting
 written into the line, and a good deal of the natural phrasing the engine accepts. Soulver's
@@ -1076,10 +1182,10 @@ own documentation was the specification this was built against, and it is cited 
 source where a rule came from there.
 
 Sumline is an independent implementation, not a port: no Soulver code was used, and it is not
-affiliated with or endorsed by Soulver's makers. If you want the polished native original — with
+affiliated with or endorsed by Soulver's makers. If you want the polished native original, with
 the features [docs/decisions.md](docs/decisions.md) records as deliberately left out, and many
-more — buy Soulver.
+more, buy Soulver.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
