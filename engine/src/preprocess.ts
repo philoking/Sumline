@@ -576,8 +576,15 @@ function rewriteConversions(s: string, ctx: PreprocessContext): string {
    *
    * Gated on the target actually being a unit, which is what keeps `5 in
    * stock` and `3 apples in a basket` as the prose they are.
+   *
+   * Digits belong in the target's character class because unit names contain
+   * them — `m2`, `m3`, `mmH2O`, `cmH2O`. Without them those four fell
+   * through to math.js's precedence and answered `200 m2 in m2`, which is the
+   * exact sentence this rule was written to stop appearing. Nothing else opens
+   * up: a target that is not a unit is still refused by `unitish`, so `100 in
+   * 20` is as much prose as it was.
    */
-  const trailing = /^(.+?)\s+(?:in|to|as)\s+([A-Za-zµ°]+)\s*$/i.exec(s);
+  const trailing = /^(.+?)\s+(?:in|to|as)\s+([A-Za-z0-9µ°]+)\s*$/i.exec(s);
   if (trailing && unitish(trailing[2]!)) {
     return `(${trailing[1]}) to ${trailing[2]}`;
   }
