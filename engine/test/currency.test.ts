@@ -13,6 +13,7 @@ describe('currency', () => {
     ['100 USD in JPY', '¥16,000'],
     ['$50 + 20%', '$60.00'],
     ['20% of $250', '$50.00'],
+    ['$42.50 * 3', '$127.50'],
   ];
 
   for (const [input, expected] of cases) {

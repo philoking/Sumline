@@ -128,6 +128,31 @@ describe('timestamps', () => {
       /^2019-04-01T15:30:00[+-]\d{2}:\d{2}$/,
     );
   });
+
+  /*
+   * The same two answers, exactly, in a named zone.
+   *
+   * A Unix timestamp is absolute; the date it renders as is not, and neither is
+   * the offset an ISO string carries — which is why the cases above assert a
+   * substring and a shape rather than a string. Pinning the zone is what lets
+   * them be pinned whole, and the whole answer is what a reader is shown.
+   */
+  describe('read on a fixed clock', () => {
+    const zoned = createEngine({
+      rates: TEST_RATES,
+      now: TEST_NOW,
+      zone: 'America/Los_Angeles',
+    });
+    const inLA = (line: string): string => zoned.evaluate(line)[0]?.output ?? '';
+
+    it('renders a timestamp as the date that zone was on', () => {
+      expect(inLA('1559740303 to date')).toBe('5 Jun 2019 at 6:11 am');
+    });
+
+    it('carries that zone’s offset into the ISO string', () => {
+      expect(inLA('April 1, 2019 3:30pm as iso8601')).toBe('2019-04-01T15:30:00-07:00');
+    });
+  });
 });
 
 // Issue #13 — time zones

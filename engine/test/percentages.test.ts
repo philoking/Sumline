@@ -13,6 +13,9 @@ describe('percentages', () => {
     ['30 as a percentage of 200', '15%'],
     ['45%', '45%'],
     ['80 + 10% - 10%', '79.2'],
+    ['20% of 250', '50'],
+    ['120 + 15%', '138'],
+    ['50% × 30', '15'],
   ];
 
   for (const [input, expected] of cases) {

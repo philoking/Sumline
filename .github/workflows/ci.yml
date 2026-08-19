@@ -47,9 +47,6 @@ jobs:
       # rewritten.
       - run: npm ci
 
-      # The engine suite includes `readme.test.ts`, which evaluates the README's
-      # example tables against the engine. Documentation is tested here like
-      # code, which is why no path filter excludes it.
       - run: npm test
 
       - run: npm run typecheck

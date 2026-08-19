@@ -314,6 +314,15 @@ describe('a duration across a transition', () => {
     );
   });
 
+  it('while a day keeps the clock time it started at', () => {
+    // The same midnight as the case above, plus a *day* rather than a duration:
+    // it lands at midnight, an hour behind where twenty-four hours landed. The
+    // pair either side of one transition is the clearest statement of the rule.
+    expect(answerIn('America/New_York', march, '2026-03-08 00:00 + 1 day')).toBe(
+      'Mon 9 Mar 2026 at 12:00 am',
+    );
+  });
+
   it('while a day stays a day', () => {
     expect(answerIn('America/New_York', march, '2026-03-07 + 1 day')).toBe('Sun 8 Mar 2026');
     expect(answerIn('America/New_York', november, '2026-10-31 + 1 day')).toBe('Sun 1 Nov 2026');
@@ -366,9 +375,11 @@ describe('a duration across a transition', () => {
  * already moved it to 3:30.
  *
  * A test either way would pin one host's answer, which is not a fact about the
- * engine. It is deferred rather than overlooked — see "A wall-clock time that
- * does not exist in the space's zone" in `docs/decisions.md`, which records
- * what it would cost to fix and what would make it worth fixing.
+ * engine. It is deferred rather than overlooked: fixing it means parsing the
+ * wall clock into its own fields and resolving them in the sheet's zone rather
+ * than letting a `Date` normalise them first — worth doing when a sheet pinned
+ * to a zone has to answer correctly on the two mornings a year it matters, and
+ * not before.
  *
  * What *was* fixed is that the three ways of asking now agree with each other:
  * the displayed time, the timestamp and the ISO form named three different

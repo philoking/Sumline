@@ -19,11 +19,6 @@ COPY engine engine
 COPY server server
 COPY web web
 
-# A test fixture, not documentation shipped by accident: `readme.test.ts`
-# evaluates the README's example tables against the engine, so the suite in the
-# stage below cannot run without it.
-COPY README.md README.md
-
 RUN npm run build
 
 
