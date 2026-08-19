@@ -28,6 +28,38 @@ const engine = createEngine({
   historicalRates: REFERENCE_HISTORICAL_RATES,
 });
 
+/**
+ * Sections whose answers are read in a named zone rather than the machine's.
+ *
+ * A Unix timestamp is absolute; the date it renders as is not. The README says
+ * which reader those rows assume, and pinning the same zone here is what turns
+ * that sentence from a claim into something checked — while keeping the suite
+ * green for whoever runs it, wherever they are.
+ *
+ * Everything else stays on the local clock deliberately. `REFERENCE_NOW` is
+ * built from local parts, so a date answer is the same in Tokyo as in CI; a
+ * zone forced over the top of that would break the rows it was meant to fix.
+ */
+const ZONED: Record<string, string> = { Timestamps: 'America/Los_Angeles' };
+
+const zoned = new Map<string, ReturnType<typeof createEngine>>();
+
+function engineFor(heading: string): ReturnType<typeof createEngine> {
+  const zone = ZONED[heading];
+  if (!zone) return engine;
+  const existing = zoned.get(zone);
+  if (existing) return existing;
+  const made = createEngine({
+    rates: REFERENCE_RATES,
+    now: REFERENCE_NOW,
+    holidays: REFERENCE_HOLIDAYS,
+    historicalRates: REFERENCE_HISTORICAL_RATES,
+    zone,
+  });
+  zoned.set(zone, made);
+  return made;
+}
+
 const README = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
 
 interface Row {
@@ -39,6 +71,8 @@ interface Row {
   answers: string[];
   /** Whatever the `You get` cell says outside its code spans. */
   describes: string;
+  /** The section the table sits under, which is how a zone is picked above. */
+  heading: string;
 }
 
 /**
@@ -81,8 +115,11 @@ const outsideSpans = (cell: string): string =>
 function readmeRows(): Row[] {
   const rows: Row[] = [];
   let inTable = false;
+  let heading = '';
   for (const [index, text] of README.split('\n').entries()) {
     const line = text.trim();
+    const title = /^#+\s+(.*)$/.exec(line);
+    if (title) heading = title[1]!.trim();
     if (/^\|\s*You type\s*\|\s*You get\s*\|$/.test(line)) {
       inTable = true;
       continue;
@@ -100,6 +137,7 @@ function readmeRows(): Row[] {
       inputs: spans(typed),
       answers: spans(got),
       describes: outsideSpans(got),
+      heading,
     });
   }
   return rows;
@@ -149,7 +187,7 @@ describe('the README’s example tables', () => {
       // shape: different ways of writing a line that answers the same thing.
       const expected = row.answers.length === 1 ? row.answers[0] : row.answers[index];
       it(`README.md:${row.line} — ${input} -> ${expected}`, () => {
-        expect(engine.evaluate(input)[0]?.output).toBe(expected);
+        expect(engineFor(row.heading).evaluate(input)[0]?.output).toBe(expected);
       });
     }
   }
@@ -171,6 +209,13 @@ describe('the parsing itself', () => {
   it('leaves nothing unchecked that is not accounted for', () => {
     const unchecked = rows.filter((row) => !checkable(row) && !(row.raw in UNPINNED));
     expect(unchecked.map((row) => `README.md:${row.line} ${row.raw}`)).toEqual([]);
+  });
+
+  it('keeps the zoned sections naming sections that exist', () => {
+    // A renamed heading would otherwise drop the zone silently, and the rows
+    // under it would start being read on whichever clock the machine keeps.
+    const headings = new Set(rows.map((row) => row.heading));
+    expect(Object.keys(ZONED).filter((name) => !headings.has(name))).toEqual([]);
   });
 
   it('keeps the list of unchecked rows from going stale', () => {

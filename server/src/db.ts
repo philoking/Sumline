@@ -324,6 +324,8 @@ export class Store {
   private readonly db: DatabaseSync;
   /** The space rows that predate the owner column are adopted into. */
   private readonly defaultOwner: string;
+  /** How deep the write in progress is, so a nested one takes a savepoint. */
+  private depth = 0;
 
   constructor(path: string, defaultOwner: string = FALLBACK_SPACE.id) {
     // Interpolated into a DEFAULT clause below, where a bound parameter is not
@@ -340,6 +342,42 @@ export class Store {
     this.db.exec('PRAGMA foreign_keys = ON');
     this.db.exec(SCHEMA);
     this.migrate();
+  }
+
+  /**
+   * Runs a group of statements as one write: all of it lands, or none of it.
+   *
+   * Every statement autocommits on its own otherwise, so a method issuing one
+   * UPDATE per sheet is that many separate commits. A throw part way through
+   * then leaves a list in an order that is neither what it was nor what was
+   * asked for, and no error the caller can act on, because some of the request
+   * succeeded.
+   *
+   * Re-entrant, because one transacted method calls another: `reorderSheets`
+   * seeds the order first, and `seedSheetOrder` is public and has to be safe
+   * called on its own. SQLite has no nested `BEGIN`, so anything inside the
+   * outermost call gets a savepoint instead.
+   *
+   * Under WAL it is also the faster path, N commits becoming one — the
+   * difference is not subtle on a network volume.
+   */
+  private transact<T>(write: () => T): T {
+    const savepoint = this.depth > 0 ? `transact_${this.depth}` : null;
+    this.db.exec(savepoint ? `SAVEPOINT ${savepoint}` : 'BEGIN');
+    this.depth += 1;
+    try {
+      const result = write();
+      this.db.exec(savepoint ? `RELEASE ${savepoint}` : 'COMMIT');
+      return result;
+    } catch (cause) {
+      this.db.exec(savepoint ? `ROLLBACK TO ${savepoint}` : 'ROLLBACK');
+      // Rolling back to a savepoint leaves it open. Releasing it keeps
+      // SQLite's stack in step with the depth counted here.
+      if (savepoint) this.db.exec(`RELEASE ${savepoint}`);
+      throw cause;
+    } finally {
+      this.depth -= 1;
+    }
   }
 
   /**
@@ -399,7 +437,9 @@ export class Store {
     const insert = this.db.prepare(
       'INSERT INTO spaces (id, name, position) VALUES (?, ?, ?)',
     );
-    spaces.forEach((space, index) => insert.run(space.id, space.name, index));
+    this.transact(() =>
+      spaces.forEach((space, index) => insert.run(space.id, space.name, index)),
+    );
     return true;
   }
 
@@ -717,7 +757,7 @@ export class Store {
     const update = this.db.prepare(
       'UPDATE sheets SET position = ? WHERE id = ? AND owner = ?',
     );
-    rows.forEach((row, index) => update.run(index, row.id, owner));
+    this.transact(() => rows.forEach((row, index) => update.run(index, row.id, owner)));
   }
 
   /**
@@ -746,26 +786,32 @@ export class Store {
     );
     if (ids.filter((id) => live.has(id)).length < 2) return false;
 
-    this.seedSheetOrder(owner);
+    // The seed and the move are one drag as far as anyone watching is
+    // concerned, and a seed that landed without the move is the worst of the
+    // outcomes: every sheet stamped with a position, in the order it already
+    // had, with the list now claiming to be arranged by hand.
+    return this.transact(() => {
+      this.seedSheetOrder(owner);
 
-    const known = new Map(
-      (
-        this.db
-          .prepare(
-            `SELECT id, position FROM sheets
-              WHERE owner = ? AND deleted_at IS NULL`,
-          )
-          .all(owner) as unknown as Array<{ id: string; position: number }>
-      ).map((row) => [row.id, row.position]),
-    );
+      const known = new Map(
+        (
+          this.db
+            .prepare(
+              `SELECT id, position FROM sheets
+                WHERE owner = ? AND deleted_at IS NULL`,
+            )
+            .all(owner) as unknown as Array<{ id: string; position: number }>
+        ).map((row) => [row.id, row.position]),
+      );
 
-    const moving = ids.filter((id) => known.has(id));
-    const slots = moving.map((id) => known.get(id)!).sort((a, b) => a - b);
-    const update = this.db.prepare(
-      'UPDATE sheets SET position = ? WHERE id = ? AND owner = ?',
-    );
-    moving.forEach((id, index) => update.run(slots[index]!, id, owner));
-    return true;
+      const moving = ids.filter((id) => known.has(id));
+      const slots = moving.map((id) => known.get(id)!).sort((a, b) => a - b);
+      const update = this.db.prepare(
+        'UPDATE sheets SET position = ? WHERE id = ? AND owner = ?',
+      );
+      moving.forEach((id, index) => update.run(slots[index]!, id, owner));
+      return true;
+    });
   }
 
   /** Colours a folder. Scoped to its owner, as renaming one is. */
@@ -880,16 +926,18 @@ export class Store {
 
   /** Deletes a folder; its sheets return to the top level rather than vanishing. */
   deleteFolder(id: string, owner: UserId): boolean {
-    const removed =
-      this.db
-        .prepare('DELETE FROM folders WHERE id = ? AND owner = ?')
-        .run(id, owner).changes > 0;
-    // Only orphan the sheets once the folder was really this person's, or a
-    // mistaken id would empty a folder in the other space.
-    if (removed) {
-      this.db.prepare('UPDATE sheets SET folder_id = NULL WHERE folder_id = ?').run(id);
-    }
-    return removed;
+    return this.transact(() => {
+      const removed =
+        this.db
+          .prepare('DELETE FROM folders WHERE id = ? AND owner = ?')
+          .run(id, owner).changes > 0;
+      // Only orphan the sheets once the folder was really this person's, or a
+      // mistaken id would empty a folder in the other space.
+      if (removed) {
+        this.db.prepare('UPDATE sheets SET folder_id = NULL WHERE folder_id = ?').run(id);
+      }
+      return removed;
+    });
   }
 
   /** Settings that apply everywhere, whichever space is in use. */
@@ -907,10 +955,12 @@ export class Store {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     );
     const remove = this.db.prepare('DELETE FROM instance_settings WHERE key = ?');
-    for (const [key, value] of Object.entries(values)) {
-      if (value === null) remove.run(key);
-      else statement.run(key, JSON.stringify(value));
-    }
+    this.transact(() => {
+      for (const [key, value] of Object.entries(values)) {
+        if (value === null) remove.run(key);
+        else statement.run(key, JSON.stringify(value));
+      }
+    });
     return this.sharedSettings();
   }
 
@@ -940,21 +990,28 @@ export class Store {
     const remove = this.db.prepare(
       'DELETE FROM user_settings WHERE owner = ? AND key = ?',
     );
-    for (const [key, value] of Object.entries(values)) {
-      if (value === null) remove.run(owner, key);
-      else statement.run(owner, key, JSON.stringify(value));
-    }
+    // One settings write rather than one per key: a value that will not
+    // serialise would otherwise leave the keys before it applied and the rest
+    // not, which is a panel showing half of what was submitted.
+    this.transact(() => {
+      for (const [key, value] of Object.entries(values)) {
+        if (value === null) remove.run(owner, key);
+        else statement.run(owner, key, JSON.stringify(value));
+      }
+    });
     return this.getSettings(owner);
   }
 
   deleteSheet(id: string, owner: UserId): boolean {
-    const result = this.db
-      .prepare('DELETE FROM sheets WHERE id = ? AND owner = ?')
-      .run(id, owner);
-    if (result.changes > 0) {
-      this.db.prepare('DELETE FROM locks WHERE sheet_id = ?').run(id);
-    }
-    return result.changes > 0;
+    return this.transact(() => {
+      const result = this.db
+        .prepare('DELETE FROM sheets WHERE id = ? AND owner = ?')
+        .run(id, owner);
+      if (result.changes > 0) {
+        this.db.prepare('DELETE FROM locks WHERE sheet_id = ?').run(id);
+      }
+      return result.changes > 0;
+    });
   }
 
   getLock(sheetId: string, now = Date.now()): Lock | null {
