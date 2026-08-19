@@ -19,7 +19,7 @@ sum #home                          $180.50
 ## Quick start
 
 ```bash
-git clone <this-repository> sumline
+git clone https://github.com/philoking/Sumline.git sumline
 cd sumline
 docker compose up -d --build
 ```
@@ -869,12 +869,21 @@ The app then asks for it before showing anything, and remembers the answer in a 
 it says whether you may look at the sheets, while a space still only says which ones you are looking
 at. Changing the password signs every browser out, since the password is what signs the cookie.
 
+Guessing is slowed down: ten wrong answers from one address buys a five-minute wait, and the right
+password clears the count, so mistyping your own four times costs you nothing. The count is per
+address and lives in memory, so it is forgotten on restart and does nothing about a thousand
+addresses trying once each — it stops the form being enumerated, not a determined attacker. Behind
+a reverse proxy every request arrives from the proxy and the whole instance shares one count, which
+matters less than it sounds when there is only one password to get wrong.
+
 Two things it deliberately does not do. `/api/health` stays open, because the deploy's health gate
 polls it and a check that needed a credential would fail every good deploy. And the cookie is not
 marked `Secure`, because a self-hosted instance is usually reached over plain HTTP and marking it
 would make signing in impossible there — so on plain HTTP the password crosses the network in the
 clear. This raises the bar from "anyone who can reach the port" to "anyone who knows the password";
 for more than that, put it behind a reverse proxy that terminates TLS and handles auth itself.
+
+Found a hole in any of that? [SECURITY.md](SECURITY.md) says how to report it.
 
 ## Calculating outside the app
 
@@ -950,12 +959,14 @@ since been **reversed** on finding the reasoning was wrong.
 
 ## Development
 
-Requires Node 22.5 or newer.
+Requires Node 22.5 or newer. [CONTRIBUTING.md](CONTRIBUTING.md) covers what a change has to do to
+land — chiefly that a documented example *is* a test — and [SECURITY.md](SECURITY.md) covers what
+to do instead of opening an issue.
 
 ```bash
 npm install
 npm run dev     # API on :8080, UI on :5173 with hot reload
-npm test        # 1,110 engine tests, 271 server tests, 53 web tests
+npm test        # 1,157 engine tests, 289 server tests, 53 web tests
 npm run build   # build all three workspaces
 ```
 
