@@ -127,18 +127,21 @@ describe('a search term that looks like a wildcard', () => {
   // typing them. `20% of 250` is the editor’s own placeholder text, so a
   // search for `50%` is not an exotic thing for this app to be asked.
   it('matches a percent sign literally rather than as “anything”', async () => {
-    await createSheet('August', '20% of 250');
+    await createSheet('August', 'discount 50% off');
+    // Contains `50`, which is all an unescaped `%50%%` was ever asking for.
     await createSheet('Shopping', '150 apples');
 
     const results = await search('50%');
     expect(results.map((sheet) => sheet.title)).toEqual(['August']);
   });
 
-  it('finds nothing for a bare percent sign, rather than everything', async () => {
+  it('finds only the sheets a bare percent sign is really in', async () => {
     await createSheet('August', '20% of 250');
     await createSheet('Shopping', '150 apples');
 
-    expect(await search('%')).toEqual([]);
+    // Unescaped, this matched every sheet in the space.
+    const results = await search('%');
+    expect(results.map((sheet) => sheet.title)).toEqual(['August']);
   });
 
   it('matches an underscore literally rather than as “any character”', async () => {
