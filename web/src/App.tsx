@@ -43,6 +43,7 @@ import { useTheme } from './useTheme';
 import { useSheetLock } from './useSheetLock';
 import { useActiveSheet, type Status } from './useActiveSheet';
 import { useSheetList } from './useSheetList';
+import { useSpaces } from './useSpaces';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 
@@ -91,11 +92,10 @@ export function App() {
    * flashed on screen before we know which one belongs there.
    */
   const [session, setSession] = useState<Session | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
   /** Which space we are working in. Null until the first load settles. */
-  const [space, setSpace] = useState<string | null>(null);
   /** Which space the open sheet belongs to — differs after a share link. */
   const [settings, setSettings] = useState<Settings>({});
+
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [viewingTrash, setViewingTrash] = useState(false);
@@ -104,6 +104,21 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   /** Something worth saying that is not a failure — see removeSpace. */
   const [notice, setNotice] = useState<string | null>(null);
+
+  const {
+    users,
+    space,
+    setUsers,
+    setSpace,
+    currentName: currentUserName,
+    add: addSpaceNamed,
+    rename: applySpaceName,
+    remove: removeSpaceConfirmed,
+  } = useSpaces({
+    onError: (cause) => setError(describe(cause)),
+    onNotice: setNotice,
+  });
+
   // Closed by default on a phone, where it would otherwise cover the sheet.
   // The same breakpoint the stylesheet uses to turn it into an overlay.
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -141,8 +156,6 @@ export function App() {
    * lock banner exists. A space is not necessarily a person: it may be Work,
    * School, or one client of several.
    */
-  const currentUserName = users.find((user) => user.id === space)?.name ?? '';
-
   const identity = useMemo(
     () => ({
       id: space ? `${browser.id}:${space}` : browser.id,
@@ -641,25 +654,7 @@ export function App() {
   const addSpace = async () => {
     const name = window.prompt('Name for the new space');
     if (name === null || name.trim() === '') return;
-    try {
-      const created = await api.createSpace(name.trim());
-      setUsers((current) => [...current, created]);
-    } catch (cause) {
-      setError(describe(cause));
-    }
-  };
-
-  /** Applies a name the caller has already settled on. */
-  const applySpaceName = async (user: User, name: string) => {
-    if (name === '' || name === user.name) return;
-    try {
-      const renamed = await api.renameSpace(user.id, name);
-      setUsers((current) =>
-        current.map((entry) => (entry.id === user.id ? renamed : entry)),
-      );
-    } catch (cause) {
-      setError(describe(cause));
-    }
+    await addSpaceNamed(name.trim());
   };
 
   /** The switcher's rename, which has to ask for the name first. */
@@ -670,41 +665,19 @@ export function App() {
   };
 
   /**
-   * Removes a space after saying plainly what happens to its sheets.
+   * Asks before removing a space, in the words the answer deserves.
    *
-   * They are kept, not deleted, and adding the space back under the same name
-   * brings them into view again — so both the confirmation and what follows
-   * say that, rather than the usual "cannot be undone", which would be untrue
-   * and would make this feel more dangerous than it is.
-   *
-   * How much is affected is only known server-side: the sheet list here holds
-   * the current space's sheets and nobody else's, so the count comes back with
-   * the deletion rather than being guessed at beforehand.
+   * Its sheets are kept, not deleted, and adding the space back under the same
+   * name brings them into view again — so this says that, rather than the
+   * usual "cannot be undone", which would be untrue and would make the choice
+   * feel more dangerous than it is.
    */
   const removeSpace = async (user: User) => {
     const warning =
       `Remove the space “${user.name}”? Any sheets in it are kept, but stay ` +
       `hidden until a space is added back under the same name.`;
     if (!window.confirm(warning)) return;
-    try {
-      const { hidden } = await api.deleteSpace(user.id);
-      if (hidden > 0) {
-        setNotice(
-          `“${user.name}” is gone from the switcher. ${hidden} ${
-            hidden === 1 ? 'sheet or folder is' : 'sheets and folders are'
-          } still stored, and adding “${user.name}” back will show them again.`,
-        );
-      }
-      if (user.id === space) {
-        // Staying on a space that no longer exists would show someone else's
-        // sheets under this person's name until the next reload.
-        window.location.reload();
-        return;
-      }
-      setUsers((current) => current.filter((entry) => entry.id !== user.id));
-    } catch (cause) {
-      setError(describe(cause));
-    }
+    await removeSpaceConfirmed(user);
   };
 
   const renameSheet = async (sheet: SheetSummary) => {
