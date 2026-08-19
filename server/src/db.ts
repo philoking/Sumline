@@ -730,11 +730,16 @@ export class Store {
    * would make a colour change collide with someone else's edit, and touching
    * `updated_at` would jump the sheet to the top of a list ordered by when it
    * last changed — for a change that did not alter a single line.
+   *
+   * Scoped to the owner for the same reason folder colour is: filing a sheet
+   * arranges a sidebar, and the sidebar it arranges is not the caller's unless
+   * the sheet is. See the rule over the sheet routes in [`app.ts`](./app.ts).
    */
-  setSheetColor(id: string, color: string | null): boolean {
+  setSheetColor(id: string, color: string | null, owner: UserId): boolean {
     return (
-      this.db.prepare('UPDATE sheets SET color = ? WHERE id = ?').run(color, id)
-        .changes > 0
+      this.db
+        .prepare('UPDATE sheets SET color = ? WHERE id = ? AND owner = ?')
+        .run(color, id, owner).changes > 0
     );
   }
 
@@ -866,11 +871,10 @@ export class Store {
   /**
    * Moves a sheet to the trash, where it can still be restored.
    *
-   * Destructive operations are the one place a space is a real boundary.
-   * Reading and editing another person's sheet through a share link is fine —
-   * that is what the link is for, and the lock still serialises the editing —
-   * but following a link must never put you one mis-click from deleting work
-   * that is not yours.
+   * Scoped to the owner, as everything destructive is. The rule about what a
+   * space does and does not protect is stated over the sheet routes in
+   * [`app.ts`](./app.ts) — with the handlers that have to obey it, rather than
+   * here, where only one of them would find it.
    */
   trashSheet(id: string, owner: UserId): boolean {
     const result = this.db

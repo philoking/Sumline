@@ -869,6 +869,23 @@ export function buildApp(options: AppOptions): App {
     },
   );
 
+  /*
+   * What a space protects, for every route below that names a sheet.
+   *
+   * Reading and editing another space's sheet through a share link is meant to
+   * work — that is what the link is for, and the lock still serialises the
+   * editing. Destroying it is not: following a link must never put anyone one
+   * mis-click from deleting work that is not theirs. So `GET` and `PUT` take
+   * the sheet as they find it, and `DELETE` is scoped to the caller's space
+   * and answers 404 for anything outside it.
+   *
+   * Colour goes with the scoped set rather than the editing one, decided
+   * rather than defaulted. Recolouring is not an edit to the sheet: it changes
+   * how a row looks in a sidebar the caller cannot see, in a space they are
+   * not working in, and the lock does not serialise it. Folder colour — the
+   * same gesture — was already scoped, because folders have no share link to
+   * be reached by. The two halves of one gesture now agree.
+   */
   server.get<{ Params: { id: string } }>(
     '/api/sheets/:id',
     async (request, reply) => {
@@ -949,11 +966,11 @@ export function buildApp(options: AppOptions): App {
     async (request, reply) => {
       const color = readColor(request.body?.color);
       if (color === INVALID) return reply.code(400).send({ error: 'Unusable colour' });
-      const sheet = store.getSheet(request.params.id);
-      if (!sheet || !store.setSheetColor(request.params.id, color)) {
+      const owner = currentUser(request);
+      if (!store.setSheetColor(request.params.id, color, owner)) {
         return reply.code(404).send({ error: 'Sheet not found' });
       }
-      listChanged(sheet.owner);
+      listChanged(owner);
       return { id: request.params.id, color };
     },
   );

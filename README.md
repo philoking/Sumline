@@ -760,9 +760,12 @@ on an empty-looking list.
 
 A share link crosses spaces — that is the point of it. Following a link into another space shows
 that sheet, badged with the space it came from, and you can edit it under the usual lock. What
-you cannot do from outside is destroy it: trashing, purging, restoring, and renaming or deleting
-a folder are refused unless the thing belongs to the space you are in, so following a link never
-puts you one mis-click from deleting something you were only visiting.
+you cannot do from outside is destroy it or file it: trashing, purging, restoring, colouring, and
+renaming or deleting a folder are refused unless the thing belongs to the space you are in, so
+following a link never puts you one mis-click from deleting something you were only visiting.
+
+Colour sits on that side of the line because it is filing rather than content: it changes how a
+row looks in a sidebar you cannot see, and unlike an edit the lock does not serialise it.
 
 ## Sharing and concurrent editing
 

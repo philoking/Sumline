@@ -137,6 +137,30 @@ describe('colouring a sheet', () => {
   it('reports a sheet that is not there', async () => {
     expect((await setSheetColor('nope', 'red')).statusCode).toBe(404);
   });
+
+  it('refuses to colour a sheet in another space, share link or not', async () => {
+    // Reading and editing across a share link is the point of one; filing is
+    // not. A colour changes how a row looks in a sidebar the caller cannot
+    // see, and the lock does not serialise it the way it serialises an edit.
+    const sheet = await makeSheet('ada');
+    expect((await setSheetColor(sheet.id, 'red', 'grace')).statusCode).toBe(404);
+
+    const fetched = await app.server.inject({ url: `/api/sheets/${sheet.id}` });
+    expect((fetched.json() as Sheet).color).toBeNull();
+  });
+
+  it('still lets another space read and edit that sheet', async () => {
+    // The other half of the rule: scoping the colour must not have made a
+    // share link read-only.
+    const sheet = await makeSheet('ada');
+    const edited = await app.server.inject({
+      method: 'PUT',
+      url: `/api/sheets/${sheet.id}`,
+      headers: as('grace'),
+      payload: { content: 'edited from elsewhere', version: sheet.version },
+    });
+    expect(edited.statusCode).toBe(200);
+  });
 });
 
 describe('colouring a folder', () => {
