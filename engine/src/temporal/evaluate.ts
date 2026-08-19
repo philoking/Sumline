@@ -40,6 +40,7 @@ import {
 import {
   instantInZone,
   resolveZone,
+  wallClockDate,
   wallClockIn,
   zoneOffsetMinutes,
 } from './zones.js';
@@ -608,15 +609,15 @@ function applySpan(
       case 'day': date = addDays(date, amount); break;
       case 'workday': date = addWorkdays(date, amount, o.holidays); break;
       case 'hour':
-        date = new Date(date.getTime() + amount * 3_600_000);
+        date = shiftByTime(date, amount * 3_600_000, anchor, o);
         precision = 'minute';
         break;
       case 'minute':
-        date = new Date(date.getTime() + amount * 60_000);
+        date = shiftByTime(date, amount * 60_000, anchor, o);
         precision = 'minute';
         break;
       case 'second':
-        date = new Date(date.getTime() + amount * 1000);
+        date = shiftByTime(date, amount * 1000, anchor, o);
         precision = 'second';
         break;
       default: break;
@@ -624,6 +625,49 @@ function applySpan(
   }
 
   return new CalendarDate(date, precision, anchor.zone, anchor.showAs);
+}
+
+/**
+ * Moves a moment by an amount of real time, rather than by a calendar step.
+ *
+ * A day is a calendar day and an hour is an hour, and across a daylight-saving
+ * change the two deliberately disagree: the day the clocks go forward is 23
+ * hours long, so midnight plus twenty-four hours is 1 am the next morning, and
+ * the day they go back is 25 hours long, so the same sum lands at 11 pm the
+ * same evening.
+ *
+ * Which rules apply is the whole point. With a zone set, a sheet's dates live
+ * in wall-clock space — a `Date` whose *local* fields read as that zone's
+ * clock — and adding milliseconds to one of those applies whatever
+ * daylight-saving rules the *reader's* browser happens to have. A New York
+ * sheet then answered one thing in Los Angeles and another in London, which is
+ * what #113 was. So the shift is made on the real instant in the sheet's own
+ * zone, and the answer brought back into wall-clock space.
+ *
+ * Two cases skip that. A moment carrying its own zone — `6pm Sydney` — is
+ * already a true instant rather than a wall-clock stand-in. And a sheet with no
+ * zone set is reasoning in the reader's own, where the browser's rules are the
+ * right ones and always were.
+ */
+function shiftByTime(
+  date: Date,
+  ms: number,
+  anchor: CalendarDate,
+  o: TemporalOptions,
+): Date {
+  if (anchor.zone || !o.zone) return new Date(date.getTime() + ms);
+  const instant = instantInZone(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+    o.zone,
+  );
+  const moved = new Date(
+    instant.getTime() + date.getSeconds() * 1000 + date.getMilliseconds() + ms,
+  );
+  return wallClockDate(moved, o.zone);
 }
 
 function bareMoment(s: string, o: TemporalOptions): TemporalValue | null {
@@ -638,7 +682,30 @@ function bareMoment(s: string, o: TemporalOptions): TemporalValue | null {
  * ------------------------------------------------------------------ */
 
 function readMoment(text: string, o: TemporalOptions): CalendarDate | null {
-  return parseDate(text, wall(o)) ?? parseMoment(text, wall(o));
+  const moment = parseDate(text, wall(o)) ?? parseMoment(text, wall(o));
+  return moment ? existingInZone(moment, o) : null;
+}
+
+/**
+ * Snaps a wall clock the sheet's zone never shows onto one it does.
+ *
+ * 2:30 am does not happen in New York on the morning the clocks go forward,
+ * and a sheet pinned there could still be asked about it — by someone typing
+ * it, or by a range that lands on it. Whatever is answered has to be *one*
+ * answer: before this, the displayed time read the wall-clock fields as
+ * written, while the timestamp and `as iso8601` each resolved them through the
+ * zone, so the same line reported three different moments.
+ *
+ * Resolving forward is what `instantInZone` already does — its second pass
+ * lands on the real instant the clock jumped to — so this asks it and brings
+ * the answer back. A time that does exist round-trips unchanged, which is
+ * every line but this one.
+ */
+function existingInZone(moment: CalendarDate, o: TemporalOptions): CalendarDate {
+  if (moment.zone || !o.zone) return moment;
+  const shown = wallClockDate(trueInstant(moment, o), o.zone);
+  if (shown.getTime() === moment.date.getTime()) return moment;
+  return new CalendarDate(shown, moment.precision, moment.zone, moment.showAs);
 }
 
 /** A written span, or the duration implied by a range. */

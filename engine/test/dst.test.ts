@@ -131,6 +131,8 @@ function instantAt(zone: string, clock: WallClock): Date {
   return new Date(stamp);
 }
 
+const pad = (n: number): string => String(n).padStart(2, '0');
+
 /** `2026-03-08`, from the date part of a wall clock. */
 const iso = (clock: Pick<WallClock, 'year' | 'month' | 'day'>): string =>
   `${clock.year}-${String(clock.month).padStart(2, '0')}-${String(clock.day).padStart(2, '0')}`;
@@ -285,26 +287,85 @@ describe('what a zone must never move, across a transition', () => {
 });
 
 /*
- * The wall clock a transition creates or repeats is #113's, not this file's.
+ * A day is a calendar day; a duration is an amount of time.
  *
- * 02:30 does not exist on a spring-forward morning and 01:30 happens twice on
- * a fall-back one, and the issue asked for whatever the engine does there to
- * be a decision written down. It turns out not to be a decision: the answer
- * depends on the *reader's* zone rather than the sheet's, because the calendar
- * arithmetic borrows a plain `Date`'s local rules. Assertions written here
- * passed on a machine in Los Angeles and failed in CI under UTC.
+ * Across a transition the two deliberately disagree, and that disagreement is
+ * the decision worth pinning: the morning the clocks go forward is 23 hours
+ * long, so midnight plus twenty-four hours is 1 am the next day, and the
+ * evening they go back is 25 hours long, so the same sum lands at 11 pm the
+ * same day. Both look like bugs to anyone expecting `+ 24 hours` and `+ 1 day`
+ * to agree, which is exactly why they are written down.
  *
- * They are in #113 rather than here, because a test that pins one host's
- * answer is not pinning anything about the engine. What is left in this file
- * is everything the calendar decides — which is correct in both, and which is
- * the part a transition was most likely to have broken.
+ * These were removed once for being host-dependent — #113: the shift borrowed
+ * the *reader's* daylight-saving rules rather than the sheet's, so a New York
+ * sheet answered one thing in Los Angeles and another under UTC. They are back
+ * because it is now made on the real instant in the sheet's own zone.
  */
-describe('a day is a calendar day, whatever the clocks did', () => {
+describe('a duration across a transition', () => {
   const march = new Date(Date.UTC(2026, 2, 1, 12));
   const november = new Date(Date.UTC(2026, 10, 1, 12));
 
-  it('adds one across a transition in either direction', () => {
+  it('is an amount of time, on a 23-hour day and on a 25-hour one', () => {
+    expect(answerIn('America/New_York', march, '2026-03-08 00:00 + 24 hours')).toBe(
+      'Mon 9 Mar 2026 at 1:00 am',
+    );
+    expect(answerIn('America/New_York', november, '2026-11-01 00:00 + 24 hours')).toBe(
+      'Sun 1 Nov 2026 at 11:00 pm',
+    );
+  });
+
+  it('while a day stays a day', () => {
     expect(answerIn('America/New_York', march, '2026-03-07 + 1 day')).toBe('Sun 8 Mar 2026');
     expect(answerIn('America/New_York', november, '2026-10-31 + 1 day')).toBe('Sun 1 Nov 2026');
   });
+
+  it('and a shift that clears the change is untouched by it', () => {
+    expect(answerIn('America/New_York', march, '2026-03-08 00:00 + 30 minutes')).toBe(
+      'Sun 8 Mar 2026 at 12:30 am',
+    );
+  });
+
+  /**
+   * The property behind those three, over every transition there is: an hour
+   * added to the moment before a change lands exactly one real hour later,
+   * whatever the clock did to the number on its face.
+   */
+  it('moves by real time across every one of them', () => {
+    const wrong: string[] = [];
+    for (const { zone, at } of TRANSITIONS) {
+      const before = wallClock(new Date(at.getTime() - 30 * 60_000), zone);
+      const now = instantAt(zone, { ...before, hour: 12, minute: 0 });
+      const clock = `${pad(before.hour)}:${pad(before.minute)}`;
+      const line = `${iso(before)} ${clock} + 1 hour`;
+      const answered = readAnswer(answerIn(zone, now, line));
+      if (!answered?.timed) {
+        wrong.push(`${zone} ${line} -> ${answerIn(zone, now, line)}`);
+        continue;
+      }
+      // What that zone's clock reads one real hour after the anchor.
+      const wanted = wallClock(new Date(instantAt(zone, before).getTime() + 3_600_000), zone);
+      if (answered.hour !== wanted.hour || answered.minute !== wanted.minute) {
+        wrong.push(
+          `${zone} ${line} -> ${pad(answered.hour)}:${pad(answered.minute)}, ` +
+            `want ${pad(wanted.hour)}:${pad(wanted.minute)}`,
+        );
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
 });
+
+/*
+ * Still #113's, and still not pinned here: a wall clock that does not exist.
+ *
+ * 2:30 am never happens in New York on the morning the clocks go forward, and
+ * which existing time it becomes still depends on the reader's zone — because
+ * a `Date` built from those fields is normalised by the *host's* calendar
+ * before the engine ever sees it. Under UTC the engine resolves it backwards
+ * to 1:30; on a machine that also springs forward that morning, the host has
+ * already moved it to 3:30.
+ *
+ * What is fixed, and is why the three ways of asking are no longer worth
+ * pinning separately, is that they now agree with each other: the displayed
+ * time, the timestamp and the ISO form named three different moments before.
+ */

@@ -277,9 +277,18 @@ export function wallClockDate(at: Date, zone: string): Date {
   );
 }
 
-/** Minutes that `zone` is ahead of UTC at the given moment. */
-export function zoneOffsetMinutes(at: Date, zone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
+/**
+ * One formatter per zone, built once.
+ *
+ * `Intl.DateTimeFormat` is expensive to construct and free to reuse, and this
+ * is called several times for every moment a zoned sheet reads.
+ */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(zone: string): Intl.DateTimeFormat {
+  const existing = formatters.get(zone);
+  if (existing) return existing;
+  const made = new Intl.DateTimeFormat('en-US', {
     timeZone: zone,
     hour12: false,
     year: 'numeric',
@@ -288,7 +297,14 @@ export function zoneOffsetMinutes(at: Date, zone: string): number {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).formatToParts(at);
+  });
+  formatters.set(zone, made);
+  return made;
+}
+
+/** Minutes that `zone` is ahead of UTC at the given moment. */
+export function zoneOffsetMinutes(at: Date, zone: string): number {
+  const parts = formatterFor(zone).formatToParts(at);
 
   const read = (type: string) =>
     Number(parts.find((part) => part.type === type)?.value ?? '0');
