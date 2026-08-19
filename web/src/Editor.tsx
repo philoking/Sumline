@@ -43,6 +43,7 @@ import {
 } from '@codemirror/search';
 import type { LineResult, Token, TokenKind } from '@webcalc/engine';
 import { keepReferencesPointing, replacingDocument } from './references';
+import { Backdrop, usePopoverPlacement } from './Popover';
 import { loadUndoHistory, saveUndoHistory } from './undoHistory';
 
 /** How a sheet's text is read — `engine.tokenize`, handed in by the app. */
@@ -184,32 +185,9 @@ function popoverFrom(event: {
   return { x: rect.right, y: rect.bottom };
 }
 
-/** Roughly how tall the answer menu is, for deciding which way it opens. */
-const MENU_HEIGHT = 230;
-/** The error note is one short paragraph, so it needs far less room. */
-const NOTE_HEIGHT = 90;
-
-/**
- * Places a popover against the answer that raised it.
- *
- * Anchored by its *right* edge rather than its left, because the answer column
- * sits at the right of the window: a menu growing rightwards from an answer
- * runs straight off the screen, which is what both of these did. Growing
- * leftwards puts them over the sheet, which is the roomy direction.
- *
- * Flipped upwards when there is no space below, for the same reason and by the
- * same reckoning as the sidebar's flyout — guessing the height high only opens
- * a popover upwards a little sooner than it had to, while guessing low leaves
- * one clipped at the bottom of the window.
- */
-function placePopover(at: PopoverAt, height: number): CSSProperties {
-  return {
-    right: Math.max(8, window.innerWidth - at.x),
-    ...(at.y + height > window.innerHeight
-      ? { bottom: Math.max(8, window.innerHeight - at.y) }
-      : { top: at.y }),
-  };
-}
+/** A popover opening from where the pointer was, rather than from a button. */
+const atPointer = (at: PopoverAt | null) =>
+  at ? { right: at.x, top: at.y, bottom: at.y } : null;
 
 /*
  * Soulver sets its sheets in the system sans-serif at a comfortable reading
@@ -569,6 +547,11 @@ export function Editor({
   const [menu, setMenu] = useState<MenuState | null>(null);
   /** The failed line whose message is being shown, and where to show it. */
   const [errorAt, setErrorAt] = useState<PopoverAt | null>(null);
+
+  // Both open from where the pointer was, and both are measured rather than
+  // guessed at — see Popover.tsx.
+  const menuStyle = usePopoverPlacement(atPointer(menu), menuRef);
+  const errorStyle = usePopoverPlacement(atPointer(errorAt), errorRef);
   /**
    * The line the caret is on, which is the one answer the column offers to the
    * Tab key — see `tabStop`.
@@ -1214,12 +1197,12 @@ export function Editor({
 
       {errorAt && (
         <>
-          <div className="menu-backdrop" onClick={() => setErrorAt(null)} />
+          <Backdrop onClose={() => setErrorAt(null)} />
           <div
             className="answer-menu error-note"
             role="dialog"
             aria-label={`Why line ${errorAt.line} has no answer`}
-            style={placePopover(errorAt, NOTE_HEIGHT)}
+            style={errorStyle}
             ref={errorRef}
             tabIndex={-1}
             onKeyDown={(event) => {
@@ -1235,12 +1218,12 @@ export function Editor({
 
       {menu && (
         <>
-          <div className="menu-backdrop" onClick={() => closeMenu()} />
+          <Backdrop onClose={() => closeMenu()} />
           <ul
             className="answer-menu"
             role="menu"
             aria-label={`Line ${menu.line}`}
-            style={placePopover(menu, MENU_HEIGHT)}
+            style={menuStyle}
             ref={menuRef}
             onKeyDown={onMenuKey}
           >

@@ -1,17 +1,8 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { Folder, SheetSummary } from './api';
 import { SHEET_COLORS, colorClass, colorLabel } from './colors';
 import { Snippet } from './Snippet';
-
-/**
- * Roughly how tall the tallest flyout is: rename, move up, move down, two
- * swatch rows and the clear button.
- *
- * An over-estimate on purpose. Guessing high only flips a menu upwards a
- * little sooner than it had to; guessing low leaves one clipped at the bottom
- * of the window, which is the failure worth avoiding.
- */
-const FLYOUT_HEIGHT = 200;
+import { Backdrop, usePopoverPlacement } from './Popover';
 
 /** The group id standing for sheets in no folder. */
 const TOP_LEVEL = '';
@@ -19,23 +10,12 @@ const TOP_LEVEL = '';
 const COLLAPSED_KEY = 'webcalc.collapsedFolders';
 
 /**
- * Places the flyout against the button that opened it.
- *
- * Fixed rather than absolute, and so positioned by hand, because the sheet
- * list scrolls: an absolutely positioned menu inside it is clipped at the
+ * The flyout is positioned by hand, and fixed rather than absolute, because
+ * the sheet list scrolls: a menu positioned inside it is clipped at the
  * container's edge, which for the last sheet in a long list means a palette
- * that is half there. Opening upwards when there is no room below is what
- * makes the rows at the very bottom of the sidebar usable.
+ * that is half there. Which way it opens is `usePopoverPlacement`'s business.
  */
-function flyoutStyle(anchor: DOMRect): CSSProperties {
-  const openUpwards = anchor.bottom + FLYOUT_HEIGHT > window.innerHeight;
-  return {
-    right: Math.max(8, window.innerWidth - anchor.right),
-    ...(openUpwards
-      ? { bottom: window.innerHeight - anchor.top + 4 }
-      : { top: anchor.bottom + 4 }),
-  };
-}
+const FLYOUT_GAP = 4;
 
 /**
  * The palette shown under the ✎ on a sheet or a folder.
@@ -214,6 +194,19 @@ export function Sidebar(props: SidebarProps) {
 
   const closeEditor = () => setEditing(null);
 
+  // One flyout is open at a time, so one ref and one placement serve both the
+  // sheet rows and the folder rows.
+  const flyoutRef = useRef<HTMLDivElement | null>(null);
+  const flyoutStyle = usePopoverPlacement(
+    editing && {
+      right: editing.anchor.right,
+      top: editing.anchor.top,
+      bottom: editing.anchor.bottom,
+      gap: FLYOUT_GAP,
+    },
+    flyoutRef,
+  );
+
   const toggleEditor = (
     kind: 'sheet' | 'folder',
     id: string,
@@ -343,8 +336,8 @@ export function Sidebar(props: SidebarProps) {
 
         {editing?.kind === 'sheet' && editing.id === sheet.id && (
           <>
-            <div className="menu-backdrop" onClick={closeEditor} />
-            <div className="edit-flyout" role="menu" style={flyoutStyle(editing.anchor)}>
+            <Backdrop onClose={closeEditor} />
+            <div className="edit-flyout" role="menu" style={flyoutStyle} ref={flyoutRef}>
               <button
                 type="button"
                 role="menuitem"
@@ -474,11 +467,12 @@ export function Sidebar(props: SidebarProps) {
 
                     {editing?.kind === 'folder' && editing.id === folder.id && (
                       <>
-                        <div className="menu-backdrop" onClick={closeEditor} />
+                        <Backdrop onClose={closeEditor} />
                         <div
                           className="edit-flyout"
                           role="menu"
-                          style={flyoutStyle(editing.anchor)}
+                          style={flyoutStyle}
+                          ref={flyoutRef}
                         >
                           <button
                             type="button"

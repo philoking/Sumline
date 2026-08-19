@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { EXAMPLE_GROUPS, type ExampleGroup } from '@webcalc/engine';
 import { formatShortcut } from './shortcuts';
 import { useDialog } from './useDialog';
+import { Backdrop } from './Popover';
 
 export interface ReferenceProps {
   open: boolean;
@@ -58,7 +59,7 @@ export function Reference({
 
   return (
     <>
-      <div className="menu-backdrop" onClick={onClose} />
+      <Backdrop onClose={onClose} />
       <aside
         className="reference"
         role="dialog"

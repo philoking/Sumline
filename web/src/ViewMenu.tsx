@@ -1,5 +1,6 @@
 import { PRECISIONS } from '@webcalc/engine';
 import { formatShortcut } from './shortcuts';
+import { Backdrop } from './Popover';
 
 /**
  * How far the sheet's text can be scaled, and in what steps.
@@ -80,7 +81,7 @@ export function ViewMenu(props: ViewMenuProps) {
 
   return (
     <>
-      <div className="menu-backdrop" onClick={onClose} />
+      <Backdrop onClose={onClose} />
       <ul className="answer-menu view-menu" role="menu" aria-label="View">
         <li>
           <button

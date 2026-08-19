@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { GlobalsEditor, named, useRows } from './GlobalsEditor';
 import { REGIONS, SettingField, regionLabel } from './SettingField';
 import { useDialog } from './useDialog';
+import { Backdrop } from './Popover';
 import type { Computed, User } from './api';
 
 export interface SpaceSettingsProps {
@@ -61,7 +62,7 @@ export function SpaceSettings(props: SpaceSettingsProps) {
 
   return (
     <>
-      <div className="menu-backdrop" onClick={onClose} />
+      <Backdrop onClose={onClose} />
       <aside
         className="reference space-settings"
         role="dialog"

@@ -3,6 +3,7 @@ import { api, type SheetMatch, type SheetSummary } from './api';
 import { Snippet } from './Snippet';
 import { formatShortcut } from './shortcuts';
 import { useDialog } from './useDialog';
+import { Backdrop } from './Popover';
 
 /** How long a keystroke sits before the server is asked about it. */
 const SEARCH_DELAY_MS = 130;
@@ -186,7 +187,7 @@ export function Palette({ open, recent, onOpen, onClose }: PaletteProps) {
 
   return (
     <>
-      <div className="menu-backdrop" onClick={onClose} />
+      <Backdrop onClose={onClose} />
       <div
         className="palette"
         role="dialog"

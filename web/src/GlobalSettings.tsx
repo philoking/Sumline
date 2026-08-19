@@ -1,6 +1,7 @@
 import { GlobalsEditor, useRows } from './GlobalsEditor';
 import { REGIONS, SettingField, regionLabel } from './SettingField';
 import { useDialog } from './useDialog';
+import { Backdrop } from './Popover';
 import type { Computed } from './api';
 
 export interface GlobalSettingsProps {
@@ -36,7 +37,7 @@ export function GlobalSettings(props: GlobalSettingsProps) {
 
   return (
     <>
-      <div className="menu-backdrop" onClick={onClose} />
+      <Backdrop onClose={onClose} />
       <aside
         className="reference space-settings"
         role="dialog"

@@ -45,6 +45,7 @@ import { useActiveSheet, type Status } from './useActiveSheet';
 import { useSheetList } from './useSheetList';
 import { useSpaces } from './useSpaces';
 import { useAsk } from './Ask';
+import { Backdrop } from './Popover';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 
@@ -829,7 +830,7 @@ export function App() {
           </button>
           {exportOpen && (
             <>
-              <div className="menu-backdrop" onClick={() => setExportOpen(false)} />
+              <Backdrop onClose={() => setExportOpen(false)} />
               <ul className="answer-menu export-menu">
                 <li>
                   <button type="button" onClick={() => exportAs('clipboard')}>
@@ -874,7 +875,7 @@ export function App() {
           </button>
           {share && (
             <>
-              <div className="menu-backdrop" onClick={() => setShare(null)} />
+              <Backdrop onClose={() => setShare(null)} />
               <div
                 className="answer-menu share-menu"
                 role="dialog"
@@ -990,9 +991,8 @@ export function App() {
             </button>
             {userMenuOpen && (
               <>
-                <div
-                  className="menu-backdrop"
-                  onClick={() => {
+                <Backdrop
+                  onClose={() => {
                     setUserMenuOpen(false);
                     setManagingSpaces(false);
                   }}
