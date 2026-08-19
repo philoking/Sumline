@@ -121,3 +121,55 @@ describe('search results', () => {
     expect(listed?.lines).toBe(3);
   });
 });
+
+describe('a search term that looks like a wildcard', () => {
+  // `%` and `_` mean something to SQLite’s LIKE and nothing to the reader
+  // typing them. `20% of 250` is the editor’s own placeholder text, so a
+  // search for `50%` is not an exotic thing for this app to be asked.
+  it('matches a percent sign literally rather than as “anything”', async () => {
+    await createSheet('August', '20% of 250');
+    await createSheet('Shopping', '150 apples');
+
+    const results = await search('50%');
+    expect(results.map((sheet) => sheet.title)).toEqual(['August']);
+  });
+
+  it('finds nothing for a bare percent sign, rather than everything', async () => {
+    await createSheet('August', '20% of 250');
+    await createSheet('Shopping', '150 apples');
+
+    expect(await search('%')).toEqual([]);
+  });
+
+  it('matches an underscore literally rather than as “any character”', async () => {
+    await createSheet('Rates', 'a_b = 2');
+    await createSheet('Other', 'axb = 3');
+
+    const results = await search('a_b');
+    expect(results.map((sheet) => sheet.title)).toEqual(['Rates']);
+  });
+
+  it('matches a backslash literally, being the escape character itself', async () => {
+    await createSheet('Paths', 'C:\\temp = 1');
+    await createSheet('Plain', 'C:temp = 1');
+
+    const results = await search('C:\\temp');
+    expect(results.map((sheet) => sheet.title)).toEqual(['Paths']);
+  });
+
+  it('brings back a quotable line for every result the body matched', async () => {
+    // The invariant the two halves have to keep: LIKE selects on a pattern and
+    // findMatch searches literally, so a row selected on a wildcard would come
+    // back as a match with nothing to show for it.
+    await createSheet('August', '20% of 250');
+    await createSheet('Shopping', '150 apples');
+    await createSheet('Rates', 'a_b = 2');
+
+    for (const term of ['%', '_', '50%', 'a_b', 'apples', '20%']) {
+      for (const result of await search(term)) {
+        const byTitle = result.title.toLowerCase().includes(term.toLowerCase());
+        expect(byTitle || result.match !== undefined).toBe(true);
+      }
+    }
+  });
+});

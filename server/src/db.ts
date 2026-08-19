@@ -73,6 +73,21 @@ const SNIPPET_WIDTH = 90;
 const SNIPPET_LEAD = 24;
 
 /**
+ * Escapes a search term so a `LIKE` pattern matches it literally.
+ *
+ * `%` and `_` are SQLite's own wildcards, so a term carrying either would
+ * select rows that do not contain it: `50%` would find `150 apples`, and `%`
+ * alone would find every sheet in the space. That also breaks the agreement
+ * `findMatch` below depends on — it searches the body literally, so a row
+ * selected on a wildcard comes back as a match with nothing to quote.
+ *
+ * The backslash goes first, being the escape character itself.
+ */
+export function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+/**
  * Finds the first body line matching a search, as something quotable.
  *
  * Case-insensitively, because SQLite's `LIKE` is case-insensitive for ASCII and
@@ -525,8 +540,8 @@ export class Store {
       }
     }
     if (filter.query?.trim()) {
-      where.push('(title LIKE ? OR content LIKE ?)');
-      const pattern = `%${filter.query.trim()}%`;
+      where.push("(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')");
+      const pattern = `%${escapeLike(filter.query.trim())}%`;
       params.push(pattern, pattern);
     }
 
