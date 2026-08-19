@@ -194,6 +194,7 @@ being documented. Each of these is deliberately left out of [`examples.ts`](../e
 | Comparisons returning booleans — `3 > 2` → `true` | Declined above; the first step towards branching. |
 | Matrices and vectors — `[1, 2] + [3, 4]` → `[4, 6]`, `det([[1,2],[3,4]])` | Out of scope for a sheet of one-line sums, and the formatter renders them only incidentally. |
 | `random()`, `pickRandom(...)` | Cannot be a golden test, and an answer that changes on every keystroke is wrong for a document you re-read. |
+| Complex numbers — `sqrt(-1)` → `i`, `(1 + 2i) * 3` → `3 + 6i` | math.js has the type and the formatter prints it. Nothing here is built for it: there is no complex arithmetic in `values.ts`, no example, and no test. Its unit form does not answer at all — `20 VAR`, reactive power, is imaginary by definition and comes back "That does not work out to a number" rather than wrong. |
 
 They are not blocked, because blocking means writing code to remove working behaviour and drawing an
 arbitrary line around what counts as too much maths. They are simply not promised: absent from the

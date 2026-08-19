@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@fastify/static": "^8.0.4",
+    "@fastify/static": "^10.1.3",
     "@sumline/engine": "*",
     "fastify": "^5.2.1"
   },

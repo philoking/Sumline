@@ -27,8 +27,27 @@ import { TEST_NOW, TEST_RATES } from './helpers.js';
  */
 const engine = createEngine({ rates: TEST_RATES, now: TEST_NOW });
 
-/** The unit names this engine registered, which is what a line may name. */
-const UNITS = [...createMathContext(TEST_RATES).unitNames].sort();
+const CONTEXT = createMathContext(TEST_RATES);
+
+/**
+ * The unit names this engine registered, which is what a line may name.
+ *
+ * Minus any whose magnitude is not a real number. math.js 15 added `VAR` —
+ * reactive power — and models it the way electrical engineering does, as an
+ * imaginary quantity: `unit(1, 'VAR').value` is `Complex { re: 0, im: 1 }`.
+ * That is math.js being right, and it means `300 + 20 VAR` has no answer this
+ * engine can print. It does not silently print a wrong one either — the line
+ * comes back "That does not work out to a number", which is the honest result
+ * and the one every other unrepresentable answer gets.
+ *
+ * Filtered by the property rather than by name, so the next complex unit math.js
+ * adds is handled on arrival instead of failing this suite. The header above
+ * says it: anything that could only fail because math.js changed belongs to a
+ * version bump, not here.
+ */
+const UNITS = [...CONTEXT.unitNames]
+  .filter((name) => typeof CONTEXT.math.unit(1, name).value === 'number')
+  .sort();
 const CURRENCIES = [...engine.currencies].sort();
 
 function mulberry32(seed: number): () => number {
