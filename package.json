@@ -1,5 +1,5 @@
 {
-  "name": "webcalc",
+  "name": "sumline",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,12 +14,12 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "build": "npm run build -w @webcalc/engine && npm run build -w @webcalc/web && npm run build -w @webcalc/server",
+    "build": "npm run build -w @sumline/engine && npm run build -w @sumline/web && npm run build -w @sumline/server",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "npm run dev -w @webcalc/server",
-    "dev:web": "npm run dev -w @webcalc/web",
-    "start": "npm run start -w @webcalc/server",
-    "test": "npm run test -w @webcalc/engine && npm run test -w @webcalc/server && npm run test -w @webcalc/web",
+    "dev:server": "npm run dev -w @sumline/server",
+    "dev:web": "npm run dev -w @sumline/web",
+    "start": "npm run start -w @sumline/server",
+    "test": "npm run test -w @sumline/engine && npm run test -w @sumline/server && npm run test -w @sumline/web",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

@@ -158,14 +158,14 @@ describe('without usable storage', () => {
   });
 
   it('starts over rather than trusting a half-written value', () => {
-    storage.setItem('webcalc.undo.v1', '{ not json');
+    storage.setItem('sumline.undo.v1', '{ not json');
     expect(loadUndoHistory('sheet-a', 'doc')).toBeNull();
     saveUndoHistory('sheet-a', 'doc', { done: ['fresh'] });
     expect(loadUndoHistory('sheet-a', 'doc')).toEqual({ done: ['fresh'] });
   });
 
   it('starts over rather than indexing into a value of the wrong shape', () => {
-    storage.setItem('webcalc.undo.v1', '["not", "an", "object"]');
+    storage.setItem('sumline.undo.v1', '["not", "an", "object"]');
     expect(loadUndoHistory('sheet-a', 'doc')).toBeNull();
   });
 });

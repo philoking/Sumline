@@ -30,7 +30,7 @@ function build(seed = false, spaces: Space[] = PEOPLE): App {
 
 /** Every request carries the space in a cookie, exactly as the browser does. */
 function as(user: string) {
-  return { cookie: `webcalc_user=${user}` };
+  return { cookie: `sumline_user=${user}` };
 }
 
 beforeEach(() => {
@@ -256,7 +256,7 @@ describe('choosing a space', () => {
   it('falls back to the default space rather than erroring', async () => {
     await createSheet(DEFAULT_USER, 'Default space sheet');
 
-    for (const cookie of ['webcalc_user=nobody', 'webcalc_user=', 'other=1', '']) {
+    for (const cookie of ['sumline_user=nobody', 'sumline_user=', 'other=1', '']) {
       const response = await app.server.inject({
         url: '/api/sheets',
         ...(cookie ? { headers: { cookie } } : {}),
@@ -270,7 +270,7 @@ describe('choosing a space', () => {
     await createSheet('grace', 'Hers');
     const response = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'theme=dark; webcalc_user=grace; other=x' },
+      headers: { cookie: 'theme=dark; sumline_user=grace; other=x' },
     });
     expect((response.json() as { sheets: unknown[] }).sheets).toHaveLength(1);
   });
@@ -292,7 +292,7 @@ describe('seeding and migration', () => {
   });
 
   it('moves pre-user settings into the default space without clobbering them later', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'webcalc-spaces-'));
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-spaces-'));
     const path = join(dir, 'old.db');
 
     const legacy = new DatabaseSync(path);
@@ -317,7 +317,7 @@ describe('seeding and migration', () => {
   });
 
   it('puts pre-user folders in the default space', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'webcalc-folders-'));
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-folders-'));
     const path = join(dir, 'old.db');
 
     const legacy = new DatabaseSync(path);

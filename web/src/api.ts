@@ -1,4 +1,4 @@
-import type { ComputedSettings, EngineSettings, NumberRegion, RateTable } from '@webcalc/engine';
+import type { ComputedSettings, EngineSettings, NumberRegion, RateTable } from '@sumline/engine';
 
 export type { NumberRegion };
 
@@ -431,7 +431,7 @@ export const api = {
  */
 export function switchUser(id: string): void {
   const year = 60 * 60 * 24 * 365;
-  document.cookie = `webcalc_user=${encodeURIComponent(id)}; path=/; max-age=${year}; samesite=lax`;
+  document.cookie = `sumline_user=${encodeURIComponent(id)}; path=/; max-age=${year}; samesite=lax`;
 }
 
 /**
@@ -439,7 +439,7 @@ export function switchUser(id: string): void {
  * it only distinguishes one tab's browser from another's.
  */
 export function clientIdentity(): { id: string; name: string } {
-  const KEY = 'webcalc.client';
+  const KEY = 'sumline.client';
   const stored = localStorage.getItem(KEY);
   if (stored) return JSON.parse(stored) as { id: string; name: string };
   const identity = { id: randomId(), name: guessName() };

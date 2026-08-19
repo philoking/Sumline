@@ -1,9 +1,9 @@
 {
-  "name": "@webcalc/engine",
+  "name": "@sumline/engine",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Natural-language calculation engine for WebCalc",
+  "description": "Natural-language calculation engine for Sumline",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

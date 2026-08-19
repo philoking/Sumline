@@ -2,7 +2,7 @@
  * Seeded into an empty instance so the first thing a new user sees is a sheet
  * that demonstrates the syntax rather than an empty box.
  */
-export const WELCOME_SHEET = `# Welcome to WebCalc
+export const WELCOME_SHEET = `# Welcome to Sumline
 
 Type on the left, answers appear on the right.
 

@@ -50,7 +50,7 @@ describe('with no password configured', () => {
   });
 
   it('treats a blank password as no password at all', async () => {
-    // An empty WEBCALC_PASSWORD= left in a compose file must not lock everyone
+    // An empty SUMLINE_PASSWORD= left in a compose file must not lock everyone
     // out behind a password nobody can type.
     const { server } = build('   ');
     expect((await server.inject({ url: '/api/sheets' })).statusCode).toBe(200);

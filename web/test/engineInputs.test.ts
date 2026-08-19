@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { engineOptionsFrom, type EngineOptions } from '@webcalc/engine';
+import { engineOptionsFrom, type EngineOptions } from '@sumline/engine';
 import { engineInputs } from '../src/useEngine';
 import type { HolidayTable } from '../src/api';
 

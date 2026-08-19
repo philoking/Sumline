@@ -52,7 +52,7 @@ afterEach(async () => {
   await app.server.close();
 });
 
-const as = (space: string) => ({ cookie: `webcalc_user=${space}` });
+const as = (space: string) => ({ cookie: `sumline_user=${space}` });
 
 interface EvaluateResponse {
   results: Array<{ index: number; kind: string; input: string; output: string; error?: string }>;

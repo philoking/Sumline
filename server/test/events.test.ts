@@ -319,14 +319,14 @@ describe('GET /api/events', () => {
     base = await listen(app);
 
     const stream = await openStream(`${base}/api/events`, {
-      headers: { accept: 'text/event-stream', cookie: 'webcalc_user=home' },
+      headers: { accept: 'text/event-stream', cookie: 'sumline_user=home' },
     });
     await stream.next();
 
     await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=work' },
+      headers: { cookie: 'sumline_user=work' },
       payload: { title: 'Work sheet' },
     });
     await expect(stream.next(300)).rejects.toThrow(/Timed out/);
@@ -335,7 +335,7 @@ describe('GET /api/events', () => {
     await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=home' },
+      headers: { cookie: 'sumline_user=home' },
       payload: { title: 'Home sheet' },
     });
     expect(await stream.next()).toEqual({ type: 'list', owner: 'home' });

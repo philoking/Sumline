@@ -48,7 +48,7 @@ async function create(title: string): Promise<string> {
   const response = await app.server.inject({
     method: 'POST',
     url: '/api/sheets',
-    headers: { cookie: 'webcalc_user=ada' },
+    headers: { cookie: 'sumline_user=ada' },
     payload: { title, content: '' },
   });
   return (response.json() as { id: string }).id;

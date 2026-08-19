@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type Theme = 'system' | 'light' | 'dark';
 
-const STORAGE_KEY = 'webcalc.theme';
+const STORAGE_KEY = 'sumline.theme';
 const ORDER: Theme[] = ['system', 'light', 'dark'];
 
 /**

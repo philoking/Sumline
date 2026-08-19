@@ -23,7 +23,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
  * for anything stronger, put it behind a reverse proxy that terminates TLS.
  */
 
-export const SESSION_COOKIE = 'webcalc_session';
+export const SESSION_COOKIE = 'sumline_session';
 
 /** How long a signed-in browser stays signed in. */
 export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;

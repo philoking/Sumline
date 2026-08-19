@@ -210,7 +210,7 @@ describe('settings', () => {
 
 describe('schema migration', () => {
   it('adds the new columns to a database created before they existed', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'webcalc-migrate-'));
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-migrate-'));
     const path = join(dir, 'old.db');
 
     // A database shaped like the first release, holding a sheet.

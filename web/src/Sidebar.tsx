@@ -7,7 +7,7 @@ import { Backdrop, usePopoverPlacement } from './Popover';
 /** The group id standing for sheets in no folder. */
 const TOP_LEVEL = '';
 
-const COLLAPSED_KEY = 'webcalc.collapsedFolders';
+const COLLAPSED_KEY = 'sumline.collapsedFolders';
 
 /**
  * The flyout is positioned by hand, and fixed rather than absolute, because

@@ -7,7 +7,7 @@ import { TEST_RATES } from './helpers.js';
  * Whole sheets, answer column and all.
  *
  * Nearly every other case in this suite is one line in, one answer out. That
- * shape suits the parts math.js does the work for and suits the parts WebCalc
+ * shape suits the parts math.js does the work for and suits the parts Sumline
  * owns very badly: the sheet-level rules are all multi-line and all interact —
  * sections, `sum` closing one so stacked totals do not double-count, tag
  * buckets, `prev` tracking the last line that produced a value, `referenced`,

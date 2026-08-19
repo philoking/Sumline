@@ -147,9 +147,9 @@ describe('an instance with SPACES unset', () => {
   const apps: App[] = [];
 
   function tempDb(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'webcalc-spaces-'));
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-spaces-'));
     dirs.push(dir);
-    return join(dir, 'webcalc.db');
+    return join(dir, 'sumline.db');
   }
 
   function build(dbPath: string, spaces?: Space[]): App {
@@ -204,7 +204,7 @@ describe('an instance with SPACES unset', () => {
       const created = await configured.server.inject({
         method: 'POST',
         url: '/api/sheets',
-        headers: { cookie: `webcalc_user=${owner}` },
+        headers: { cookie: `sumline_user=${owner}` },
         payload: { title, content: '1 + 1' },
       });
       expect(created.statusCode).toBe(201);
@@ -225,7 +225,7 @@ describe('an instance with SPACES unset', () => {
     // Adoption is only worth anything if the sheets come back with it.
     const sheets = await reopened.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map(
@@ -253,7 +253,7 @@ describe('an instance with SPACES unset', () => {
 
     const sheets = await upgraded.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title),
@@ -289,8 +289,8 @@ describe('managing spaces from the app', () => {
   let dbPath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'webcalc-manage-'));
-    dbPath = join(dir, 'webcalc.db');
+    dir = mkdtempSync(join(tmpdir(), 'sumline-manage-'));
+    dbPath = join(dir, 'sumline.db');
     app = buildApp({
       dbPath,
       staticRoot: null,
@@ -335,7 +335,7 @@ describe('managing spaces from the app', () => {
     const created = await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=ana' },
+      headers: { cookie: 'sumline_user=ana' },
       payload: { title: 'Seedlings', content: '2 + 2' },
     });
     expect(created.statusCode).toBe(201);
@@ -343,7 +343,7 @@ describe('managing spaces from the app', () => {
 
     const others = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=ada' },
+      headers: { cookie: 'sumline_user=ada' },
     });
     expect((others.json() as { sheets: unknown[] }).sheets).toEqual([]);
   });
@@ -364,7 +364,7 @@ describe('managing spaces from the app', () => {
     const created = await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
       payload: { title: 'Garden plan', content: '1 + 1' },
     });
     expect(created.statusCode).toBe(201);
@@ -384,7 +384,7 @@ describe('managing spaces from the app', () => {
     // alone or it would read as a deletion.
     const sheets = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title),
@@ -411,7 +411,7 @@ describe('managing spaces from the app', () => {
     await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
       payload: { title: 'Garden plan', content: '1 + 1' },
     });
 
@@ -429,7 +429,7 @@ describe('managing spaces from the app', () => {
     // nobody's list — but it is still in the database.
     const listed = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
     });
     expect((listed.json() as { sheets: unknown[] }).sheets).toEqual([]);
     expect(app.store.owners()).toContain('grace');
@@ -439,7 +439,7 @@ describe('managing spaces from the app', () => {
     await app.server.inject({
       method: 'POST',
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
       payload: { title: 'Garden plan', content: '1 + 1' },
     });
     await app.server.inject({ method: 'DELETE', url: '/api/spaces/grace' });
@@ -451,7 +451,7 @@ describe('managing spaces from the app', () => {
 
     const sheets = await app.server.inject({
       url: '/api/sheets',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
     });
     expect(
       (sheets.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title),

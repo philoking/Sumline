@@ -21,7 +21,7 @@ afterEach(async () => {
   await app.server.close();
 });
 
-const as = (user: string) => ({ cookie: `webcalc_user=${user}` });
+const as = (user: string) => ({ cookie: `sumline_user=${user}` });
 
 /**
  * Lets the clock move on between writes.

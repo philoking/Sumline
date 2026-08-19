@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe('reading the arguments', () => {
   it('takes the words of one line without needing them quoted', () => {
-    // Quoting is the shell's business. `webcalc 10 + 5` should answer 15
+    // Quoting is the shell's business. `sumline 10 + 5` should answer 15
     // rather than complain about three arguments.
     expect(parseArgs(['10', '+', '5']).lines).toEqual(['10 + 5']);
   });
@@ -54,15 +54,15 @@ describe('reading the arguments', () => {
     // defaulted somewhere else would be the one thing on the page that needed
     // a flag to work. Stubbed rather than assumed, so this says the same thing
     // on a machine that has the variable set.
-    vi.stubEnv('WEBCALC_URL', '');
+    vi.stubEnv('SUMLINE_URL', '');
     expect(parseArgs([]).url).toBe('http://localhost:8422');
   });
 
   it('prefers the environment to the default, and the flag to both', () => {
     // The launcher case: one export in a shell profile, and every invocation
     // afterwards asks the right instance without repeating itself.
-    vi.stubEnv('WEBCALC_URL', 'http://box:8422');
-    vi.stubEnv('WEBCALC_SPACE', 'consulting');
+    vi.stubEnv('SUMLINE_URL', 'http://box:8422');
+    vi.stubEnv('SUMLINE_SPACE', 'consulting');
     expect(parseArgs([])).toMatchObject({ url: 'http://box:8422', space: 'consulting' });
     expect(parseArgs(['--url', 'http://other:9000']).url).toBe('http://other:9000');
   });
@@ -82,7 +82,7 @@ describe('printing the answers', () => {
   });
 
   it('keeps a single failure off stdout entirely', () => {
-    // The failure that matters: `total=$(webcalc "…")` must not come back
+    // The failure that matters: `total=$(sumline "…")` must not come back
     // holding a sentence about what went wrong and spend it as a number.
     expect(render([line('10 USD in XYZ', '', 'No unit or currency called XYZ')])).toEqual({
       out: [],

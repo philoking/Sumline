@@ -25,7 +25,7 @@ import { Login } from './Login';
 import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
-import { DEFAULT_PRECISION, engineOptionsFrom } from '@webcalc/engine';
+import { DEFAULT_PRECISION, engineOptionsFrom } from '@sumline/engine';
 import {
   DEFAULT_FONT_SIZE,
   FONT_STEP,
@@ -46,6 +46,7 @@ import { useSheetList } from './useSheetList';
 import { useSpaces } from './useSpaces';
 import { useAsk } from './Ask';
 import { Backdrop } from './Popover';
+import { Mark, Wordmark } from './Wordmark';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 
@@ -72,16 +73,6 @@ const LIVE_SETTLE_MS = 400;
 const FALLBACK_POLL_MS = 30_000;
 
 const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
-
-/**
- * The app's own mark — the same abacus the favicon draws.
- *
- * Written out here as well as in `index.html` rather than shared, because a
- * `<link rel="icon">` is static HTML and cannot import a module. Two copies of
- * one glyph, noted in both places so a change to either goes looking for the
- * other.
- */
-const APP_ICON = '🧮';
 
 export function App() {
   const browser = useMemo(clientIdentity, []);
@@ -784,12 +775,12 @@ export function App() {
     // together instead of drifting apart at the edges of the range.
     <div className="app" style={{ '--sheet-font-size': `${fontSize}px` } as CSSProperties}>
       <header className="topbar">
-        {/* Decorative, and hidden from assistive tech: the document title
-            already says which app this is, and an abacus announced ahead of
-            the sheet's name would be noise in front of the thing that matters. */}
-        <span className="app-mark" aria-hidden="true">
-          {APP_ICON}
-        </span>
+        {/* The mark is decorative and hidden from assistive tech — the name
+            beside it says the same thing, and the document title said it
+            already. What a reader needs first is the sheet's own name, which
+            is why the lockup is small and the title input takes the room. */}
+        <Mark />
+        <Wordmark />
         <input
           className="title-input"
           value={title}
@@ -1399,7 +1390,7 @@ export function App() {
   );
 }
 
-const lastSheetKey = (space: string) => `webcalc.lastSheet.${space}`;
+const lastSheetKey = (space: string) => `sumline.lastSheet.${space}`;
 
 /**
  * Remembers the open sheet without putting it in the address bar.

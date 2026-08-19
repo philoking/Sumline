@@ -1,4 +1,4 @@
-import { PRECISIONS } from '@webcalc/engine';
+import { PRECISIONS } from '@sumline/engine';
 import { formatShortcut } from './shortcuts';
 import { Backdrop } from './Popover';
 

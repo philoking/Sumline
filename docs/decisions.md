@@ -1,6 +1,6 @@
 # What was left out, and why
 
-Soulver does a number of things WebCalc does not. None of them were forgotten. This file records
+Soulver does a number of things Sumline does not. None of them were forgotten. This file records
 which were **declined** — decided against, and not wanted — and which were **deferred**, meaning
 the reasoning still holds but the answer could change. Two later sections cover what has since been
 **reversed**, and what is **reachable but not supported** — behaviour that answers without being
@@ -68,7 +68,7 @@ What survives of an entry that used to cover sales tax and compounding as well; 
 why those left. A loan repayment answers today —
 `$250,000 * 0.05/12 / (1 - (1 + 0.05/12)^-360)` → `$1,342.05`, and it is now in the reference — but
 writing it requires knowing it, which `pmt(0.05/12, 360, 250000)` would not. math.js supplies no
-financial functions, so any would be WebCalc's own.
+financial functions, so any would be Sumline's own.
 
 That is a reason to wait rather than a reason to refuse. Every phrasing the engine accepts is one
 with a worked example in Soulver's documentation, and Soulver has no PMT — inventing one means

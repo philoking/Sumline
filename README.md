@@ -1,4 +1,4 @@
-# WebCalc
+# Sumline
 
 A notepad calculator you run yourself, in the browser.
 
@@ -19,12 +19,12 @@ sum #home                          $180.50
 ## Quick start
 
 ```bash
-git clone <this-repository> webcalc
-cd webcalc
+git clone <this-repository> sumline
+cd sumline
 docker compose up -d --build
 ```
 
-Open <http://localhost:8422>. Sheets are stored in the `webcalc-data` volume and survive
+Open <http://localhost:8422>. Sheets are stored in the `sumline-data` volume and survive
 restarts and rebuilds.
 
 Date maths resolves in **your browser's** timezone, not the container's, so `today` is your today
@@ -628,11 +628,11 @@ curl -X PUT localhost:8422/api/settings/shared \
 
 # except in this one space
 curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
-  -H 'cookie: webcalc_user=boston' -d '{"region": "north-america"}'
+  -H 'cookie: sumline_user=boston' -d '{"region": "north-america"}'
 
 # and back to following the global value
 curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
-  -H 'cookie: webcalc_user=boston' -d '{"region": null}'
+  -H 'cookie: sumline_user=boston' -d '{"region": null}'
 ```
 
 `GET /api/settings` returns the space's own keys, `shared` (the global tier) and
@@ -673,20 +673,20 @@ copies the value in as the space's own. Nothing about which value wins is hidden
 Two things worth knowing. The panel edits the space you are working in — to change another one's
 own variables, switch to it first. And **Everywhere** reaches past your space, so on an instance with
 no password anyone who can open it can change those — which is the main thing
-[`WEBCALC_PASSWORD`](#the-password-if-you-want-one) exists to close.
+[`SUMLINE_PASSWORD`](#the-password-if-you-want-one) exists to close.
 
 Both scopes can also be set through the API, which is worth knowing for scripting an instance:
 
 ```bash
 curl -X PUT http://localhost:8422/api/settings \
   -H 'content-type: application/json' \
-  -H 'cookie: webcalc_user=work' \
+  -H 'cookie: sumline_user=work' \
   -d '{"globals": {"day rate": "$550", "vat": "20%"}}'
 ```
 
 **The cookie decides which space you are writing to**, and it is not optional on an instance with
 more than one: without it the request resolves to whichever space is listed first, so globals meant
-for `school` land in `work` and nothing reports a problem. `webcalc_user` takes a space **id** —
+for `school` land in `work` and nothing reports a problem. `sumline_user` takes a space **id** —
 the lowercase, dashed form of its name, which is what `SPACES="Work,Personal"` derives and what
 the switcher sets in your browser.
 
@@ -695,16 +695,16 @@ That is what makes the same name mean different things in different places:
 ```bash
 # day rate is $550 when working, $120 when teaching
 curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
-  -H 'cookie: webcalc_user=consulting' -d '{"globals": {"day rate": "$550"}}'
+  -H 'cookie: sumline_user=consulting' -d '{"globals": {"day rate": "$550"}}'
 curl -X PUT localhost:8422/api/settings -H 'content-type: application/json' \
-  -H 'cookie: webcalc_user=teaching'   -d '{"globals": {"day rate": "$120"}}'
+  -H 'cookie: sumline_user=teaching'   -d '{"globals": {"day rate": "$120"}}'
 ```
 
 Read them back the same way, which is the quickest way to check a global landed where you meant
 it to:
 
 ```bash
-curl localhost:8422/api/settings -H 'cookie: webcalc_user=teaching'
+curl localhost:8422/api/settings -H 'cookie: sumline_user=teaching'
 ```
 
 The **Everywhere** scope has its own endpoint, and is deliberately *not* cookie-scoped — being
@@ -858,10 +858,10 @@ mine** and **Take the server's** each throw one version away, and say so.
 By default there is **no authentication**: anyone who can reach the port can read and edit every
 sheet in every space. That remains the default, and for a trusted LAN it is the right one.
 
-Setting `WEBCALC_PASSWORD` turns on one shared password for the whole instance:
+Setting `SUMLINE_PASSWORD` turns on one shared password for the whole instance:
 
 ```bash
-WEBCALC_PASSWORD='something long' docker compose up -d
+SUMLINE_PASSWORD='something long' docker compose up -d
 ```
 
 The app then asks for it before showing anything, and remembers the answer in a cookie for 30 days.
@@ -900,41 +900,41 @@ in order with its own answer, and a line that cannot be answered carries an `err
 request still succeeds, because one bad line in a sheet is not a bad sheet. Up to 1,000 lines per
 call: evaluation is synchronous, so a longer one would hold the server up for everyone.
 
-**It answers in a space.** The `webcalc_user` cookie picks the space, exactly as it does everywhere
+**It answers in a space.** The `sumline_user` cookie picks the space, exactly as it does everywhere
 else, and the globals, number region and time zone that apply are the ones that space's sheets
 compute with. That is the point of the endpoint rather than a detail of it — `day rate * 3` has to
 mean the same thing in a launcher, in a script and in a sheet, and it only can if all three read the
 same settings. It also fetches any past exchange rates the lines ask for, which the browser cannot
 do in one call.
 
-### The `webcalc` command
+### The `sumline` command
 
 The same thing from a shell, and the front end a launcher (Raycast, Alfred, Shortcuts) can call:
 
 ```bash
-webcalc "5 hours 30 minutes in minutes"      # 330 minutes
-webcalc 10 km in miles                       # 6.2137119224 miles — quoting optional
-webcalc "subtotal = 480" -- "subtotal + 20%" --total
-echo "100 USD in EUR" | webcalc
+sumline "5 hours 30 minutes in minutes"      # 330 minutes
+sumline 10 km in miles                       # 6.2137119224 miles — quoting optional
+sumline "subtotal = 480" -- "subtotal + 20%" --total
+echo "100 USD in EUR" | sumline
 ```
 
 `--` separates one line from the next, so a several-line sheet is one invocation. One line prints
-its answer bare, for `$(webcalc "…")`; several print in a column beside the lines they answer. A
+its answer bare, for `$(sumline "…")`; several print in a column beside the lines they answer. A
 line that could not be answered goes to stderr rather than stdout, and the exit status is 1 — so a
 script can tell a wrong answer from no answer.
 
 | Variable | Meaning |
 | --- | --- |
-| `WEBCALC_URL` | Instance to ask. Default `http://localhost:8422`; `--url` overrides. |
-| `WEBCALC_SPACE` | Space whose globals apply. `--space` overrides. |
-| `WEBCALC_PASSWORD` | Sent only after the instance has asked for it with a 401. |
+| `SUMLINE_URL` | Instance to ask. Default `http://localhost:8422`; `--url` overrides. |
+| `SUMLINE_SPACE` | Space whose globals apply. `--space` overrides. |
+| `SUMLINE_PASSWORD` | Sent only after the instance has asked for it with a 401. |
 
 It ships in the server workspace, so a deployed container already has it — asking itself on the
 port it listens on inside the container rather than the one the host publishes:
 
 ```bash
-docker exec -e WEBCALC_URL=http://127.0.0.1:8080 webcalc \
-  node server/dist/webcalc.js "day rate * 3"
+docker exec -e SUMLINE_URL=http://127.0.0.1:8080 sumline \
+  node server/dist/sumline.js "day rate * 3"
 ```
 
 ## Why a sheet is plain text
@@ -959,7 +959,7 @@ npm test        # 1,110 engine tests, 271 server tests, 53 web tests
 npm run build   # build all three workspaces
 ```
 
-`npm run coverage -w @webcalc/engine` prints which branches of the engine the tests have never
+`npm run coverage -w @sumline/engine` prints which branches of the engine the tests have never
 reached. Not part of `npm test` and not gated on a number: the list is worth reading now and again
 and turning into cases, and instrumenting the fuzz sweep on every run costs more than it returns.
 
@@ -967,7 +967,7 @@ and turning into cases, and instrumenting the fuzz sweep on every run costs more
 | --- | --- |
 | [engine/](engine/) | The calculation engine. Pure TypeScript, no DOM or Node APIs, covered by a golden table of `input → answer` cases in [engine/test/](engine/test/). |
 | [web/](web/) | React + CodeMirror 6. Evaluation runs in the browser, so answers never wait on the network. Its tests cover the editor's *state* logic — CodeMirror keeps that separate from the view, so they run headlessly with no jsdom. |
-| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, static hosting of the built UI, and the [`webcalc` command](#the-webcalc-command). It runs the engine too, behind `/api/evaluate`. |
+| [server/](server/) | Fastify. Sheets in SQLite (through Node's built-in `node:sqlite` — no native modules), exchange rates, public holidays, settings, static hosting of the built UI, and the [`sumline` command](#the-sumline-command). It runs the engine too, behind `/api/evaluate`. |
 
 ### How the engine fits together
 
@@ -1033,7 +1033,7 @@ The four steps are worth copying whatever CI you use:
 Docs-only pushes are skipped. The workflow can also be run by hand from the Actions tab.
 
 `docker-compose.prod.yml` has no `build:` stanza — it only runs the image the runner built, so
-the deploy directory never holds source. The compose project name is pinned to `webcalc` so the
+the deploy directory never holds source. The compose project name is pinned to `sumline` so the
 sheets volume keeps its existing name; **renaming the project or the volume key would start the
 app on an empty database.**
 
@@ -1043,12 +1043,12 @@ app on an empty database.**
 | --- | --- | --- |
 | `PORT` | `8080` | Port the server listens on inside the container |
 | `HOST` | `0.0.0.0` | Bind address |
-| `DATA_DIR` | `/data` | Directory holding `webcalc.db` |
+| `DATA_DIR` | `/data` | Directory holding `sumline.db` |
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
 | `TZ` | `UTC` | The **container's** clock: log timestamps, and which years of public holidays get fetched. It does **not** decide how sheets do date maths — that follows the reader's browser. See [Time zones and the clock](#time-zones-and-the-clock). |
 | `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths, for the whole instance |
 | `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
-| `WEBCALC_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
+| `SUMLINE_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
 
 ## Acknowledgement
 
@@ -1060,7 +1060,7 @@ written into the line, and a good deal of the natural phrasing the engine accept
 own documentation was the specification this was built against, and it is cited throughout the
 source where a rule came from there.
 
-WebCalc is an independent implementation, not a port: no Soulver code was used, and it is not
+Sumline is an independent implementation, not a port: no Soulver code was used, and it is not
 affiliated with or endorsed by Soulver's makers. If you want the polished native original — with
 the features [docs/decisions.md](docs/decisions.md) records as deliberately left out, and many
 more — buy Soulver.

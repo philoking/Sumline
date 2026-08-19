@@ -20,7 +20,7 @@ afterEach(async () => {
   await app.server.close();
 });
 
-const as = (user: string) => ({ cookie: `webcalc_user=${user}` });
+const as = (user: string) => ({ cookie: `sumline_user=${user}` });
 
 interface SettingsView {
   globals?: Record<string, string>;

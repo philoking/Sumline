@@ -2294,3 +2294,79 @@ button.danger-button:disabled {
 .ask-confirm:hover {
   border-color: var(--muted);
 }
+
+/* ---- the wordmark ---- */
+
+/* A homage to the Redline BMX logo: heavy italic caps, packed tight, in a red
+   that keeps its own identity in both themes, with the last letter running out
+   into three speed bars. See Wordmark.tsx.
+
+   The red is fixed rather than themed, the way a brand colour is, and the
+   outline is what makes that possible: a thin ring in the panel's own tone
+   holds the letters off whichever background is behind them. */
+.wordmark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+
+.wordmark-name {
+  font-family: var(--font-sheet);
+  font-size: 15px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: #e4002b;
+  /* Stroke under fill, so the outline thickens the letter outwards instead of
+     eating into a face that is already tightly spaced. */
+  paint-order: stroke fill;
+  -webkit-text-stroke: 2px var(--panel);
+}
+
+.wordmark-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Leaning with the letters, and trailing off: each bar is shorter than the
+     one above it, which is what makes the mark read as moving rather than as
+     three lines that happen to be there. */
+  transform: skewX(-12deg);
+}
+
+.wordmark-bars i {
+  display: block;
+  height: 2px;
+  background: #e4002b;
+  border-radius: 1px;
+}
+
+.wordmark-bars i:nth-child(1) {
+  width: 12px;
+}
+
+.wordmark-bars i:nth-child(2) {
+  width: 9px;
+}
+
+.wordmark-bars i:nth-child(3) {
+  width: 6px;
+}
+
+/* On a phone the sheet's name is what the bar is for, so the wordmark gives up
+   its room rather than crowding it. */
+@media (max-width: 560px) {
+  .wordmark-name {
+    display: none;
+  }
+}
+
+/* The mark beside the wordmark: the same red and the same lean, with the
+   letter reversed out of it so the tile reads at the size a tab strip gives it. */
+.app-mark-letter {
+  fill: #fff;
+  font-family: var(--font-sheet);
+}

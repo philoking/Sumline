@@ -20,7 +20,7 @@ import { TEST_NOW, TEST_RATES } from './helpers.js';
  * already the minimal case for every property below.
  *
  * Out of scope, deliberately: math.js's own unit table, its trigonometry and
- * its arithmetic. These guard the seams WebCalc owns — the rewrites in
+ * its arithmetic. These guard the seams Sumline owns — the rewrites in
  * `preprocess.ts`, the real percentage and multiplier types in `values.ts`, and
  * the sheet semantics in `evaluate.ts`. Anything that could only fail because
  * math.js changed belongs to a version bump, not here.

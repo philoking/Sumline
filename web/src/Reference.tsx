@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { EXAMPLE_GROUPS, type ExampleGroup } from '@webcalc/engine';
+import { EXAMPLE_GROUPS, type ExampleGroup } from '@sumline/engine';
 import { formatShortcut } from './shortcuts';
 import { useDialog } from './useDialog';
 import { Backdrop } from './Popover';
@@ -179,7 +179,7 @@ export function Reference({
                 </a>
                 ’s idea. Soulver worked out how a sheet like this should behave, and
                 its documentation was the specification this was built against.
-                WebCalc is an independent implementation, unaffiliated with
+                Sumline is an independent implementation, unaffiliated with
                 Soulver’s makers — if you want the polished native original, buy it.
               </p>
               <p className="reference-blurb">

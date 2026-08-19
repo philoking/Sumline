@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEngine } from '@webcalc/engine';
+import { createEngine } from '@sumline/engine';
 import { WELCOME_SHEET } from '../src/welcome.js';
 import { SEED_RATES } from '../src/rates.js';
 

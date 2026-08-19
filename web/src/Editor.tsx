@@ -41,7 +41,7 @@ import {
   searchKeymap,
   searchPanelOpen,
 } from '@codemirror/search';
-import type { LineResult, Token, TokenKind } from '@webcalc/engine';
+import type { LineResult, Token, TokenKind } from '@sumline/engine';
 import { keepReferencesPointing, replacingDocument } from './references';
 import { Backdrop, usePopoverPlacement } from './Popover';
 import { loadUndoHistory, saveUndoHistory } from './undoHistory';

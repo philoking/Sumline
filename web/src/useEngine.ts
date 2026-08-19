@@ -5,7 +5,7 @@ import {
   type HistoricalRates,
   type LineResult,
   type RateTable,
-} from '@webcalc/engine';
+} from '@sumline/engine';
 import { api, type HolidayTable } from './api';
 
 

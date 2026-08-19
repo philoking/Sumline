@@ -1,4 +1,4 @@
-import type { LineResult } from '@webcalc/engine';
+import type { LineResult } from '@sumline/engine';
 
 export interface ExportOptions {
   title: string;

@@ -13,22 +13,22 @@
 /** The port `docker-compose.yml` publishes, which is what the README uses. */
 const DEFAULT_URL = 'http://localhost:8422';
 
-const USAGE = `webcalc — evaluate a line in a WebCalc space
+const USAGE = `sumline — evaluate a line in a Sumline space
 
 Usage:
-  webcalc "day rate * 3"          evaluate one line
-  webcalc line one -- line two    evaluate several lines as one sheet
-  echo "…" | webcalc              evaluate what is piped in
+  sumline "day rate * 3"          evaluate one line
+  sumline line one -- line two    evaluate several lines as one sheet
+  echo "…" | sumline              evaluate what is piped in
 
 Options:
-  --url <url>     instance to ask (default $WEBCALC_URL, else ${DEFAULT_URL})
-  --space <id>    space whose globals apply (default $WEBCALC_SPACE)
+  --url <url>     instance to ask (default $SUMLINE_URL, else ${DEFAULT_URL})
+  --space <id>    space whose globals apply (default $SUMLINE_SPACE)
   --json          print the API's response instead of the answers
   --total         print the sheet total after the answers
   -h, --help      this
 
 Environment:
-  WEBCALC_URL, WEBCALC_SPACE, WEBCALC_PASSWORD
+  SUMLINE_URL, SUMLINE_SPACE, SUMLINE_PASSWORD
 
 Exit status is 1 when any line could not be answered, so a script can tell a
 wrong answer from no answer.`;
@@ -59,13 +59,13 @@ interface EvaluateResponse {
  * Reads the arguments, with `--` separating lines rather than joining them.
  *
  * Everything that is not an option is one line of the sheet, so quoting is the
- * shell's business and not this parser's: `webcalc "10 + 5" -- "prev * 2"` is
- * two lines, and `webcalc 10 + 5` is one.
+ * shell's business and not this parser's: `sumline "10 + 5" -- "prev * 2"` is
+ * two lines, and `sumline 10 + 5` is one.
  */
 export function parseArgs(argv: readonly string[]): Options {
   const options: Options = {
-    url: process.env['WEBCALC_URL']?.trim() || DEFAULT_URL,
-    space: process.env['WEBCALC_SPACE']?.trim() || undefined,
+    url: process.env['SUMLINE_URL']?.trim() || DEFAULT_URL,
+    space: process.env['SUMLINE_SPACE']?.trim() || undefined,
     json: false,
     total: false,
     help: false,
@@ -127,7 +127,7 @@ async function signIn(url: string, password: string): Promise<string> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ password }),
   });
-  if (!response.ok) throw new Error('WEBCALC_PASSWORD was not accepted');
+  if (!response.ok) throw new Error('SUMLINE_PASSWORD was not accepted');
   const cookie = response.headers.get('set-cookie');
   if (!cookie) throw new Error('The instance accepted the password but sent no session');
   return cookie.split(';')[0] as string;
@@ -136,7 +136,7 @@ async function signIn(url: string, password: string): Promise<string> {
 function cookieHeader(space: string | undefined, session: string | null): string | undefined {
   const parts = [
     ...(session ? [session] : []),
-    ...(space ? [`webcalc_user=${encodeURIComponent(space)}`] : []),
+    ...(space ? [`sumline_user=${encodeURIComponent(space)}`] : []),
   ];
   return parts.length > 0 ? parts.join('; ') : undefined;
 }
@@ -162,7 +162,7 @@ async function evaluate(
  *
  * One line in, one line out, positionally — which is what makes the output
  * usable from a script without parsing anything. A single line prints bare, so
- * `webcalc "2+2"` inside a command substitution is just `4`.
+ * `sumline "2+2"` inside a command substitution is just `4`.
  *
  * A single line that could not be answered prints nothing at all on stdout: a
  * script capturing the output would otherwise receive the complaint where it
@@ -208,20 +208,20 @@ export async function main(argv: readonly string[]): Promise<number> {
      * credential at a URL that may not be the one it was set for.
      */
     if (response.status === 401) {
-      const password = process.env['WEBCALC_PASSWORD'];
-      if (!password) throw new Error(`${options.url} needs a password; set WEBCALC_PASSWORD`);
+      const password = process.env['SUMLINE_PASSWORD'];
+      if (!password) throw new Error(`${options.url} needs a password; set SUMLINE_PASSWORD`);
       session = await signIn(options.url, password);
       response = await evaluate(options, lines, session);
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`webcalc: ${reason}\n`);
+    process.stderr.write(`sumline: ${reason}\n`);
     return 1;
   }
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    process.stderr.write(`webcalc: ${body?.error ?? `${options.url} answered ${response.status}`}\n`);
+    process.stderr.write(`sumline: ${body?.error ?? `${options.url} answered ${response.status}`}\n`);
     return 1;
   }
 
@@ -231,7 +231,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   } else {
     const { out, err } = render(body.results);
     for (const line of out) process.stdout.write(`${line}\n`);
-    for (const line of err) process.stderr.write(`webcalc: ${line}\n`);
+    for (const line of err) process.stderr.write(`sumline: ${line}\n`);
     if (options.total && body.total !== '') process.stdout.write(`total ${body.total}\n`);
   }
 

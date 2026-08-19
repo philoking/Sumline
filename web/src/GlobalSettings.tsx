@@ -101,7 +101,7 @@ export function GlobalSettings(props: GlobalSettingsProps) {
 
           <section className="reference-group">
             <p className="reference-note">
-              There are no passwords unless <code>WEBCALC_PASSWORD</code> is set,
+              There are no passwords unless <code>SUMLINE_PASSWORD</code> is set,
               so anyone who can open the app can change what is on this panel.
             </p>
           </section>

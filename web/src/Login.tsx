@@ -34,7 +34,7 @@ export function Login({ onSignedIn }: LoginProps) {
   return (
     <div className="login">
       <form className="login-card" onSubmit={(event) => void submit(event)}>
-        <h1>WebCalc</h1>
+        <h1>Sumline</h1>
         <p className="login-blurb">This instance is password protected.</p>
         <input
           type="password"

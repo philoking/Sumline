@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { createEngine, engineOptionsFrom, type EngineSettings } from '@webcalc/engine';
+import { createEngine, engineOptionsFrom, type EngineSettings } from '@sumline/engine';
 import { Store, VersionConflictError, type Lock, type UserId } from './db.js';
 import {
   FALLBACK_SPACE,
@@ -97,7 +97,7 @@ const MAX_EVALUATE_LINES = 1_000;
 const MAX_EVALUATE_DATES = 30;
 
 /** The cookie naming whose space this browser is working in. */
-export const USER_COOKIE = 'webcalc_user';
+export const USER_COOKIE = 'sumline_user';
 
 /** Returned by a shape check for a value it will not store. */
 const INVALID = Symbol('invalid setting');
@@ -297,7 +297,7 @@ export function buildApp(options: AppOptions): App {
   /**
    * The shared password, or null for an instance with no authentication.
    *
-   * Whitespace-only is treated as absent: a `WEBCALC_PASSWORD=` left in a
+   * Whitespace-only is treated as absent: a `SUMLINE_PASSWORD=` left in a
    * compose file should not lock everyone out with a password nobody can type.
    */
   const password = options.password?.trim() ? options.password : null;

@@ -16,10 +16,10 @@ const spaces = parseSpaces(process.env['SPACES']);
 // Absent means no authentication, which is the documented default. Only a
 // non-empty value turns the password on, so an empty assignment left in a
 // compose file cannot lock everyone out.
-const password = process.env['WEBCALC_PASSWORD']?.trim();
+const password = process.env['SUMLINE_PASSWORD']?.trim();
 
 const { server } = buildApp({
-  dbPath: resolve(dataDir, 'webcalc.db'),
+  dbPath: resolve(dataDir, 'sumline.db'),
   staticRoot,
   holidayCountry: process.env['HOLIDAY_COUNTRY'] ?? 'US',
   ...(spaces && { spaces }),
@@ -29,11 +29,11 @@ const { server } = buildApp({
 
 try {
   await server.listen({ port, host });
-  server.log.info(`WebCalc listening on http://${host}:${port}`);
+  server.log.info(`Sumline listening on http://${host}:${port}`);
   server.log.info(
     password
-      ? 'WEBCALC_PASSWORD is set: the app asks for a password before showing any sheet'
-      : 'No WEBCALC_PASSWORD: anyone who can reach this port can read and edit every sheet',
+      ? 'SUMLINE_PASSWORD is set: the app asks for a password before showing any sheet'
+      : 'No SUMLINE_PASSWORD: anyone who can reach this port can read and edit every sheet',
   );
 } catch (error) {
   server.log.error(error);

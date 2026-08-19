@@ -17,7 +17,7 @@
  */
 
 /** Bumped if the stored shape ever changes, so old entries are ignored rather than misread. */
-const KEY = 'webcalc.undo.v1';
+const KEY = 'sumline.undo.v1';
 
 /**
  * How many sheets keep a stack.

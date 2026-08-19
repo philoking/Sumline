@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Node 22 is pinned deliberately: WebCalc stores data through the built-in
+# Node 22 is pinned deliberately: Sumline stores data through the built-in
 # `node:sqlite` module, so the image needs no native modules and no C++
 # toolchain. On Node 22 that module lives behind --experimental-sqlite, which
 # the start command passes.

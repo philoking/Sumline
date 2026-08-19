@@ -3,20 +3,20 @@
 # Unlike docker-compose.yml this has no `build:` stanza — the runner builds the
 # image and this file only runs it, so the deploy directory holds no source.
 services:
-  webcalc:
-    image: webcalc:latest
-    container_name: webcalc
+  sumline:
+    image: sumline:latest
+    container_name: sumline
     restart: unless-stopped
     ports:
       - "8422:8080"
     environment:
-      # Date maths resolves in this zone. Overridable from ~/webcalc/.env.
+      # Date maths resolves in this zone. Overridable from ~/sumline/.env.
       TZ: ${TZ:-America/Los_Angeles}
-      # One shared password for the whole instance, set in ~/webcalc/.env so it
+      # One shared password for the whole instance, set in ~/sumline/.env so it
       # never reaches the repository. Empty means no authentication.
-      WEBCALC_PASSWORD: ${WEBCALC_PASSWORD:-}
+      SUMLINE_PASSWORD: ${SUMLINE_PASSWORD:-}
     volumes:
-      - webcalc-data:/data
+      - sumline-data:/data
     healthcheck:
       test:
         - CMD
@@ -29,7 +29,6 @@ services:
       start_period: 10s
 
 volumes:
-  # Resolves to webcalc_webcalc-data under `-p webcalc`, which is the volume
-  # the existing deployment already uses. Renaming either would orphan the
-  # sheets, so both stay fixed.
-  webcalc-data:
+  # Resolves to sumline_sumline-data under `-p sumline`. Renaming either would
+  # orphan the sheets, so both stay fixed from here on.
+  sumline-data:

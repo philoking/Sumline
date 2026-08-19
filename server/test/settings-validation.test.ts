@@ -42,13 +42,13 @@ describe('the region setting', () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: { cookie: 'webcalc_user=berlin' },
+      headers: { cookie: 'sumline_user=berlin' },
       payload: { region: 'western-europe' },
     });
 
     const berlin = await app.server.inject({
       url: '/api/settings',
-      headers: { cookie: 'webcalc_user=berlin' },
+      headers: { cookie: 'sumline_user=berlin' },
     });
     expect(berlin.json()).toMatchObject({ region: 'western-europe' });
     // The first space is untouched: one space reading 1.234 as a thousand must
@@ -162,13 +162,13 @@ describe('the Everywhere tier', () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: { cookie: 'webcalc_user=boston' },
+      headers: { cookie: 'sumline_user=boston' },
       payload: { region: 'north-america' },
     });
 
     const boston = await app.server.inject({
       url: '/api/settings',
-      headers: { cookie: 'webcalc_user=boston' },
+      headers: { cookie: 'sumline_user=boston' },
     });
     expect(boston.json().effective).toMatchObject({ region: 'north-america' });
     // Everywhere is untouched, and every other space still follows it.

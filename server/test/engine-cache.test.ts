@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEngine } from '@webcalc/engine';
+import { createEngine } from '@sumline/engine';
 import { buildApp, type App } from '../src/app.js';
 import type { RateFetcher } from '../src/rates.js';
 
@@ -12,8 +12,8 @@ import type { RateFetcher } from '../src/rates.js';
  * that never invalidated would answer yesterday's rates forever — so every
  * input that decides the answer gets a test that moving it builds again.
  */
-vi.mock('@webcalc/engine', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@webcalc/engine')>();
+vi.mock('@sumline/engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sumline/engine')>();
   return { ...actual, createEngine: vi.fn(actual.createEngine) };
 });
 
@@ -53,7 +53,7 @@ const evaluate = (input: string, owner = 'ada') =>
   app.server.inject({
     method: 'POST',
     url: '/api/evaluate',
-    headers: { cookie: `webcalc_user=${owner}` },
+    headers: { cookie: `sumline_user=${owner}` },
     payload: { input },
   });
 
@@ -89,7 +89,7 @@ describe('the evaluator between requests', () => {
     await app.server.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: { cookie: 'webcalc_user=grace' },
+      headers: { cookie: 'sumline_user=grace' },
       payload: { region: 'western-europe' },
     });
 

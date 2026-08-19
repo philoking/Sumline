@@ -1,9 +1,9 @@
 {
-  "name": "@webcalc/web",
+  "name": "@sumline/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser UI for WebCalc",
+  "description": "Browser UI for Sumline",
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
@@ -17,7 +17,7 @@
     "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.5.1",
     "@codemirror/view": "^6.36.2",
-    "@webcalc/engine": "*",
+    "@sumline/engine": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
