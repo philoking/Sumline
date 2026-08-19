@@ -65,8 +65,8 @@ The same reference is **built into the app** — press `?`, click the `?` button
 | `1,700,000 as sci` | `1.7e6` |
 
 Large plain numbers are abbreviated with SI-style symbols (`k`, `M`, `G`, `T`) above 100,000,
-the way Soulver does. Currency is always written out in full. The toggle in the top bar turns
-abbreviation off if you'd rather see every digit.
+the way Soulver does. Currency is always written out in full. **View → Notation for large
+numbers** turns abbreviation off if you'd rather see every digit.
 
 Number conventions follow a **region**, set per space in Space settings:
 
@@ -284,11 +284,10 @@ year is still read as one where the rest of the line has already established a d
 Public holidays are excluded. The list comes from [Nager.Date](https://date.nager.at/), refreshed
 weekly and cached. With no network it falls back to a small bundled set of fixed-date holidays.
 
-**Each space picks its own country** in Space settings — a two-letter code like `DE` — so a space
-per client can do workday maths against that client's calendar. `HOLIDAY_COUNTRY` sets the default
-for spaces that have not chosen. The panel reports how many holidays actually loaded, because a
-code the provider does not cover would otherwise show up much later as workday maths quietly
-counting a holiday.
+**The country is instance-wide**, set by `HOLIDAY_COUNTRY` — a two-letter code like `DE`. Every
+space on the instance does workday maths against the same calendar; a space cannot pin its own.
+The reference panel reports how many holidays actually loaded, because a code the provider does
+not cover would otherwise show up much later as workday maths quietly counting a holiday.
 
 ### Clock times, timespans and timecode
 
@@ -461,7 +460,7 @@ as plain black.
 
 ### The view menu
 
-`👁` in the toolbar holds everything about how a sheet is *shown*, rather than what it says:
+`👁` in the top bar holds everything about how a sheet is *shown*, rather than what it says:
 text size, the sidebar, line numbers, the total and its options, and how numbers are written.
 All of it is stored per space, so it follows you between browsers.
 
@@ -1019,7 +1018,7 @@ app on an empty database.**
 | `DATA_DIR` | `/data` | Directory holding `webcalc.db` |
 | `STATIC_ROOT` | `/app/web/dist` | Built UI to serve |
 | `TZ` | `UTC` | The **container's** clock: log timestamps, and which years of public holidays get fetched. It does **not** decide how sheets do date maths — that follows the reader's browser. See [Time zones and the clock](#time-zones-and-the-clock). |
-| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths |
+| `HOLIDAY_COUNTRY` | `US` | ISO country code for public holidays in workday maths, for the whole instance |
 | `SPACES` | one space, "Me" | Seeds [the spaces](#adding-and-removing-spaces) on an instance that has none. Ignored once it has any — spaces are managed in the app after that. |
 | `WEBCALC_PASSWORD` | unset | One shared password for the whole instance. Unset — or blank — means no authentication, as before. See [The password, if you want one](#the-password-if-you-want-one). |
 

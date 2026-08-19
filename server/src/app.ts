@@ -511,11 +511,11 @@ export function buildApp(options: AppOptions): App {
   );
 
   /**
-   * The public holidays that apply in the caller's space.
+   * The public holidays behind workday maths.
    *
-   * Scoped by the space cookie like the settings it reads, so a space per client
-   * can keep its own country's calendar — the workday maths in a sheet is only
-   * as right as the holidays behind it.
+   * One table for the whole instance, from `HOLIDAY_COUNTRY`: unlike the region
+   * and the zone, a space cannot pin its own country. Which is why this takes
+   * no request — there is nothing about the caller that would change the answer.
    */
   server.get('/api/holidays', async () => holidays.current());
 
@@ -535,8 +535,8 @@ export function buildApp(options: AppOptions): App {
 
     /*
      * The settings that change what a sheet computes get the same two tiers as
-     * the globals, and for the same reason: a number region or a holiday country
-     * is usually true of the whole instance, and occasionally true of one space
+     * the globals, and for the same reason: a number region or a time zone is
+     * usually true of the whole instance, and occasionally true of one space
      * only. Defining it once and overriding where it differs beats setting it
      * again in every space and beats having no instance-wide answer at all.
      */
