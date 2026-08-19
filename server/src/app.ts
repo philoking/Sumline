@@ -680,6 +680,62 @@ export function buildApp(options: AppOptions): App {
    * so `100 USD in EUR on 2020-01-01` is answered in a single call rather than
    * over the two round trips a synchronous engine forces on a client.
    */
+  /**
+   * The engines `POST /api/evaluate` has already built.
+   *
+   * `createEngine` builds a whole math.js instance — every factory the library
+   * ships, then a `createUnit` call per everyday alias and per currency in the
+   * rate table, some thirty of them each mutating the new instance's unit
+   * table. Beside that, evaluating a handful of lines is nothing, and this is
+   * one synchronous process serving everybody: the cost came out of every other
+   * caller's latency, which is the same argument `MAX_EVALUATE_LINES` makes
+   * about the lines.
+   *
+   * Disposability is still the virtue the engine claims for itself — an
+   * instance is rebuilt whenever its inputs change, which is what keeps the
+   * engine free of mutable global state. That is an argument for rebuilding
+   * when the inputs change, not once a request. The browser already reads it
+   * that way; `useEngine` memoises on the same things, so it rebuilds when
+   * rates land rather than on every keystroke.
+   *
+   * Keyed on everything that decides the answer: the space's resolved options,
+   * the rate and holiday tables, and which past dates are in hand. The two
+   * tables are compared by identity rather than by value, which is exact
+   * rather than approximate — a refresh installs a new object, and nothing
+   * mutates one in place.
+   *
+   * Four entries, most recent first. An instance has a space or two, and the
+   * rate table changes twice a day.
+   */
+  const ENGINE_CACHE_SIZE = 4;
+  const engineCache: Array<{
+    key: string;
+    rates: object;
+    holidays: readonly string[];
+    engine: ReturnType<typeof createEngine>;
+  }> = [];
+
+  const engineFor = (
+    key: string,
+    rateTable: object,
+    holidayDates: readonly string[],
+    build: () => ReturnType<typeof createEngine>,
+  ): ReturnType<typeof createEngine> => {
+    const at = engineCache.findIndex(
+      (entry) =>
+        entry.key === key && entry.rates === rateTable && entry.holidays === holidayDates,
+    );
+    if (at !== -1) {
+      const [hit] = engineCache.splice(at, 1);
+      engineCache.unshift(hit!);
+      return hit!.engine;
+    }
+    const engine = build();
+    engineCache.unshift({ key, rates: rateTable, holidays: holidayDates, engine });
+    engineCache.length = Math.min(engineCache.length, ENGINE_CACHE_SIZE);
+    return engine;
+  };
+
   server.post<{ Body: { input?: unknown } }>('/api/evaluate', async (request, reply) => {
     const input = request.body?.input;
     const source = Array.isArray(input) ? input : typeof input === 'string' ? input : null;
@@ -704,16 +760,17 @@ export function buildApp(options: AppOptions): App {
     }
 
     const settings = settingsFor(currentUser(request)) as EngineSettings;
-    const base = {
-      ...engineOptionsFrom(settings),
-      rates: rates.current(),
-      holidays: holidays.current().dates,
-    };
+    const options = engineOptionsFrom(settings);
+    const rateTable = rates.current();
+    const holidayDates = holidays.current().dates;
+    const base = { ...options, rates: rateTable, holidays: holidayDates };
+    const spaceKey = JSON.stringify(options);
 
     // Two passes, because the engine reports what it needs by parsing: the
     // first says which past dates the sheet asks about, the second answers
-    // with them in hand. Skipped entirely by a sheet that names no date.
-    let engine = createEngine(base);
+    // with them in hand. Skipped entirely by a sheet that names no date, and
+    // both passes come out of the cache above when nothing has moved.
+    let engine = engineFor(spaceKey, rateTable, holidayDates, () => createEngine(base));
     const wanted = engine.ratesNeeded(lines);
     if (wanted.length > MAX_EVALUATE_DATES) {
       // Refused before a single fetch goes out, which is the whole point.
@@ -725,7 +782,12 @@ export function buildApp(options: AppOptions): App {
       const fetched = await Promise.all(
         wanted.map(async (date) => [date, await rates.historical(date)] as const),
       );
-      engine = createEngine({ ...base, historicalRates: Object.fromEntries(fetched) });
+      // The dates and what came back for each: a date that could not be
+      // answered before and can be now is a different engine, not a hit.
+      const past = fetched.map(([date, table]) => `${date}>${table?.date ?? '-'}`).join(',');
+      engine = engineFor(`${spaceKey}\u0000${past}`, rateTable, holidayDates, () =>
+        createEngine({ ...base, historicalRates: Object.fromEntries(fetched) }),
+      );
     }
 
     const results = engine.evaluate(lines);
