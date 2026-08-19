@@ -42,6 +42,7 @@ import { useLive, type LiveEvent } from './live';
 import { useTheme } from './useTheme';
 import { useSheetLock } from './useSheetLock';
 import { useActiveSheet, type Status } from './useActiveSheet';
+import { useSheetList } from './useSheetList';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 
@@ -95,8 +96,6 @@ export function App() {
   const [space, setSpace] = useState<string | null>(null);
   /** Which space the open sheet belongs to — differs after a share link. */
   const [settings, setSettings] = useState<Settings>({});
-  const [sheets, setSheets] = useState<SheetSummary[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [viewingTrash, setViewingTrash] = useState(false);
@@ -192,14 +191,27 @@ export function App() {
   // The engine clamps this too; here it only decides which button looks picked.
   const precision = settings.precision ?? DEFAULT_PRECISION;
 
-  const refreshSheets = useCallback(async () => {
-    const list = await api.listSheets({
-      ...(query && { query }),
-      ...(viewingTrash && { trashed: true }),
-    });
-    setSheets(list);
-    return list;
-  }, [query, viewingTrash]);
+  const {
+    sheets,
+    folders,
+    refresh: refreshSheets,
+    refreshFolders,
+    setSheets,
+    setFolders,
+    restore: restoreSheet,
+    move: moveSheet,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    colorSheet,
+    colorFolder,
+    reorder: reorderSheets,
+  } = useSheetList({
+    query,
+    viewingTrash,
+    onError: (cause) => setError(describe(cause)),
+    onManualOrder: () => setSettings((current) => ({ ...current, sheetOrder: 'manual' })),
+  });
 
   const {
     title,
@@ -432,9 +444,9 @@ export function App() {
     settle.current = setTimeout(() => {
       settle.current = null;
       void refreshSheets().catch(() => undefined);
-      void api.listFolders().then(setFolders).catch(() => undefined);
+      void refreshFolders();
     }, LIVE_SETTLE_MS);
-  }, [refreshSheets]);
+  }, [refreshSheets, refreshFolders]);
 
   useEffect(
     () => () => {
@@ -1205,93 +1217,26 @@ export function App() {
           }}
           onRename={(sheet) => void renameSheet(sheet)}
           onDelete={(sheet) => void deleteSheet(sheet)}
-          onRestore={(sheet) => {
-            void api.restoreSheet(sheet.id).then(() => refreshSheets());
-          }}
-          onMove={(sheet, folderId) => {
-            void api
-              .saveSheet(sheet.id, { folderId }, sheet.version)
-              .then(() => refreshSheets())
-              .catch((cause: unknown) => setError(describe(cause)));
-          }}
+          onRestore={restoreSheet}
+          onMove={moveSheet}
           onQuery={setQuery}
           onCreateFolder={() => {
             const name = window.prompt('Folder name');
-            if (!name?.trim()) return;
-            void api
-              .createFolder(name.trim())
-              .then(() => api.listFolders())
-              .then(setFolders)
-              .catch((cause: unknown) => setError(describe(cause)));
+            if (name?.trim()) createFolder(name.trim());
           }}
           onRenameFolder={(folder) => {
             const name = window.prompt('Rename folder', folder.name);
-            if (!name?.trim()) return;
-            void api
-              .renameFolder(folder.id, name.trim())
-              .then(() => api.listFolders())
-              .then(setFolders)
-              .catch((cause: unknown) => setError(describe(cause)));
+            if (name?.trim()) renameFolder(folder, name.trim());
           }}
           onDeleteFolder={(folder) => {
-            if (!window.confirm(`Delete "${folder.name}"? Its sheets are kept.`)) return;
-            void api
-              .deleteFolder(folder.id)
-              .then(() => api.listFolders())
-              .then(setFolders)
-              .catch((cause: unknown) => setError(describe(cause)));
+            if (window.confirm(`Delete "${folder.name}"? Its sheets are kept.`)) {
+              deleteFolder(folder);
+            }
           }}
-          onColorSheet={(sheet, color) => {
-            // Painted immediately and reconciled after, because a colour is
-            // chosen by eye: waiting a round trip to see the result makes
-            // picking through the palette feel broken.
-            setSheets((current) =>
-              current.map((entry) =>
-                entry.id === sheet.id ? { ...entry, color } : entry,
-              ),
-            );
-            void api
-              .setSheetColor(sheet.id, color)
-              .then(() => refreshSheets())
-              .catch((cause: unknown) => {
-                setError(describe(cause));
-                void refreshSheets();
-              });
-          }}
-          onColorFolder={(folder, color) => {
-            setFolders((current) =>
-              current.map((entry) =>
-                entry.id === folder.id ? { ...entry, color } : entry,
-              ),
-            );
-            void api
-              .setFolderColor(folder.id, color)
-              .then(() => api.listFolders())
-              .then(setFolders)
-              .catch((cause: unknown) => {
-                setError(describe(cause));
-                void api.listFolders().then(setFolders);
-              });
-          }}
+          onColorSheet={colorSheet}
+          onColorFolder={colorFolder}
           manualOrder={settings.sheetOrder === 'manual'}
-          onReorder={(ids) => {
-            // Painted first so the row lands where it was dropped rather than
-            // springing back for the length of a round trip.
-            setSheets((current) => {
-              const byId = new Map(current.map((sheet) => [sheet.id, sheet]));
-              return ids.map((id) => byId.get(id)).filter((s) => s !== undefined);
-            });
-            // The setting is changed by the server as part of the reorder; this
-            // keeps the local copy from lagging a render behind it.
-            setSettings((current) => ({ ...current, sheetOrder: 'manual' }));
-            void api
-              .reorderSheets(ids)
-              .then(() => refreshSheets())
-              .catch((cause: unknown) => {
-                setError(describe(cause));
-                void refreshSheets();
-              });
-          }}
+          onReorder={reorderSheets}
           onSortByRecent={() => {
             // The positions are left alone, so flipping to recent to find
             // something and back again does not cost the arrangement.
