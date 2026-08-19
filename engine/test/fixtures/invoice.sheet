@@ -1,0 +1,15 @@
+# Invoice — Meridian Co
+
+Design work
+day rate = $650
+12 days * day rate #billable
+
+Expenses
+travel = $240.50 #billable
+materials = $87.20 #billable
+sum
+
+# Totals
+subtotal = 12 days * day rate + travel + materials
+VAT = 20% of subtotal
+subtotal + VAT

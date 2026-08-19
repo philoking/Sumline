@@ -1,0 +1,10 @@
+# January
+groceries $220 #food
+petrol $60 #car
+
+# February
+groceries $198.40 #food
+insurance $310 #car
+
+sum #food
+sum #car

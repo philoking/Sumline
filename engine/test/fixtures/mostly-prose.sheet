@@ -1,0 +1,13 @@
+Thinking about the studio move.
+
+The lease is quoted per year, which is not how I think about it:
+rent = £28,800 / 12
+
+// the agent said business rates are roughly a fifth of the rent
+rates = 20% of rent
+
+So each month is about
+rent + rates
+
+which against the current £3,100 is
+rent + rates - £3,100

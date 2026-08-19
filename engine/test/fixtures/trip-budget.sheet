@@ -1,0 +1,13 @@
+# Lisbon, four nights
+
+flights = €310
+hotel = 4 * €96
+sum
+
+# Food
+breakfasts = 4 * €7.50 #food
+dinners = 4 * €28 #food
+sum #food
+
+200 CHF in EUR
+flights + hotel + breakfasts + dinners in GBP
