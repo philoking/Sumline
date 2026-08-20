@@ -35,9 +35,7 @@ docker build --target test .
 **A documented example is a passing test.** [`engine/src/examples.ts`](engine/src/examples.ts) is
 the single source for both the in-app reference panel and
 [`examples.test.ts`](engine/test/examples.test.ts), which evaluates every entry against a pinned
-context and asserts the answer shown. The README's example tables are tested the same way by
-[`readme.test.ts`](engine/test/readme.test.ts) — which is why editing the README can fail the
-suite, and why README changes are tested like code rather than skipped as docs.
+context and asserts the answer shown.
 
 So documenting new behaviour and testing it are the same act. If you add a phrasing, add its
 example; if the example is wrong, the suite says so.
