@@ -1,13 +1,15 @@
 name: CI
 
-# The verdict on a change, for GitHub. It does not deploy anything and cannot:
-# Sumline deploys to a self-hosted runner on the target host, which is what
-# `.gitea/workflows/deploy.yml` is for and which GitHub has no route to. This
-# says whether the code is good; that one puts it on the machine.
+# The verdict on a change. It does not deploy anything: the instance this was
+# built for is updated by hand on its host, so there is no pipeline here to hand
+# off to. This says whether the code is good; a person decides when it ships.
 #
-# Both suites are also run inside the image by the deploy, against exactly the
-# Node that ships. This runs them on the host instead, because a pull request
-# wants a readable failure more than it wants a faithful runtime.
+# Which makes this the only automatic gate there is. Nothing stops a red commit
+# reaching the host except somebody reading the result of this run.
+#
+# The suites also run inside the image when the image is built. This runs them
+# on the host instead, because a pull request wants a readable failure more than
+# it wants a faithful runtime.
 
 on:
   push:

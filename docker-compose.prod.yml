@@ -1,7 +1,14 @@
-# Deployment compose file, used by .gitea/workflows/deploy.yml.
+# Deployment compose file.
 #
-# Unlike docker-compose.yml this has no `build:` stanza — the runner builds the
-# image and this file only runs it, so the deploy directory holds no source.
+# Unlike docker-compose.yml this has no `build:` stanza — the image is built
+# separately and this file only runs it. So `up --build` does nothing here;
+# `docker build -t sumline:latest .` has to happen first.
+
+# The project name decides the volume's real name. Pinned here rather than
+# passed as `-p sumline` on the command line, because forgetting the flag would
+# start the app on an empty database rather than failing.
+name: sumline
+
 services:
   sumline:
     image: sumline:latest
@@ -29,6 +36,6 @@ services:
       start_period: 10s
 
 volumes:
-  # Resolves to sumline_sumline-data under `-p sumline`. Renaming either would
-  # orphan the sheets, so both stay fixed from here on.
+  # Resolves to sumline_sumline-data under the project name above. Renaming
+  # either would orphan the sheets, so both stay fixed from here on.
   sumline-data:

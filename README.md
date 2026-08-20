@@ -134,13 +134,21 @@ Found a hole? [SECURITY.md](SECURITY.md) says how to report it.
 The Quick start above *is* the deployment: `docker compose up -d --build` on whatever machine
 should host it.
 
-[`.gitea/workflows/deploy.yml`](.gitea/workflows/deploy.yml) automates that for one particular
-setup — [Gitea Actions](https://docs.gitea.com/usage/actions/overview) with a self-hosted runner
-on the target host, which is why there is no registry and no SSH in it. Point `runs-on:` at your
-own runner or delete the file; nothing else depends on it, and GitHub and GitLab ignore `.gitea/`
-entirely. The shape worth copying whatever CI you use: run the suite inside the image, build,
-bring the stack up, then poll `/api/health` and fail loudly with logs — a container that starts
-is not the same as an app that serves.
+`docker-compose.prod.yml` is the same stack without a `build:` stanza, for a host that builds the
+image as its own step. Nothing deploys automatically — [`deploy.sh`](deploy.sh) is the whole
+update, run on the host when you decide it should happen:
+
+```bash
+cd ~/sumline && ./deploy.sh
+```
+
+It pulls, runs the suite inside the image, builds, brings the stack up, waits for `/api/health`,
+and then asks the deployed engine an actual question and checks the answer — a container that
+starts is not the same as an app that serves. Any gate that fails stops the deploy and prints the
+container's logs.
+
+That test build is the only thing standing between a red commit and the host, since no pipeline
+is checking.
 
 `docker-compose.prod.yml` pins the compose project name to `sumline` so the sheets volume keeps
 its name. **Renaming the project or the volume key would start the app on an empty database.**
