@@ -158,6 +158,53 @@ const readZone = shaped(/^[A-Za-z][A-Za-z0-9_+\-/ ]{1,60}$/);
 const COMPUTED_SETTINGS = ['region', 'zone'] as const;
 
 /**
+ * Every setting a space may store, and the whole of it.
+ *
+ * This used to accept whatever it was given. Two thousand invented keys went in
+ * and came back out in review, which is unbounded growth in one row and a
+ * settings shape no longer knowable from the code: every reader had to cope
+ * with names nobody had defined.
+ *
+ * The free-form store was deliberate once, on the argument that display
+ * preferences are harmless and a nonsense value costs a wrong-looking toggle
+ * rather than a wrong answer. That still holds for the *values*, which is why
+ * only `region` and `zone` are validated below. It does not hold for the
+ * *names*: an open key space is a write amplifier for anyone who can reach the
+ * port, and nothing in the app ever wanted it.
+ *
+ * Kept beside the type it mirrors. `Settings` in `web/src/api.ts` is the same
+ * list, and `EngineSettings` declares the six the engine reads.
+ */
+const STORABLE_SETTINGS = new Set([
+  // Change what a sheet computes.
+  'region',
+  'zone',
+  'precision',
+  'largeNumberNotation',
+  'thousandsSeparators',
+  'currencyRounding',
+  'globals',
+  // Change only how it looks, or how the app behaves around it.
+  'statistic',
+  'sheetOrder',
+  'showTotal',
+  'countVariablesInTotal',
+  'countReferencedInTotal',
+  'sheetFontSize',
+  'showLineNumbers',
+]);
+
+/**
+ * Keys `GET` adds and `PUT` must not store.
+ *
+ * Sending a GET response straight back is an ordinary thing for a client to do,
+ * so these are dropped rather than refused. Storing them would promote every
+ * inherited value into one of the space's own, and a later change to the shared
+ * tier would then stop reaching it.
+ */
+const DERIVED_SETTINGS = new Set(['sharedGlobals', 'effectiveGlobals', 'shared', 'effective']);
+
+/**
  * Validates one computed setting, or reports why it cannot be stored.
  *
  * `null` is allowed throughout and means "stop overriding": it deletes the
@@ -647,11 +694,25 @@ export function buildApp(options: AppOptions): App {
   server.put<{ Body: Record<string, unknown> }>(
     '/api/settings',
     async (request, reply) => {
-      // Dropped rather than stored. A client that echoed a GET response back
-      // would otherwise write the merged view into the space, silently promoting
-      // every inherited value into one of its own — and then a change to the
-      // shared tier would stop reaching it.
-      const { sharedGlobals: _s, effectiveGlobals: _e, ...changes } = request.body ?? {};
+      const changes: Record<string, unknown> = {};
+      const unknown: string[] = [];
+      for (const [key, value] of Object.entries(request.body ?? {})) {
+        // Derived keys are dropped in silence; see DERIVED_SETTINGS.
+        if (DERIVED_SETTINGS.has(key)) continue;
+        if (!STORABLE_SETTINGS.has(key)) {
+          unknown.push(key);
+          continue;
+        }
+        changes[key] = value;
+      }
+      // Refused rather than ignored, and named. A key nobody defined is a bug
+      // in whatever sent it, and silently dropping it would leave that bug
+      // looking like a setting that will not stick.
+      if (unknown.length > 0) {
+        return reply.code(400).send({
+          error: `Not a setting: ${unknown.slice(0, 5).join(', ')}${unknown.length > 5 ? `, and ${unknown.length - 5} more` : ''}`,
+        });
+      }
 
       /*
        * Only the two settings that change what a sheet *computes* are checked.
