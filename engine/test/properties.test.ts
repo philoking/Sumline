@@ -205,6 +205,34 @@ describe('a bare number beside a unit', () => {
   });
 });
 
+describe('rounding to a fixed number of places', () => {
+  it('treats the two signs of a magnitude the same way', () => {
+    /*
+     * `f(-x)` must be `-f(x)`, swept rather than sampled.
+     *
+     * `Math.round` breaks ties toward positive infinity, so rounding a signed
+     * value disagreed with rounding its magnitude: `2.675` went to `2.68` and
+     * `-2.675` to `-2.67`. It disagreed only where the epsilon nudge carried
+     * one sign across the tie boundary and not the other, so `1.005` and
+     * `8.835` looked fine and any hand-picked pair had better-than-even odds
+     * of being one of the symmetric ones. A sweep does not get that luck.
+     */
+    const random = mulberry32(0x5164);
+    const broken: string[] = [];
+    for (let i = 0; i < 400; i += 1) {
+      const magnitude = Math.round(random() * 1e6) / 1000;
+      const places = Math.floor(random() * 5);
+      const positive = answer(`${magnitude} to ${places} dp`);
+      const negative = answer(`-${magnitude} to ${places} dp`);
+      if (positive === '' || negative === '') continue;
+      if (negative !== `-${positive}` && !/^-?0\.?0*$/.test(positive)) {
+        broken.push(`${magnitude} to ${places} dp: ${positive} vs ${negative}`);
+      }
+    }
+    expect(broken.slice(0, 10)).toEqual([]);
+  });
+});
+
 describe('percentages', () => {
   const random = mulberry32(0xfeed);
   const amounts = Array.from({ length: 60 }, () => ({

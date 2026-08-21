@@ -25,6 +25,9 @@ export const SYMBOL_TO_CODE: Record<string, string> = {
   'NZ$': 'NZD',
   'HK$': 'HKD',
   'S$': 'SGD',
+  // Matched ahead of the bare '¥' below, which is JPY: `SYMBOLS_BY_LENGTH`
+  // tries longest first, so `CN¥100` cannot be read as a yen amount.
+  'CN¥': 'CNY',
   // `kr` is deliberately absent: it is ambiguous between SEK, NOK and DKK.
 };
 
@@ -50,7 +53,11 @@ export const CODE_TO_SYMBOL: Record<string, string> = {
   NZD: 'NZ$',
   HKD: 'HK$',
   SGD: 'S$',
-  CNY: '¥',
+  // `CN¥`, not a bare `¥`: that symbol parses back as JPY, so an amount this
+  // engine printed did not survive being pasted into a sheet, and came back
+  // roughly twenty-one times wrong with nothing in the text to hint at it.
+  // Same disambiguation the dollar family already uses above.
+  CNY: 'CN¥',
 };
 
 /** Currencies conventionally written without decimal places. */

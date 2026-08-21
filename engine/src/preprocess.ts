@@ -271,7 +271,14 @@ function extractRounding(s: string): { expr: string; decimals?: number } {
   for (let guard = 0; guard < 8; guard++) {
     const match = dpPattern.exec(remaining);
     if (!match) break;
-    if (decimals === undefined) decimals = Number(match[2]);
+    // Clamped where the number is read, which is the one place every `to N dp`
+    // passes through. `toFixed` accepts 0 to 100 and throws outside it, and
+    // that error reached the answer column verbatim: "toFixed() digits argument
+    // must be between 0 and 100", naming a JavaScript builtin at the reader.
+    // A double carries about seventeen significant digits, so anything past a
+    // hundred places was zeros either way and clamping costs no precision that
+    // existed.
+    if (decimals === undefined) decimals = Math.min(Number(match[2]), 100);
     remaining = match[1]!.trim();
   }
   if (decimals !== undefined) return { expr: remaining, decimals };

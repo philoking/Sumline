@@ -6,6 +6,16 @@ import { answer, TEST_NOW, TEST_RATES } from './helpers.js';
 describe('rounding', () => {
   const cases: Array<[string, string]> = [
     ['1/3 to 2 dp', '0.33'],
+    // The requested places are given, and filled with zeros past what a double
+    // knows rather than with the noise below it. This answered
+    // 1,234,567.8899999999 while the explicit-dp path returned above the
+    // significant-digit guard.
+    ['1234567.89 to 10 dp', '1,234,567.8900000000'],
+    ['0.1 + 0.2 to 10 dp', '0.3000000000'],
+    // Half away from zero, and the same either side of it. `Math.round` breaks
+    // ties toward positive infinity, so these two used to disagree.
+    ['2.675 to 2 dp', '2.68'],
+    ['-2.675 to 2 dp', '-2.68'],
     ['pi to 5 digits', '3.14159'],
     ['5.5 rounded', '6'],
     ['5.5 rounded down', '5'],
@@ -129,5 +139,19 @@ describe('inline statistics', () => {
 
   it('works with money', () => {
     expect(answer('total of $3, $4 and $7')).toBe('$14.00');
+  });
+});
+
+describe('a precision nobody can honour', () => {
+  it('clamps rather than showing the reader a JavaScript error', () => {
+    // `toFixed` throws outside 0 to 100 and the message reached the answer
+    // column verbatim, naming a builtin and its argument. A double carries
+    // about seventeen significant digits, so everything past a hundred places
+    // was zeros anyway and the clamp costs no precision that existed.
+    for (const line of ['5 to 200 dp', '5 to 1000 dp']) {
+      const output = answer(line);
+      expect(output, line).not.toMatch(/toFixed|RangeError|argument/);
+      expect(output, line).toMatch(/^5\.0+$/);
+    }
   });
 });

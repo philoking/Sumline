@@ -273,9 +273,44 @@ export function formatNumber(value: number, ctx: FormatContext): string {
   const grouping = groupingFor(ctx);
 
   if (ctx.decimals !== undefined) {
-    const fixed = round(value, ctx.decimals).toFixed(ctx.decimals);
+    /*
+     * Cleaned to the same twelve significant digits the general path below
+     * uses, before the requested places are applied.
+     *
+     * This return used to sit above that guard and reintroduced exactly what
+     * the guard was written to remove: `1234567.89 to 10 dp` answered
+     * 1,234,567.8899999999, which is the string cited a few lines down as the
+     * thing that was fixed. Ten decimals of a seven-digit number is seventeen
+     * significant figures and a double holds sixteen, so those trailing digits
+     * were noise being printed faithfully.
+     *
+     * The places asked for are still the places given. Rounding happens at the
+     * precision the number actually carries and `toFixed` then pads out to the
+     * ten that were requested, so the answer is the right length and the digits
+     * past the twelfth are zeros rather than invented.
+     *
+     * Capping first is also what keeps `round` safe to use here. It multiplies
+     * by 10^places, and ten places of a seven-digit number would pass 2^53 and
+     * lose the low digits; the cap holds that product to 10^12 whatever the
+     * magnitude. Rounding through `round` rather than `toFixed` alone is
+     * deliberate: it carries the epsilon nudge, without which `2.675 to 2 dp`
+     * answers 2.67, because the double behind that literal is 2.67499…
+     */
+    const clean = Number(value.toPrecision(SIGNIFICANT_DIGITS));
+    const digits = Math.abs(clean) >= 1 ? Math.floor(Math.log10(Math.abs(clean))) + 1 : 1;
+    const usable = Math.min(ctx.decimals, Math.max(0, SIGNIFICANT_DIGITS - digits));
+    // Padded rather than printed at the requested width. `toFixed(10)` on this
+    // value would put the noise straight back: 1234567.89 *is* 1234567.8899…
+    // as a double, so rounding it at five places leaves the stored number
+    // unchanged and only the string can carry the promise of ten.
+    const rounded = round(clean, usable).toFixed(usable);
+    const padding = ctx.decimals - usable;
+    const fixed =
+      padding > 0
+        ? `${usable === 0 ? `${rounded}.` : rounded}${'0'.repeat(padding)}`
+        : rounded;
     const [whole = '0', fraction] = fixed.replace('-', '').split('.');
-    const sign = value < 0 && round(value, ctx.decimals) !== 0 ? '-' : '';
+    const sign = clean < 0 && Number(fixed) !== 0 ? '-' : '';
     return `${sign}${join(group(whole, grouping), fraction, grouping)}`;
   }
 
@@ -327,9 +362,25 @@ function groupingFor(ctx: FormatContext): Separators {
   return ctx.thousandsSeparators ? separators : { ...separators, group: '' };
 }
 
+/**
+ * Rounds half away from zero, which is the convention money wants.
+ *
+ * The magnitude is rounded and the sign put back, rather than rounding the
+ * signed value: `Math.round` breaks ties toward positive infinity, so the two
+ * halves of the same magnitude disagreed. `2.675` went to `2.68` while
+ * `-2.675` went to `-2.67`.
+ *
+ * It disagreed only sometimes, which is why it survived: the epsilon nudge has
+ * to carry the value across the tie boundary for one sign and not the other,
+ * so `1.005` and `8.835` came out symmetric while `2.675` and `2.045` did not.
+ * Any hand-picked example had better-than-even odds of looking correct, and
+ * `properties.test.ts` now sweeps signed pairs instead of guessing.
+ */
 function round(value: number, decimals: number): number {
   const factor = 10 ** decimals;
-  return Math.round((value + Number.EPSILON * Math.sign(value)) * factor) / factor;
+  const magnitude = Math.abs(value);
+  const rounded = Math.round((magnitude + Number.EPSILON) * factor) / factor;
+  return value < 0 ? -rounded : rounded;
 }
 
 function trimExponential(text: string): string {

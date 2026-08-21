@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { answer, answers } from './helpers.js';
+import { CODE_TO_SYMBOL, SYMBOL_TO_CODE, SYMBOLS_BY_LENGTH } from '../src/currencies.js';
 
 describe('currency', () => {
   const cases: Array<[string, string]> = [
@@ -64,5 +65,46 @@ describe('currency', () => {
       expect(answer('$20/hour * 3 hours')).toBe('$60.00');
       expect(answer('$50/week * 12 weeks')).toBe('$600.00');
     });
+  });
+});
+
+describe('the symbol table against itself', () => {
+  it('renders every currency as something that parses back as that currency', () => {
+    /*
+     * The two maps are independent, and nothing checked them against each
+     * other. `CNY` rendered as a bare `¥`, which `SYMBOL_TO_CODE` reads as
+     * `JPY`, so an amount this engine printed came back roughly twenty-one
+     * times wrong when pasted into a sheet, with nothing in the text to hint
+     * that it had changed meaning.
+     *
+     * Asserted over the whole table rather than over the pair that was wrong.
+     * `$` and `kr` are the obvious next candidates, and this is the shape of
+     * test that catches the next one before a user does.
+     */
+    const wrong: string[] = [];
+    for (const [code, symbol] of Object.entries(CODE_TO_SYMBOL)) {
+      // A code rendered as itself has nothing to round-trip.
+      if (symbol === code) continue;
+      const back = SYMBOL_TO_CODE[symbol];
+      if (back !== code) {
+        wrong.push(`${code} renders as ${symbol}, which parses as ${back ?? 'nothing'}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('reads the longer symbol first where one contains another', () => {
+    // `CN¥` only survives because `SYMBOLS_BY_LENGTH` tries it before `¥`.
+    // Sorting is what makes the fix above work, so it is asserted rather than
+    // assumed.
+    for (const [long, short] of [
+      ['CN¥', '¥'],
+      ['C$', '$'],
+      ['NZ$', '$'],
+    ]) {
+      expect(SYMBOLS_BY_LENGTH.indexOf(long!), `${long} before ${short}`).toBeLessThan(
+        SYMBOLS_BY_LENGTH.indexOf(short!),
+      );
+    }
   });
 });
