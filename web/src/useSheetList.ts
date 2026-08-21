@@ -1,6 +1,35 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
 import { api, type Folder, type SheetSummary } from './api';
 
+/**
+ * The list with `ids` rearranged, and everything else left alone.
+ *
+ * A drag sends the ids of the group it happened in, which for a sheet inside a
+ * folder is that folder's sheets and nothing more. This used to return exactly
+ * the sheets it was given, so reordering two rows inside a folder emptied the
+ * sidebar of every sheet outside it until the server answered and the refresh
+ * put them back. Visible as everything else blinking out mid-drag, for the
+ * length of a round trip, and longest exactly when the network is worst.
+ *
+ * The slots the moving sheets already occupy are the slots they get back, in
+ * their new order. That is the same rule the server applies: "only the
+ * positions those sheets already hold get reassigned, so reordering inside a
+ * folder or a search leaves everything off screen where it was". The optimistic
+ * paint and the answer that replaces it now agree, which is the point of an
+ * optimistic paint.
+ *
+ * Exported for its own sake: it is the whole of the bug, it is a pure list
+ * transformation, and testing it needs none of the React harness the hooks
+ * around it are still waiting on.
+ */
+export function reordered(current: SheetSummary[], ids: string[]): SheetSummary[] {
+  const moving = new Set(ids);
+  const byId = new Map(current.map((sheet) => [sheet.id, sheet]));
+  const order = ids.map((id) => byId.get(id)).filter((sheet) => sheet !== undefined);
+  let next = 0;
+  return current.map((sheet) => (moving.has(sheet.id) ? (order[next++] ?? sheet) : sheet));
+}
+
 export interface SheetList {
   sheets: SheetSummary[];
   folders: Folder[];
@@ -137,10 +166,7 @@ export function useSheetList(options: {
     (ids: string[]) => {
       // Painted first so the row lands where it was dropped rather than
       // springing back for the length of a round trip.
-      setSheets((current) => {
-        const byId = new Map(current.map((sheet) => [sheet.id, sheet]));
-        return ids.map((id) => byId.get(id)).filter((sheet) => sheet !== undefined);
-      });
+      setSheets((current) => reordered(current, ids));
       // The server changes the setting as part of the reorder; this keeps the
       // local copy from lagging a render behind it.
       onManualOrder();
