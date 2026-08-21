@@ -457,6 +457,10 @@ export const EXAMPLE_GROUPS: ExampleGroup[] = [
     note: DATE_NOTE,
     examples: [
       { input: 'time difference between Seattle and Moscow', expected: '10 hours' },
+      // The same question without the leading word. Soulver documents both
+      // forms and only this one was ever answered, because the gate in front of
+      // the zone evaluator recognised `time` and not `difference`.
+      { input: 'difference between PDT & AEST', expected: '17 hours' },
     ],
   },
   {

@@ -125,6 +125,22 @@ const DATE_TOKEN = new RegExp(
     String.raw`\d{1,2}[/.]\d{1,2}[/.]\d{4}\b|` +
     String.raw`${MONTH_PATTERN}|${WEEKDAY_PATTERN}|` +
     String.raw`(?:next|last|this)\s+(?:week|month|year)|days?\s+(?:until|till|since|from|between|in|ago)|` +
+    /*
+     * `difference between Seattle and Moscow`, with no other word to give it
+     * away.
+     *
+     * `zoneQuery` has always accepted this — its pattern makes the leading
+     * `time` optional — but only `time difference between …` ever reached it,
+     * because `time` is a token this gate recognises and `difference` was not.
+     * So one of the two forms Soulver documents answered and the other was
+     * silent, which reads as unsupported syntax rather than as a gate that was
+     * one word short.
+     *
+     * Safe to let through: the frame is specific, and `difference between 5
+     * and 3` still resolves no zones, so `zoneQuery` declines it and the line
+     * carries on to the expression parser exactly as before.
+     */
+    String.raw`difference\s+between\s+.+\s+(?:and|&)\s+|` +
     String.raw`\d+\s*(?:${SPAN_UNIT_PATTERN})\b|\d+\s*[hms]\b\s*\d+\s*[hms]\b)`,
   'i',
 );

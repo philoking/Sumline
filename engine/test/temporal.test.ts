@@ -176,8 +176,27 @@ describe('time zones', () => {
     expect(answer('date in Vancouver')).toMatch(/Aug 2026$/);
   });
 
-  it('reports the difference between two zones', () => {
+  it('leaves a difference between two numbers to the expression parser', () => {
+    // The gate now lets `difference between … and …` through, so the frame has
+    // to be harmless when the two sides are not places. `resolveZone` declines
+    // them, the temporal evaluator passes, and the line reaches math.js
+    // unchanged — which is what it did before the gate learned this shape.
+    expect(answer('difference between 5 and 3')).toBe(answer('5 and 3'));
+  });
+
+  it('reports the difference between two zones, with or without the word time', () => {
+    /*
+     * Soulver documents both forms — `time difference between Seattle and
+     * Moscow` and `difference between PDT & AEST` — and only the first
+     * answered. `zoneQuery` accepted either all along; what stopped the second
+     * was the gate in front of it, which recognised `time` as a temporal word
+     * and `difference` as nothing at all. So a documented question was silent,
+     * which reads as unsupported rather than as a defect.
+     */
     expect(answer('time difference between Seattle and Moscow')).toBe('10 hours');
+    expect(answer('difference between Seattle and Moscow')).toBe('10 hours');
+    expect(answer('difference between PDT & AEST')).toBe('17 hours');
+    expect(answer('time difference between PDT & AEST')).toBe('17 hours');
   });
 
   it('leaves an unknown place as prose', () => {
