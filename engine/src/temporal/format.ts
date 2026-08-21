@@ -34,14 +34,13 @@ export function formatMoment(moment: CalendarDate, now: Date): string {
   const date = `${SHORT_WEEKDAYS[local.weekday]} ${local.day} ${SHORT_MONTHS[local.month]} ${local.year}`;
 
   if (moment.showAs === 'datetime') return `${local.day} ${SHORT_MONTHS[local.month]} ${local.year} at ${time}`;
-  if (showTime && !showDate) return relativeDayPrefix(moment, now, local) + time;
+  if (showTime && !showDate) return relativeDayPrefix(now, local) + time;
   if (showTime && moment.hasTime) return `${date} at ${time}`;
   return date;
 }
 
 /** "Tomorrow at …" when a zoned time falls on a different day than ours. */
 function relativeDayPrefix(
-  moment: CalendarDate,
   now: Date,
   local: { year: number; month: number; day: number },
 ): string {

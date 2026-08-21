@@ -49,6 +49,10 @@ jobs:
       # rewritten.
       - run: npm ci
 
+      # Correctness rules only; formatting is the check below. Warnings do not
+      # fail the run — see eslint.config.js for the two rules staged that way.
+      - run: npm run lint
+
       - run: npm test
 
       - run: npm run typecheck

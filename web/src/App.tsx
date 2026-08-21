@@ -87,7 +87,7 @@ const FALLBACK_POLL_MS = 30_000;
 const STATISTICS: Statistic[] = ['total', 'average', 'count', 'median'];
 
 export function App() {
-  const browser = useMemo(clientIdentity, []);
+  const browser = useMemo(() => clientIdentity(), []);
   const theme = useTheme();
 
   /**
@@ -240,7 +240,6 @@ export function App() {
     setTitle,
     content,
     setContent,
-    version,
     sheetOwner,
     conflict,
     savedContent,

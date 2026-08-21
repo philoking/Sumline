@@ -90,7 +90,7 @@ export function classify(
   }
 
   // Collect and remove tags so they do not reach the expression parser.
-  body = body.replace(TAG_RE, (match, lead: string, tag: string) => {
+  body = body.replace(TAG_RE, (_match, lead: string, tag: string) => {
     tags.push(tag.toLowerCase());
     return lead;
   });

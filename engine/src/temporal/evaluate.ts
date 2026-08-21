@@ -29,7 +29,6 @@ import {
   MONTH_PATTERN,
   SPAN_UNIT_PATTERN,
   WEEKDAY_PATTERN,
-  parseClockTime,
   parseDate,
   parseLaptime,
   parseMoment,

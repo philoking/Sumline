@@ -249,7 +249,7 @@ describe('what a reorder refuses', () => {
     // do, so any stray request — a health probe, a retry, a bad client — left
     // every sheet in the space stamped with a position and the list quietly
     // frozen out of recency order.
-    const { a, b, c } = await threeSheets();
+    const { a } = await threeSheets();
     expect(await titles()).toEqual(['C', 'B', 'A']);
 
     expect((await reorder([])).statusCode).toBe(400);

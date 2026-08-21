@@ -15,6 +15,9 @@
   },
   "scripts": {
     "build": "npm run build -w @sumline/engine && npm run build -w @sumline/web && npm run build -w @sumline/server",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm run dev -w @sumline/server",
     "dev:web": "npm run dev -w @sumline/web",
@@ -23,7 +26,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "concurrently": "^9.1.2",
-    "typescript": "^5.7.3"
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.6",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.67.0"
   }
 }
