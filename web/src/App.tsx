@@ -24,6 +24,7 @@ import { Login } from './Login';
 import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
+import { Banners } from './Banners';
 import { TopBar } from './TopBar';
 import { DEFAULT_PRECISION, engineOptionsFrom } from '@sumline/engine';
 import { DEFAULT_FONT_SIZE, FONT_STEP, clampFontSize } from './ViewMenu';
@@ -120,7 +121,6 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => !window.matchMedia('(max-width: 760px)').matches,
   );
-  const [paletteOpen, setPaletteOpen] = useState(false);
   /**
    * The line the sheet should be scrolled to, when one was searched for.
    *
@@ -130,12 +130,26 @@ export function App() {
    */
   const [reveal, setReveal] = useState<number | null>(null);
 
-  const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
-  const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
-  // `?help` opens the reference on load, so it can be linked to directly.
-  const [referenceOpen, setReferenceOpen] = useState(() =>
-    new URLSearchParams(window.location.search).has('help'),
+  /**
+   * Which panel is over the app, if any.
+   *
+   * One value rather than four booleans, because only one of these can
+   * sensibly be on screen at a time and four independent flags did not say so:
+   * opening the reference while space settings was open left both mounted, one
+   * on top of the other. Naming the state after the question it answers makes
+   * that impossible rather than merely unlikely.
+   *
+   * `?help` opens the reference on load, so it can be linked to directly.
+   */
+  const [overlay, setOverlay] = useState<
+    'palette' | 'reference' | 'space-settings' | 'global-settings' | null
+  >(() => (new URLSearchParams(window.location.search).has('help') ? 'reference' : null));
+  const toggleOverlay = useCallback(
+    (which: 'palette' | 'reference' | 'space-settings' | 'global-settings') =>
+      setOverlay((current) => (current === which ? null : which)),
+    [],
   );
+  const closeOverlay = useCallback(() => setOverlay(null), []);
 
   /**
    * Who the lock reports as holding a sheet.
@@ -597,7 +611,7 @@ export function App() {
         // so ⌘F means the same thing wherever the caret happens to be.
         if (!event.defaultPrevented) {
           event.preventDefault();
-          setPaletteOpen(false);
+          closeOverlay();
           editorRef.current?.openSearch();
         }
       }
@@ -607,12 +621,11 @@ export function App() {
           (event.shiftKey && event.key.toLowerCase() === 'f'))
       ) {
         event.preventDefault();
-        setPaletteOpen(true);
+        setOverlay('palette');
       }
 
       if (event.key === 'Escape') {
-        setReferenceOpen(false);
-        setPaletteOpen(false);
+        closeOverlay();
       }
       // `?` opens the reference, but not while a field or the sheet has focus.
       const target = event.target as HTMLElement | null;
@@ -620,7 +633,7 @@ export function App() {
         target?.closest('input, textarea, .cm-editor, [contenteditable]') !== null;
       if (event.key === '?' && !typing) {
         event.preventDefault();
-        setReferenceOpen((open) => !open);
+        toggleOverlay('reference');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -814,53 +827,23 @@ export function App() {
         addSpace={addSpace}
         renameSpace={renameSpace}
         removeSpace={removeSpace}
-        onOpenSpaceSettings={() => setSpaceSettingsOpen(true)}
-        onOpenGlobalSettings={() => setGlobalSettingsOpen(true)}
-        onOpenReference={() => setReferenceOpen((open) => !open)}
+        onOpenSpaceSettings={() => setOverlay('space-settings')}
+        onOpenGlobalSettings={() => setOverlay('global-settings')}
+        onOpenReference={() => toggleOverlay('reference')}
         shareSheet={shareSheet}
         exportAs={exportAs}
       />
 
-      {/* `alert`, which is assertive: something went wrong and the reader needs
-          to know now rather than after whatever they are typing. The polite
-          region on the save chip was the only one in the app, so the thing
-          being narrated was "Saved" and the thing going unsaid was this. */}
-      {error && (
-        <div className="banner banner-error" role="alert">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Polite: a notice is the outcome of something the reader just did, so
-          it can wait for a pause rather than interrupt. */}
-      {notice && (
-        <div className="banner" role="status">
-          <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* "Somebody else is editing this" is the message most worth announcing in
-          the whole app: it is the difference between typing and typing into
-          something that will not save. Polite rather than assertive, because it
-          arrives while the reader is looking at the sheet rather than in
-          response to anything they did. */}
-      {!lock.granted && activeId && !viewingTrash && (
-        <div className="banner" role="status">
-          <span>
-            Read-only — {lock.holder?.clientName ?? 'another browser'} is editing this
-            sheet.
-          </span>
-          <button type="button" onClick={() => void takeOver()}>
-            Take over editing
-          </button>
-        </div>
-      )}
+      <Banners
+        error={error}
+        notice={notice}
+        lock={lock}
+        activeId={activeId}
+        viewingTrash={viewingTrash}
+        onDismissError={() => setError(null)}
+        onDismissNotice={() => setNotice(null)}
+        onTakeOver={() => void takeOver()}
+      />
 
       {/* Whatever is being asked, if anything. One place, near the root, so a
           question sits over the app rather than inside whichever panel raised
@@ -1008,7 +991,7 @@ export function App() {
 
       {space && (
         <SpaceSettings
-          open={spaceSettingsOpen}
+          open={overlay === 'space-settings'}
           space={{ id: space, name: currentUserName || space }}
           globals={settings.globals ?? NO_GLOBALS}
           sharedGlobals={settings.sharedGlobals ?? NO_GLOBALS}
@@ -1030,15 +1013,15 @@ export function App() {
           onRemove={() => {
             const current = users.find((user) => user.id === space);
             if (!current) return;
-            setSpaceSettingsOpen(false);
+            closeOverlay();
             void removeSpace(current);
           }}
-          onClose={() => setSpaceSettingsOpen(false)}
+          onClose={closeOverlay}
         />
       )}
 
       <GlobalSettings
-        open={globalSettingsOpen}
+        open={overlay === 'global-settings'}
         computed={settings.shared ?? {}}
         globals={settings.sharedGlobals ?? NO_GLOBALS}
         preview={(expression) => engine.evaluate(expression)[0]?.output ?? ''}
@@ -1058,13 +1041,13 @@ export function App() {
             .then(setSettings)
             .catch((cause: unknown) => setError(describe(cause)));
         }}
-        onClose={() => setGlobalSettingsOpen(false)}
+        onClose={closeOverlay}
       />
 
       <Palette
-        open={paletteOpen}
+        open={overlay === 'palette'}
         recent={sheets}
-        onClose={() => setPaletteOpen(false)}
+        onClose={closeOverlay}
         onOpen={(id, line) => {
           closeSidebarOnPhone();
           // Results are never trashed sheets, so a list that was showing the
@@ -1080,14 +1063,14 @@ export function App() {
       />
 
       <Reference
-        open={referenceOpen}
+        open={overlay === 'reference'}
         currencies={engine.currencies}
         rateDate={engine.rateDate}
         // Carried across with the date, or moving it off the bar would drop
         // the warning rather than relocate it.
         ratesStale={rates?.stale === true}
         holidayCount={holidays?.dates.length ?? 0}
-        onClose={() => setReferenceOpen(false)}
+        onClose={closeOverlay}
         onInsert={(line) => {
           // Appended rather than inserted at the cursor: the panel has focus,
           // so there is no meaningful caret position in the sheet to use.
