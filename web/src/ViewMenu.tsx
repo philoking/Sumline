@@ -76,6 +76,12 @@ function Check({
  * whole menu is only a dozen rows; indenting the group keeps the relationship
  * without the machinery.
  */
+/** A stored font size held to the range the menu offers. */
+export function clampFontSize(size: number): number {
+  if (!Number.isFinite(size)) return DEFAULT_FONT_SIZE;
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(size)));
+}
+
 export function ViewMenu(props: ViewMenuProps) {
   const { open, fontSize, onClose } = props;
   // Before the early return, because hooks cannot run conditionally.

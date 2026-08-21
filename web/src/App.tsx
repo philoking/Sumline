@@ -9,7 +9,6 @@ import {
 import {
   api,
   clientIdentity,
-  switchUser,
   type Folder,
   type Lock,
   type Settings,
@@ -25,16 +24,9 @@ import { Login } from './Login';
 import { Palette } from './Palette';
 import { Reference } from './Reference';
 import { Sidebar } from './Sidebar';
+import { TopBar } from './TopBar';
 import { DEFAULT_PRECISION, engineOptionsFrom } from '@sumline/engine';
-import {
-  DEFAULT_FONT_SIZE,
-  FONT_STEP,
-  MAX_FONT_SIZE,
-  MIN_FONT_SIZE,
-  ViewMenu,
-} from './ViewMenu';
-import { formatShortcut } from './shortcuts';
-import { useDialog } from './useDialog';
+import { DEFAULT_FONT_SIZE, FONT_STEP, clampFontSize } from './ViewMenu';
 import { SpaceSettings } from './SpaceSettings';
 import { GlobalSettings } from './GlobalSettings';
 import { useEngine, useResults } from './useEngine';
@@ -57,8 +49,6 @@ import { useActiveSheet, type Status } from './useActiveSheet';
 import { useSheetList } from './useSheetList';
 import { useSpaces } from './useSpaces';
 import { useAsk } from './Ask';
-import { Backdrop, useMenuKeys } from './Popover';
-import { Mark, Wordmark } from './Wordmark';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
 /**
@@ -130,8 +120,6 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => !window.matchMedia('(max-width: 760px)').matches,
   );
-  const [exportOpen, setExportOpen] = useState(false);
-  const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /**
    * The line the sheet should be scrolled to, when one was searched for.
@@ -141,17 +129,7 @@ export function App() {
    * once that sheet's text is on its way into state.
    */
   const [reveal, setReveal] = useState<number | null>(null);
-  const [share, setShare] = useState<{ url: string; copied: boolean } | null>(null);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  /** Turns the space list into an editable one, rather than a second menu. */
-  const [managingSpaces, setManagingSpaces] = useState(false);
 
-  const userMenuRef = useRef<HTMLUListElement | null>(null);
-  const closeUserMenu = useCallback(() => {
-    setUserMenuOpen(false);
-    setManagingSpaces(false);
-  }, []);
-  const onUserMenuKey = useMenuKeys(userMenuRef, userMenuOpen, closeUserMenu);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
@@ -312,10 +290,6 @@ export function App() {
 
   /** Lets ⌘F open the sheet's find panel from anywhere in the app. */
   const editorRef = useRef<EditorHandle>(null);
-
-  // The share popover holds the link and nothing else, so closing it has to put
-  // the keyboard back on the 🔗 that opened it or there is nowhere to go.
-  const shareRef = useDialog<HTMLDivElement>(share !== null, () => setShare(null));
 
   /**
    * The line a palette result asked for, while its sheet is still loading.
@@ -637,7 +611,6 @@ export function App() {
       }
 
       if (event.key === 'Escape') {
-        setExportOpen(false);
         setReferenceOpen(false);
         setPaletteOpen(false);
       }
@@ -746,7 +719,6 @@ export function App() {
 
   const exportAs = (kind: 'text' | 'markdown' | 'csv' | 'clipboard') => {
     const options = { title, content, results };
-    setExportOpen(false);
     if (kind === 'clipboard') {
       void navigator.clipboard?.writeText(toPlainText(options));
       return;
@@ -767,8 +739,8 @@ export function App() {
    * only ever the recipient's. A pending rename is flushed first so the link
    * is named from the title on screen rather than the one the server last saw.
    */
-  const shareSheet = async () => {
-    if (!activeId) return;
+  const shareSheet = async (): Promise<{ url: string; copied: boolean } | null> => {
+    if (!activeId) return null;
     try {
       const trimmed = title.trim();
       if (trimmed && trimmed !== sheets.find((s) => s.id === activeId)?.title) {
@@ -776,9 +748,10 @@ export function App() {
       }
       const { slug } = await api.shareSheet(activeId);
       const url = `${window.location.origin}/s/${slug}`;
-      setShare({ url, copied: await copyToClipboard(url) });
+      return { url, copied: await copyToClipboard(url) };
     } catch (cause) {
       setError(describe(cause));
+      return null;
     }
   };
 
@@ -810,361 +783,43 @@ export function App() {
       className="app"
       style={{ '--sheet-font-size': `${fontSize}px` } as CSSProperties}
     >
-      <header className="topbar">
-        {/* The mark is decorative and hidden from assistive tech — the name
-            beside it says the same thing, and the document title said it
-            already. What a reader needs first is the sheet's own name, which
-            is why the lockup is small and the title input takes the room. */}
-        <Mark />
-        <Wordmark />
-        <input
-          className="title-input"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => {
-            const trimmed = title.trim();
-            if (trimmed && trimmed !== sheets.find((s) => s.id === activeId)?.title) {
-              void save({ title: trimmed });
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur();
-          }}
-          disabled={!lock.granted}
-          aria-label="Sheet title"
-        />
-        {/* A sheet reached by share link is not in this sidebar, so say whose
-            it is rather than leaving it looking like a sheet that went
-            missing from the list. */}
-        {sheetOwner && space && sheetOwner !== space && (
-          <span className="owner-badge">
-            From {users.find((user) => user.id === sheetOwner)?.name ?? sheetOwner}
-          </span>
-        )}
-        {/* Announced rather than only shown: whether the work is saved is the
-            one thing on this bar worth interrupting a reader for. */}
-        <span className={`status status-${status}`} role="status">
-          {statusLabel(status, lock)}
-        </span>
-        <div className="menu-anchor">
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setExportOpen((open) => !open)}
-            title="Export this sheet"
-          >
-            ⤓
-          </button>
-          {exportOpen && (
-            <>
-              <Backdrop onClose={() => setExportOpen(false)} />
-              <ul className="answer-menu export-menu">
-                <li>
-                  <button type="button" onClick={() => exportAs('clipboard')}>
-                    Copy with answers
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => exportAs('text')}>
-                    Download as text
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => exportAs('markdown')}>
-                    Download as Markdown
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => exportAs('csv')}>
-                    Download as CSV
-                  </button>
-                </li>
-                <li className="menu-separator" />
-                <li>
-                  <button type="button" onClick={() => window.print()}>
-                    Print / save as PDF
-                  </button>
-                </li>
-              </ul>
-            </>
-          )}
-        </div>
-        <div className="menu-anchor">
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => (share ? setShare(null) : void shareSheet())}
-            title="Copy a link to this sheet"
-            aria-label="Copy a link to this sheet"
-            disabled={!activeId}
-          >
-            🔗
-          </button>
-          {share && (
-            <>
-              <Backdrop onClose={() => setShare(null)} />
-              <div
-                className="answer-menu share-menu"
-                role="dialog"
-                aria-label="Link to this sheet"
-                ref={shareRef}
-                tabIndex={-1}
-              >
-                <input
-                  className="share-link"
-                  value={share.url}
-                  readOnly
-                  autoFocus
-                  onFocus={(event) => event.currentTarget.select()}
-                  aria-label="Link to this sheet"
-                />
-                <p className="share-hint">
-                  {share.copied
-                    ? 'Copied. The link keeps working if you rename the sheet.'
-                    : `Press ${formatShortcut(['Mod', 'C'])} to copy. The link keeps ` +
-                      'working if you rename the sheet.'}
-                </p>
-              </div>
-            </>
-          )}
-        </div>
-        <button
-          type="button"
-          className="ghost"
-          onClick={theme.cycle}
-          title={theme.label}
-          aria-label={theme.label}
-        >
-          {theme.icon}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => setReferenceOpen((open) => !open)}
-          title="What can I type? (?)"
-        >
-          ?
-        </button>
-        {/* Everything about how a sheet is shown lives behind this, rather
-            than as a row of unlabelled glyphs on the bar. */}
-        <div className="menu-anchor">
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setViewMenuOpen((open) => !open)}
-            title="How this sheet is shown"
-            aria-haspopup="menu"
-            aria-expanded={viewMenuOpen}
-          >
-            {/* `Aa` said fonts, which is one row of this menu rather than what
-                it is. An eye is the plain word for the rest of it — what is on
-                screen and what is not. Not a gear, which would promise the
-                settings panels; not a half-circle, which the theme button next
-                door already uses. */}
-            👁
-          </button>
-          <ViewMenu
-            open={viewMenuOpen}
-            fontSize={fontSize}
-            sidebarOpen={sidebarOpen}
-            showLineNumbers={showLineNumbers}
-            showTotal={showTotal}
-            countReferenced={countReferenced}
-            countVariables={countVariables}
-            largeNumberNotation={siNotation}
-            precision={precision}
-            thousandsSeparators={thousandsSeparators}
-            currencyRounding={currencyRounding}
-            onPrecision={(next) => void persistSettings({ precision: next })}
-            onToggleSeparators={() =>
-              void persistSettings({ thousandsSeparators: !thousandsSeparators })
-            }
-            onToggleCurrencyRounding={() =>
-              void persistSettings({ currencyRounding: !currencyRounding })
-            }
-            onFontSize={(next) =>
-              void persistSettings({ sheetFontSize: clampFontSize(next) })
-            }
-            onToggleSidebar={() => setSidebarOpen((open) => !open)}
-            onToggleLineNumbers={() =>
-              void persistSettings({ showLineNumbers: !showLineNumbers })
-            }
-            onToggleTotal={() => void persistSettings({ showTotal: !showTotal })}
-            onToggleReferenced={() =>
-              void persistSettings({ countReferencedInTotal: !countReferenced })
-            }
-            onToggleVariables={() =>
-              void persistSettings({ countVariablesInTotal: !countVariables })
-            }
-            onToggleNotation={() =>
-              void persistSettings({ largeNumberNotation: !siNotation })
-            }
-            onClose={() => setViewMenuOpen(false)}
-          />
-        </div>
-        {/* Shown even for one person, since this is where a second is added. */}
-        {users.length > 0 && (
-          <div className="menu-anchor">
-            <button
-              type="button"
-              className="user-chip"
-              onClick={() => setUserMenuOpen((open) => !open)}
-              title={`In the ${currentUserName} space — click to switch`}
-              aria-label={`In the ${currentUserName} space. Switch or manage spaces.`}
-              aria-haspopup="menu"
-              aria-expanded={userMenuOpen}
-            >
-              {currentUserName.charAt(0)}
-            </button>
-            {userMenuOpen && (
-              <>
-                <Backdrop onClose={closeUserMenu} />
-                <ul
-                  className="answer-menu user-menu"
-                  role="menu"
-                  aria-label="Spaces"
-                  ref={userMenuRef}
-                  onKeyDown={onUserMenuKey}
-                >
-                  {users.map((user) => (
-                    <li
-                      role="none"
-                      key={user.id}
-                      className={managingSpaces ? 'space-row' : undefined}
-                    >
-                      <button
-                        type="button"
-                        role={managingSpaces ? 'menuitem' : 'menuitemradio'}
-                        {...(managingSpaces ? {} : { 'aria-checked': user.id === space })}
-                        disabled={managingSpaces}
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          if (user.id === space) return;
-                          switchUser(user.id);
-                          // A reload rather than a re-fetch: the space changes
-                          // the sheets, the folders, the settings and the lock
-                          // identity at once, and starting clean is more
-                          // trustworthy than unwinding all of it.
-                          window.location.reload();
-                        }}
-                      >
-                        <span className="tick">
-                          {!managingSpaces && user.id === space ? '✓' : ''}
-                        </span>
-                        {user.name}
-                      </button>
-                      {managingSpaces && (
-                        <span className="space-actions">
-                          <button
-                            type="button"
-                            className="ghost"
-                            title={`Rename ${user.name}`}
-                            aria-label={`Rename ${user.name}`}
-                            onClick={() => void renameSpace(user)}
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost"
-                            title={
-                              users.length > 1
-                                ? `Remove ${user.name}`
-                                : 'The last space cannot be removed'
-                            }
-                            aria-label={`Remove ${user.name}`}
-                            disabled={users.length <= 1}
-                            onClick={() => void removeSpace(user)}
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      )}
-                    </li>
-                  ))}
-
-                  <li className="menu-separator" role="separator" />
-
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        setManagingSpaces(false);
-                        setSpaceSettingsOpen(true);
-                      }}
-                    >
-                      <span className="tick" />
-                      {currentUserName || 'Space'} settings…
-                    </button>
-                  </li>
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        setManagingSpaces(false);
-                        setGlobalSettingsOpen(true);
-                      }}
-                    >
-                      <span className="tick" />
-                      Global settings…
-                    </button>
-                  </li>
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        setManagingSpaces(false);
-                        void addSpace();
-                      }}
-                    >
-                      <span className="tick" />
-                      Add space…
-                    </button>
-                  </li>
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => setManagingSpaces((managing) => !managing)}
-                    >
-                      <span className="tick" />
-                      {managingSpaces ? 'Done' : 'Rename or remove…'}
-                    </button>
-                  </li>
-                  {/* Only on an instance that asked for a password — elsewhere
-                      there is nothing to sign out of. */}
-                  {session.required && (
-                    <>
-                      <li className="menu-separator" role="separator" />
-                      <li role="none">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            void api
-                              .signOut()
-                              .catch(() => undefined)
-                              .then(() => window.location.reload());
-                          }}
-                        >
-                          <span className="tick" />
-                          Sign out
-                        </button>
-                      </li>
-                    </>
-                  )}
-                </ul>
-              </>
-            )}
-          </div>
-        )}
-      </header>
+      <TopBar
+        title={title}
+        status={status}
+        lock={lock}
+        activeId={activeId}
+        sheetOwner={sheetOwner}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        theme={theme}
+        setTitle={setTitle}
+        save={save}
+        statusLabel={statusLabel}
+        statistic={statistic}
+        siNotation={siNotation}
+        showLineNumbers={showLineNumbers}
+        countVariables={countVariables}
+        countReferenced={countReferenced}
+        showTotal={showTotal}
+        fontSize={fontSize}
+        precision={precision}
+        thousandsSeparators={thousandsSeparators}
+        currencyRounding={currencyRounding}
+        persistSettings={persistSettings}
+        session={session}
+        users={users}
+        space={space}
+        currentUserName={currentUserName}
+        sheets={sheets}
+        addSpace={addSpace}
+        renameSpace={renameSpace}
+        removeSpace={removeSpace}
+        onOpenSpaceSettings={() => setSpaceSettingsOpen(true)}
+        onOpenGlobalSettings={() => setGlobalSettingsOpen(true)}
+        onOpenReference={() => setReferenceOpen((open) => !open)}
+        shareSheet={shareSheet}
+        exportAs={exportAs}
+      />
 
       {/* `alert`, which is assertive: something went wrong and the reader needs
           to know now rather than after whatever they are typing. The polite
@@ -1507,11 +1162,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
  * The settings store is free-form, so a hand-edited or stale value arrives
  * unchecked — and a sheet set to 2px is one nobody can find the menu to fix.
  */
-function clampFontSize(size: number): number {
-  if (!Number.isFinite(size)) return DEFAULT_FONT_SIZE;
-  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(size)));
-}
-
 function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
