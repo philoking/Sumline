@@ -19,12 +19,12 @@ export const SYMBOL_TO_CODE: Record<string, string> = {
   '₱': 'PHP', // ₱
   '₫': 'VND', // ₫
   '₾': 'GEL', // ₾
-  'R$': 'BRL',
-  'C$': 'CAD',
-  'A$': 'AUD',
-  'NZ$': 'NZD',
-  'HK$': 'HKD',
-  'S$': 'SGD',
+  R$: 'BRL',
+  C$: 'CAD',
+  A$: 'AUD',
+  NZ$: 'NZD',
+  HK$: 'HKD',
+  S$: 'SGD',
   // Matched ahead of the bare '¥' below, which is JPY: `SYMBOLS_BY_LENGTH`
   // tries longest first, so `CN¥100` cannot be read as a yen amount.
   'CN¥': 'CNY',

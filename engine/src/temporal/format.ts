@@ -4,8 +4,18 @@ import { wallClockIn } from './zones.js';
 
 const SHORT_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SHORT_MONTHS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /**
@@ -28,12 +38,14 @@ export function formatMoment(moment: CalendarDate, now: Date): string {
         weekday: moment.date.getDay(),
       };
 
-  const showTime = moment.showAs === 'time' || (moment.showAs === 'auto' && moment.hasTime);
+  const showTime =
+    moment.showAs === 'time' || (moment.showAs === 'auto' && moment.hasTime);
   const showDate = moment.showAs !== 'time';
   const time = `${clock(local.hour, local.minute)}`;
   const date = `${SHORT_WEEKDAYS[local.weekday]} ${local.day} ${SHORT_MONTHS[local.month]} ${local.year}`;
 
-  if (moment.showAs === 'datetime') return `${local.day} ${SHORT_MONTHS[local.month]} ${local.year} at ${time}`;
+  if (moment.showAs === 'datetime')
+    return `${local.day} ${SHORT_MONTHS[local.month]} ${local.year} at ${time}`;
   if (showTime && !showDate) return relativeDayPrefix(now, local) + time;
   if (showTime && moment.hasTime) return `${date} at ${time}`;
   return date;
@@ -71,7 +83,10 @@ function clock(hour: number, minute: number): string {
 }
 
 /** Renders a duration as a span, a laptime, or a bare quantity. */
-export function formatTimespan(span: Timespan, formatNumber: (n: number) => string): string {
+export function formatTimespan(
+  span: Timespan,
+  formatNumber: (n: number) => string,
+): string {
   if (span.display === 'lap') return laptime(span.seconds);
 
   const parts = span.parts.filter((part) => part.value !== 0);
@@ -94,9 +109,7 @@ function laptime(totalSeconds: number): string {
   const whole = Math.floor(seconds);
   const fraction = round(seconds - whole, 3);
   const fractionText = fraction > 0 ? String(fraction).slice(1) : '';
-  return (
-    `${sign}${pad(hours)}:${pad(minutes)}:${pad(whole)}${fractionText}`
-  );
+  return `${sign}${pad(hours)}:${pad(minutes)}:${pad(whole)}${fractionText}`;
 }
 
 export function formatTimecode(code: Timecode): string {

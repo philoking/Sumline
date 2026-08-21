@@ -26,7 +26,9 @@ afterEach(async () => {
 
 describe('public holidays', () => {
   it('serves a bundled seed before any fetch has happened', async () => {
-    const table = (await app.server.inject({ url: '/api/holidays' })).json() as HolidayTable;
+    const table = (
+      await app.server.inject({ url: '/api/holidays' })
+    ).json() as HolidayTable;
     expect(table.dates.length).toBeGreaterThan(0);
     expect(table.stale).toBe(true);
     // The seed is the handful of fixed-date holidays almost everyone observes.
@@ -35,7 +37,9 @@ describe('public holidays', () => {
 
   it('serves fetched holidays once a refresh succeeds', async () => {
     await app.holidays.refresh();
-    const table = (await app.server.inject({ url: '/api/holidays' })).json() as HolidayTable;
+    const table = (
+      await app.server.inject({ url: '/api/holidays' })
+    ).json() as HolidayTable;
     expect(table.dates.some((date) => date.endsWith('-07-04'))).toBe(true);
     expect(table.stale).toBeFalsy();
   });

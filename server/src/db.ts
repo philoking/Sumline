@@ -111,7 +111,13 @@ export function findMatch(content: string, query: string): SheetMatch | null {
     const shift = raw.length - trimmed.length;
 
     if (trimmed.length <= SNIPPET_WIDTH) {
-      return { line, text: trimmed.trimEnd(), at: at - shift, length: needle.length, truncated: false };
+      return {
+        line,
+        text: trimmed.trimEnd(),
+        at: at - shift,
+        length: needle.length,
+        truncated: false,
+      };
     }
 
     // Keep a little context ahead of the match, but never scroll past the start
@@ -860,9 +866,7 @@ export class Store {
     const live = new Set(
       (
         this.db
-          .prepare(
-            `SELECT id FROM sheets WHERE owner = ? AND deleted_at IS NULL`,
-          )
+          .prepare(`SELECT id FROM sheets WHERE owner = ? AND deleted_at IS NULL`)
           .all(owner) as unknown as Array<{ id: string }>
       ).map((row) => row.id),
     );
@@ -1040,9 +1044,8 @@ export class Store {
   deleteFolder(id: string, owner: UserId): boolean {
     return this.transact(() => {
       const removed =
-        this.db
-          .prepare('DELETE FROM folders WHERE id = ? AND owner = ?')
-          .run(id, owner).changes > 0;
+        this.db.prepare('DELETE FROM folders WHERE id = ? AND owner = ?').run(id, owner)
+          .changes > 0;
       // Only orphan the sheets once the folder was really this person's, or a
       // mistaken id would empty a folder in the other space.
       if (removed) {
@@ -1091,10 +1094,7 @@ export class Store {
    * instance-wide value shows through again. Without this a space could take an
    * override on and never put it back.
    */
-  saveSettings(
-    owner: UserId,
-    values: Record<string, unknown>,
-  ): Record<string, unknown> {
+  saveSettings(owner: UserId, values: Record<string, unknown>): Record<string, unknown> {
     const statement = this.db.prepare(
       `INSERT INTO user_settings (owner, key, value) VALUES (?, ?, ?)
        ON CONFLICT(owner, key) DO UPDATE SET value = excluded.value`,

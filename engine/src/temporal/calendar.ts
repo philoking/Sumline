@@ -1,12 +1,28 @@
 import { CalendarDate, Timespan, type SpanPart, type SpanUnit } from './types.js';
 
 export const WEEKDAY_NAMES = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
 ];
 
 export const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 /** Public holidays as `YYYY-MM-DD`, excluded from workday calculations. */
@@ -130,7 +146,9 @@ export function hoursAndMinutes(totalSeconds: number): Timespan {
     if (whole > 0) parts.push({ value: whole * sign, unit });
     remaining -= whole * size;
   }
-  return parts.length > 0 ? new Timespan(parts) : new Timespan([{ value: 0, unit: 'minute' }]);
+  return parts.length > 0
+    ? new Timespan(parts)
+    : new Timespan([{ value: 0, unit: 'minute' }]);
 }
 
 /** ISO 8601 week number: weeks start on Monday, week 1 holds the first Thursday. */

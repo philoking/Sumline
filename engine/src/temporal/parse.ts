@@ -5,17 +5,26 @@ import {
   type SpanPart,
   type SpanUnit,
 } from './types.js';
-import { MONTH_NAMES, WEEKDAY_NAMES, addDays, addMonths, startOfDay } from './calendar.js';
+import {
+  MONTH_NAMES,
+  WEEKDAY_NAMES,
+  addDays,
+  addMonths,
+  startOfDay,
+} from './calendar.js';
 import { instantInZone, resolveZone } from './zones.js';
 
-const MONTH_ALT = MONTH_NAMES.map((m) => `${m.toLowerCase()}|${m.slice(0, 3).toLowerCase()}`).join('|');
-const WEEKDAY_ALT = WEEKDAY_NAMES.map((d) => `${d.toLowerCase()}|${d.slice(0, 3).toLowerCase()}`).join('|');
+const MONTH_ALT = MONTH_NAMES.map(
+  (m) => `${m.toLowerCase()}|${m.slice(0, 3).toLowerCase()}`,
+).join('|');
+const WEEKDAY_ALT = WEEKDAY_NAMES.map(
+  (d) => `${d.toLowerCase()}|${d.slice(0, 3).toLowerCase()}`,
+).join('|');
 
 export const MONTH_PATTERN = MONTH_ALT;
 export const WEEKDAY_PATTERN = WEEKDAY_ALT;
 
-export const SPAN_UNIT_PATTERN =
-  String.raw`business\s*days?|work(?:ing)?\s*days?|weekdays?|years?|yrs?|months?|mos?|weeks?|wks?|days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|frames?`;
+export const SPAN_UNIT_PATTERN = String.raw`business\s*days?|work(?:ing)?\s*days?|weekdays?|years?|yrs?|months?|mos?|weeks?|wks?|days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|frames?`;
 
 /** Normalises a written unit to the canonical span unit. */
 export function toSpanUnit(word: string): SpanUnit | null {
@@ -194,7 +203,14 @@ export function parseDate(text: string, now: Date): CalendarDate | null {
   const isoTime = /^(\d{4})-(\d{2})-(\d{2})[t ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
   if (isoTime) {
     return new CalendarDate(
-      new Date(+isoTime[1]!, +isoTime[2]! - 1, +isoTime[3]!, +isoTime[4]!, +isoTime[5]!, +(isoTime[6] ?? 0)),
+      new Date(
+        +isoTime[1]!,
+        +isoTime[2]! - 1,
+        +isoTime[3]!,
+        +isoTime[4]!,
+        +isoTime[5]!,
+        +(isoTime[6] ?? 0),
+      ),
       'minute',
     );
   }
@@ -220,7 +236,9 @@ export function parseDate(text: string, now: Date): CalendarDate | null {
     if (isRealDate(year, month, date)) return day(year, month - 1, date);
   }
 
-  const monthFirst = new RegExp(`^(${MONTH_ALT})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?$`).exec(s);
+  const monthFirst = new RegExp(
+    `^(${MONTH_ALT})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?$`,
+  ).exec(s);
   if (monthFirst) {
     return nearestYear(monthIndex(monthFirst[1]!), +monthFirst[2]!, monthFirst[3], now);
   }
@@ -232,7 +250,9 @@ export function parseDate(text: string, now: Date): CalendarDate | null {
     return nearestYear(monthIndex(dayFirst[2]!), +dayFirst[1]!, dayFirst[3], now);
   }
 
-  const relative = new RegExp(`^(next|last|this)\\s+(${WEEKDAY_ALT}|week|month|year)$`).exec(s);
+  const relative = new RegExp(
+    `^(next|last|this)\\s+(${WEEKDAY_ALT}|week|month|year)$`,
+  ).exec(s);
   if (relative) return relativeDate(relative[1]!, relative[2]!, now);
 
   const bareWeekday = new RegExp(`^(${WEEKDAY_ALT})$`).exec(s);
@@ -266,8 +286,8 @@ function nearestYear(
 ): CalendarDate {
   if (explicitYear) return day(+explicitYear, month, date);
 
-  const candidates = [-1, 0, 1].map((offset) =>
-    new Date(now.getFullYear() + offset, month, date),
+  const candidates = [-1, 0, 1].map(
+    (offset) => new Date(now.getFullYear() + offset, month, date),
   );
   const best = candidates.reduce((closest, candidate) =>
     Math.abs(candidate.getTime() - now.getTime()) <

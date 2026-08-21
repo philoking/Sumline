@@ -350,9 +350,7 @@ function evaluateLine(
     case 'expression': {
       const computed = compute(line.body, state, ctx, now, wallNow, fmt);
       if (computed.error) {
-        return looksComputational(line.body)
-          ? { ...base, error: computed.error }
-          : base;
+        return looksComputational(line.body) ? { ...base, error: computed.error } : base;
       }
       if (computed.value === undefined) return base;
 
@@ -785,9 +783,11 @@ function applyAliases(
 }
 
 function isKnownUnit(ctx: MathContext, word: string): boolean {
-  const Unit = (ctx.math as unknown as {
-    Unit?: { isValuelessUnit?(name: string): boolean };
-  }).Unit;
+  const Unit = (
+    ctx.math as unknown as {
+      Unit?: { isValuelessUnit?(name: string): boolean };
+    }
+  ).Unit;
   try {
     return Unit?.isValuelessUnit?.(word) ?? false;
   } catch {

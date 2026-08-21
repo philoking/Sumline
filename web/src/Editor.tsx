@@ -150,9 +150,10 @@ function selectionSpan(view: EditorView): Span | null {
 
   const first = view.state.doc.lineAt(from).number;
   const lastLine = view.state.doc.lineAt(to);
-  const last = to === lastLine.from && lastLine.number > first
-    ? lastLine.number - 1
-    : lastLine.number;
+  const last =
+    to === lastLine.from && lastLine.number > first
+      ? lastLine.number - 1
+      : lastLine.number;
 
   return last > first ? { from: first, to: last } : null;
 }
@@ -421,7 +422,9 @@ function completeNames(context: CompletionContext) {
 
   const declared = new Set<string>();
   for (const line of context.state.doc.toString().split('\n')) {
-    const match = /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(?:\+=|-=|=)/.exec(line.trim());
+    const match = /^([A-Za-z_][\w]*(?:[ \t]+[A-Za-z_][\w]*)*)\s*(?:\+=|-=|=)/.exec(
+      line.trim(),
+    );
     if (match) declared.add(match[1]!.trim());
   }
   if (declared.size === 0) return null;
@@ -465,7 +468,7 @@ function buildDecorations(view: EditorView, tokens: Token[][]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   let last = 0;
   for (const { from, to } of view.visibleRanges) {
-    for (let pos = from; pos <= to; ) {
+    for (let pos = from; pos <= to;) {
       const line = view.state.doc.lineAt(pos);
       pos = line.to + 1;
       // A range can begin part-way through a line the previous one already
@@ -879,7 +882,11 @@ export function Editor({
       // The text this sheet's kept stack was waiting for may be the text now
       // arriving, in which case the stack is adopted with it — a reload lands
       // here, where the sheet id is settled a render before its content is.
-      if (pendingRestore.current === sheetId && sheetId && loadUndoHistory(sheetId, value)) {
+      if (
+        pendingRestore.current === sheetId &&
+        sheetId &&
+        loadUndoHistory(sheetId, value)
+      ) {
         pendingRestore.current = null;
         view.setState(stateFor.current(sheetId, value));
         requestAnimationFrame(() => measure.current());
@@ -905,9 +912,7 @@ export function Editor({
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({
-      effects: readOnlyCompartment.current.reconfigure(
-        EditorState.readOnly.of(readOnly),
-      ),
+      effects: readOnlyCompartment.current.reconfigure(EditorState.readOnly.of(readOnly)),
     });
   }, [readOnly]);
 
@@ -974,9 +979,7 @@ export function Editor({
    * would not survive a copy, an export, or the line being moved.
    */
   const setDecimals = (lineNumber: number, places: number) =>
-    amendLine(lineNumber, (text) =>
-      `${stripFormatting(text)} to ${places} dp`.trim(),
-    );
+    amendLine(lineNumber, (text) => `${stripFormatting(text)} to ${places} dp`.trim());
 
   const writeInFull = (lineNumber: number) =>
     amendLine(lineNumber, (text) => `${stripFormatting(text)} in full`.trim());
@@ -1096,12 +1099,7 @@ export function Editor({
         className={`editor-host${showLineNumbers ? '' : ' no-gutter'}`}
         ref={editorHostRef}
       />
-      <div
-        className="answers"
-        ref={answersRef}
-        role="group"
-        aria-label="Answers"
-      >
+      <div className="answers" ref={answersRef} role="group" aria-label="Answers">
         {boxes.map((box) => {
           const result = results[box.line - 1];
           if (!result) return null;

@@ -123,9 +123,7 @@ export class RatesService {
   constructor(private readonly options: RatesServiceOptions) {
     const base = options.base ?? DEFAULT_BASE;
     const cached = options.store.getRates(base);
-    this.table = cached
-      ? { ...(cached.payload as RateTable), stale: true }
-      : SEED_RATES;
+    this.table = cached ? { ...(cached.payload as RateTable), stale: true } : SEED_RATES;
   }
 
   current(): RateTable {

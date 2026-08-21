@@ -31,10 +31,7 @@ describe('variables', () => {
    */
   describe('a name that is also a unit', () => {
     it('leaves the unit alone directly after a number', () => {
-      expect(answers('hours = 6.5\n2 hours + 45 minutes')).toEqual([
-        '6.5',
-        '2.75 hours',
-      ]);
+      expect(answers('hours = 6.5\n2 hours + 45 minutes')).toEqual(['6.5', '2.75 hours']);
       expect(answers('days = 3\n2 days + 1 day')).toEqual(['3', '3 days']);
       expect(answers('kg = 10\n5 kg in g')).toEqual(['10', '5,000 g']);
     });
@@ -102,7 +99,14 @@ describe('totals', () => {
 
   it('starts a new section at a heading', () => {
     expect(answers('# Food\n10\n20\nsum\n\n# Travel\n5\nsum')).toEqual([
-      '', '10', '20', '30', '', '', '5', '5',
+      '',
+      '10',
+      '20',
+      '30',
+      '',
+      '',
+      '5',
+      '5',
     ]);
   });
 

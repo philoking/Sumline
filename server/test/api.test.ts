@@ -161,9 +161,9 @@ describe('version conflicts', () => {
     const sheet = store.createSheet(FALLBACK_SPACE.id, 'Contested', 'one');
     store.updateSheet(sheet.id, { content: 'two' }, sheet.version);
     // `sheet.version` is now a version behind, which is the losing writer.
-    expect(() => store.updateSheet(sheet.id, { content: 'three' }, sheet.version)).toThrow(
-      VersionConflictError,
-    );
+    expect(() =>
+      store.updateSheet(sheet.id, { content: 'three' }, sheet.version),
+    ).toThrow(VersionConflictError);
     expect(store.getSheet(sheet.id)?.content).toBe('two');
   });
 
@@ -283,7 +283,9 @@ describe('editing locks', () => {
       payload: { clientId: 'alice', clientName: 'Alice' },
     });
     const read = await app.server.inject({ url: `/api/sheets/${sheet.id}` });
-    expect(read.json()).toMatchObject({ lock: { clientId: 'alice', clientName: 'Alice' } });
+    expect(read.json()).toMatchObject({
+      lock: { clientId: 'alice', clientName: 'Alice' },
+    });
   });
 
   it('requires a clientId', async () => {

@@ -31,7 +31,9 @@ describe('toPlainText', () => {
   });
 
   it('strips heading marks when asked, as Soulver’s PDF export can', () => {
-    expect(toPlainText({ ...sheet, stripHeadingMarks: true }).split('\n')[0]).toBe('Costs');
+    expect(toPlainText({ ...sheet, stripHeadingMarks: true }).split('\n')[0]).toBe(
+      'Costs',
+    );
   });
 });
 
@@ -48,7 +50,11 @@ describe('toMarkdown', () => {
   });
 
   it('drops rows that would be blank on both sides', () => {
-    const table = toMarkdown({ title: 'T', content: 'a\n\n\nb', results: answers('1', '', '', '2') });
+    const table = toMarkdown({
+      title: 'T',
+      content: 'a\n\n\nb',
+      results: answers('1', '', '', '2'),
+    });
     expect(table.split('\n').filter((line) => line === '|  |  |')).toEqual([]);
   });
 

@@ -132,10 +132,17 @@ function normalizeOperatorSymbols(s: string): string {
 
 /** Magnitude suffixes that are safe only next to a currency symbol. */
 const CURRENCY_MAGNITUDES: Record<string, number> = {
-  k: 1e3, K: 1e3,
-  m: 1e6, M: 1e6,
-  b: 1e9, B: 1e9, bn: 1e9, G: 1e9,
-  t: 1e12, T: 1e12, tn: 1e12,
+  k: 1e3,
+  K: 1e3,
+  m: 1e6,
+  M: 1e6,
+  b: 1e9,
+  B: 1e9,
+  bn: 1e9,
+  G: 1e9,
+  t: 1e12,
+  T: 1e12,
+  tn: 1e12,
 };
 
 /**
@@ -219,19 +226,21 @@ function rewriteTemperatures(s: string, ctx: PreprocessContext): string {
   const unbound = (letter: string) =>
     !ctx.scopeNames.has(letter) && !ctx.scopeNames.has(letter.toLowerCase());
 
-  return s
-    // `72 F`, `72°F`, `72 degrees F`
-    .replace(
-      new RegExp(String.raw`(${NUM})\s*(?:°\s*|degrees?\s+)?([FC])\b`, 'g'),
-      (match, num: string, letter: string) =>
-        unbound(letter) ? `${num} ${scaleFor(letter)}` : match,
-    )
-    // `in C`, `to °F`
-    .replace(
-      /\b(in|to)\s+(?:°\s*|degrees?\s+)?([FC])\b/g,
-      (match, word: string, letter: string) =>
-        unbound(letter) ? `${word} ${scaleFor(letter)}` : match,
-    );
+  return (
+    s
+      // `72 F`, `72°F`, `72 degrees F`
+      .replace(
+        new RegExp(String.raw`(${NUM})\s*(?:°\s*|degrees?\s+)?([FC])\b`, 'g'),
+        (match, num: string, letter: string) =>
+          unbound(letter) ? `${num} ${scaleFor(letter)}` : match,
+      )
+      // `in C`, `to °F`
+      .replace(
+        /\b(in|to)\s+(?:°\s*|degrees?\s+)?([FC])\b/g,
+        (match, word: string, letter: string) =>
+          unbound(letter) ? `${word} ${scaleFor(letter)}` : match,
+      )
+  );
 }
 
 /** `line 3` and `prev` become the internal identifiers the scope carries. */
@@ -341,25 +350,44 @@ function rewritePercentages(s: string): string {
 
   // "20 as a % of 200" / "20 is what % of 200" -> 10%
   s = replaceFirst(s, [
-    [new RegExp(`^(${OPERAND})\\s+as\\s+(?:an?\\s+)?${P}\\s+of\\s+(.+)$`, 'i'),
-      (a, b) => `pct((${a}) / (${b}) * 100)`],
-    [new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+of\\s+(.+)$`, 'i'),
-      (a, b) => `pct((${a}) / (${b}) * 100)`],
+    [
+      new RegExp(`^(${OPERAND})\\s+as\\s+(?:an?\\s+)?${P}\\s+of\\s+(.+)$`, 'i'),
+      (a, b) => `pct((${a}) / (${b}) * 100)`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+of\\s+(.+)$`, 'i'),
+      (a, b) => `pct((${a}) / (${b}) * 100)`,
+    ],
     // "180 is what % off 200" -> 10% ; "180 is what % on 150" -> 20%
-    [new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+off\\s+(.+)$`, 'i'),
-      (a, b) => `pct((1 - (${a}) / (${b})) * 100)`],
-    [new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+on\\s+(.+)$`, 'i'),
-      (a, b) => `pct(((${a}) / (${b}) - 1) * 100)`],
+    [
+      new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+off\\s+(.+)$`, 'i'),
+      (a, b) => `pct((1 - (${a}) / (${b})) * 100)`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+is\\s+what\\s+${P}\\s+on\\s+(.+)$`, 'i'),
+      (a, b) => `pct(((${a}) / (${b}) - 1) * 100)`,
+    ],
     // "50 to 75 is what %" / "40 to 90 as %" -> the change between them
-    [new RegExp(`^(${OPERAND})\\s+to\\s+(${OPERAND})\\s+(?:is\\s+what|as)\\s+${P}\\s*$`, 'i'),
-      (a, b) => `pct(((${b}) / (${a}) - 1) * 100)`],
+    [
+      new RegExp(
+        `^(${OPERAND})\\s+to\\s+(${OPERAND})\\s+(?:is\\s+what|as)\\s+${P}\\s*$`,
+        'i',
+      ),
+      (a, b) => `pct(((${b}) / (${a}) - 1) * 100)`,
+    ],
     // Reverse: solve for the original number
-    [new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+of\\s+what\\s*$`, 'i'),
-      (a, p) => `((${a}) / (${p} / 100))`],
-    [new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+off\\s+what\\s*$`, 'i'),
-      (a, p) => `((${a}) / (1 - ${p} / 100))`],
-    [new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+on\\s+what\\s*$`, 'i'),
-      (a, p) => `((${a}) / (1 + ${p} / 100))`],
+    [
+      new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+of\\s+what\\s*$`, 'i'),
+      (a, p) => `((${a}) / (${p} / 100))`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+off\\s+what\\s*$`, 'i'),
+      (a, p) => `((${a}) / (1 - ${p} / 100))`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+is\\s+(${NUM})\\s*%\\s+on\\s+what\\s*$`, 'i'),
+      (a, p) => `((${a}) / (1 + ${p} / 100))`,
+    ],
   ]);
 
   // "20% off 50" -> 40 ; "20% on 50" -> 60
@@ -402,10 +430,7 @@ function rewritePercentages(s: string): string {
    * __linepct". The exponent in `1e3%` is the same shape: the `3` is not the
    * number either.
    */
-  return s.replace(
-    new RegExp(String.raw`(?<![\w.])(${NUM})\s*%`, 'g'),
-    'pct($1)',
-  );
+  return s.replace(new RegExp(String.raw`(?<![\w.])(${NUM})\s*%`, 'g'), 'pct($1)');
 }
 
 /**
@@ -458,16 +483,29 @@ function rewriteMultipliersAndFractions(s: string): string {
   const X = String.raw`(?:x|multiplier|multiple)`;
 
   s = replaceFirst(s, [
-    [new RegExp(`^(${OPERAND})\\s+to\\s+(${OPERAND})\\s+(?:is\\s+what|as)\\s+${X}\\s*$`, 'i'),
-      (a, b) => `multiplierOf((${b}) / (${a}))`],
-    [new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+of\\s+(.+)$`, 'i'),
-      (a, b) => `multiplierOf((${a}) / (${b}))`],
-    [new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+on\\s+(.+)$`, 'i'),
-      (a, b) => `multiplierOf((${a}) / (${b}) - 1)`],
-    [new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+off\\s+(.+)$`, 'i'),
-      (a, b) => `multiplierOf(1 - (${a}) / (${b}))`],
-    [new RegExp(`^(${OPERAND})\\s+as\\s+(?:an?\\s+)?${X}\\s*$`, 'i'),
-      (a) => `multiplierOf(${a})`],
+    [
+      new RegExp(
+        `^(${OPERAND})\\s+to\\s+(${OPERAND})\\s+(?:is\\s+what|as)\\s+${X}\\s*$`,
+        'i',
+      ),
+      (a, b) => `multiplierOf((${b}) / (${a}))`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+of\\s+(.+)$`, 'i'),
+      (a, b) => `multiplierOf((${a}) / (${b}))`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+on\\s+(.+)$`, 'i'),
+      (a, b) => `multiplierOf((${a}) / (${b}) - 1)`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+as\\s+${X}\\s+off\\s+(.+)$`, 'i'),
+      (a, b) => `multiplierOf(1 - (${a}) / (${b}))`,
+    ],
+    [
+      new RegExp(`^(${OPERAND})\\s+as\\s+(?:an?\\s+)?${X}\\s*$`, 'i'),
+      (a) => `multiplierOf(${a})`,
+    ],
   ]);
 
   s = s.replace(
@@ -476,13 +514,19 @@ function rewriteMultipliersAndFractions(s: string): string {
   );
 
   s = s.replace(
-    new RegExp(`^(${OPERAND})\\s+(?:as|to|in)\\s+sci(?:entific)?(?:\\s+notation)?\\s*$`, 'i'),
+    new RegExp(
+      `^(${OPERAND})\\s+(?:as|to|in)\\s+sci(?:entific)?(?:\\s+notation)?\\s*$`,
+      'i',
+    ),
     (_m, a: string) => `sciOf(${a})`,
   );
 
   // "20% as dec" / "5 km as number" — strip the meaning, keep the number.
   return s.replace(
-    new RegExp(`^(${OPERAND})\\s+(?:as|to|in)\\s+(?:a\\s+)?(?:number|decimal|dec)\\s*$`, 'i'),
+    new RegExp(
+      `^(${OPERAND})\\s+(?:as|to|in)\\s+(?:a\\s+)?(?:number|decimal|dec)\\s*$`,
+      'i',
+    ),
     (_m, a: string) => `asPlainNumber(${a})`,
   );
 }
@@ -517,7 +561,8 @@ function rewriteRates(s: string, ctx: PreprocessContext): string {
    * catches plain compound conversions like `65 mph in km/h`, which `rateAs`
    * recognises as a unit rather than a rate and converts directly.
    */
-  const converted = /^(.+?)\s+(?:as|to|in)\s*(?:([A-Za-z]+)\s*)?\/\s*([A-Za-z]+)\s*$/i.exec(s);
+  const converted =
+    /^(.+?)\s+(?:as|to|in)\s*(?:([A-Za-z]+)\s*)?\/\s*([A-Za-z]+)\s*$/i.exec(s);
   if (converted) {
     const rate = rewriteRates(converted[1]!, ctx);
     const per = singular(converted[3]!);
@@ -532,7 +577,10 @@ function rewriteRates(s: string, ctx: PreprocessContext): string {
    * `65 mph in km/h` from being mistaken for one.
    */
   return s.replace(
-    new RegExp(`(^|[\\s(])(${NUM})\\s*([A-Za-z]+)?\\s*/\\s*([A-Za-z]+)\\b(?!\\s*[\\d(])`, 'g'),
+    new RegExp(
+      `(^|[\\s(])(${NUM})\\s*([A-Za-z]+)?\\s*/\\s*([A-Za-z]+)\\b(?!\\s*[\\d(])`,
+      'g',
+    ),
     (match, lead: string, num: string, numerUnit: string | undefined, per: string) => {
       if (!ctx.isKnownUnit(per) && !/^(week|month|year|day|hour|workday)s?$/i.test(per)) {
         return match;
@@ -570,7 +618,8 @@ function singular(unit: string): string {
  * prose ("days in Berlin") is never rewritten into a broken expression.
  */
 function rewriteConversions(s: string, ctx: PreprocessContext): string {
-  const unitish = (word: string) => ctx.isKnownUnit(word) || ctx.currencies.has(word.toUpperCase());
+  const unitish = (word: string) =>
+    ctx.isKnownUnit(word) || ctx.currencies.has(word.toUpperCase());
 
   /*
    * The same phrasing inside brackets, where it is a sub-expression rather
@@ -651,7 +700,18 @@ function rewriteConversions(s: string, ctx: PreprocessContext): string {
  * math.js reads these itself, so a number in front of one is arithmetic
  * rather than someone counting things.
  */
-const NOT_A_LABEL = new Set(['mod', 'to', 'in', 'as', 'of', 'per', 'and', 'or', 'x', 'e']);
+const NOT_A_LABEL = new Set([
+  'mod',
+  'to',
+  'in',
+  'as',
+  'of',
+  'per',
+  'and',
+  'or',
+  'x',
+  'e',
+]);
 
 /**
  * `12 widgets` — a number followed by a word nothing else claimed.

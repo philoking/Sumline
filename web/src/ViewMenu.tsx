@@ -123,11 +123,7 @@ export function ViewMenu(props: ViewMenuProps) {
 
         <li className="menu-separator" role="separator" />
 
-        <Check
-          on={props.sidebarOpen}
-          label="Sidebar"
-          onClick={props.onToggleSidebar}
-        />
+        <Check on={props.sidebarOpen} label="Sidebar" onClick={props.onToggleSidebar} />
         <Check
           on={props.showLineNumbers}
           label="Line numbers"

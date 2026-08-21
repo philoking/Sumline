@@ -18,7 +18,10 @@ describe('diffLines', () => {
   });
 
   it('reports a changed line as one line out and one line in', () => {
-    expect(changed('rent = 1500', 'rent = 1650')).toEqual(['-rent = 1500', '+rent = 1650']);
+    expect(changed('rent = 1500', 'rent = 1650')).toEqual([
+      '-rent = 1500',
+      '+rent = 1650',
+    ]);
   });
 
   /*

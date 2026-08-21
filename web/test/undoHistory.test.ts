@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  forgetUndoHistory,
-  loadUndoHistory,
-  saveUndoHistory,
-} from '../src/undoHistory';
+import { forgetUndoHistory, loadUndoHistory, saveUndoHistory } from '../src/undoHistory';
 
 /** A stand-in for the browser's, with the same throwing behaviours. */
 class FakeStorage {

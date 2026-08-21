@@ -93,9 +93,9 @@ export function SpaceSettings(props: SpaceSettingsProps) {
               aria-label="Space name"
             />
             <p className="reference-note">
-              Renaming changes only what is shown. Every sheet stays where it is,
-              because they are filed under this space’s id (<code>{space.id}</code>),
-              not its name.
+              Renaming changes only what is shown. Every sheet stays where it is, because
+              they are filed under this space’s id (<code>{space.id}</code>), not its
+              name.
             </p>
           </section>
 
@@ -106,9 +106,9 @@ export function SpaceSettings(props: SpaceSettingsProps) {
             label="Number region"
             blurb={
               <>
-                Only for {space.name}. It decides how a sheet is{' '}
-                <strong>read</strong>: <code>1.234 + 1</code> is 1.235 under
-                Western Europe and 2.234 under North America.
+                Only for {space.name}. It decides how a sheet is <strong>read</strong>:{' '}
+                <code>1.234 + 1</code> is 1.235 under Western Europe and 2.234 under North
+                America.
               </>
             }
             value={computed.region}
@@ -132,8 +132,8 @@ export function SpaceSettings(props: SpaceSettingsProps) {
           <section className="reference-group">
             <h3>Variables</h3>
             <p className="reference-blurb">
-              Available to every sheet in {space.name}, as if each had declared
-              them at the top. A sheet can shadow one by declaring the same name.
+              Available to every sheet in {space.name}, as if each had declared them at
+              the top. A sheet can shadow one by declaring the same name.
             </p>
 
             <GlobalsEditor
@@ -147,7 +147,9 @@ export function SpaceSettings(props: SpaceSettingsProps) {
 
             {inherited.length > 0 && (
               <>
-                <p className="reference-note">Also in effect here, from Global settings:</p>
+                <p className="reference-note">
+                  Also in effect here, from Global settings:
+                </p>
                 <div className="globals-editor">
                   {inherited.map(([key, value]) => (
                     <div className="global-row global-row-inherited" key={key}>
@@ -176,9 +178,9 @@ export function SpaceSettings(props: SpaceSettingsProps) {
           <section className="reference-group">
             <h3>Remove</h3>
             <p className="reference-blurb">
-              Removing <strong>{space.name}</strong> keeps its sheets. Nothing owns
-              them afterwards so they drop out of every list, and adding a space back
-              under the same name shows them again.
+              Removing <strong>{space.name}</strong> keeps its sheets. Nothing owns them
+              afterwards so they drop out of every list, and adding a space back under the
+              same name shows them again.
             </p>
             <button
               type="button"

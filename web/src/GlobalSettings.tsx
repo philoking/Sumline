@@ -29,7 +29,8 @@ export interface GlobalSettingsProps {
  * space starts from. Which door you opened tells you what you are editing.
  */
 export function GlobalSettings(props: GlobalSettingsProps) {
-  const { open, computed, globals, preview, onSaveComputed, onSaveGlobals, onClose } = props;
+  const { open, computed, globals, preview, onSaveComputed, onSaveGlobals, onClose } =
+    props;
   const [rows, setRows] = useRows(globals, open);
   const panelRef = useDialog<HTMLElement>(open, onClose);
 
@@ -54,8 +55,8 @@ export function GlobalSettings(props: GlobalSettingsProps) {
 
         <div className="reference-body">
           <p className="reference-blurb">
-            In effect in <strong>every</strong> space. Any space can differ by
-            setting its own, which leaves the others as they were.
+            In effect in <strong>every</strong> space. Any space can differ by setting its
+            own, which leaves the others as they were.
           </p>
 
           <SettingField
@@ -64,9 +65,8 @@ export function GlobalSettings(props: GlobalSettingsProps) {
             blurb={
               <>
                 Which convention sheets are written in. It decides how a sheet is{' '}
-                <strong>read</strong>, not just how answers look:{' '}
-                <code>1.234 + 1</code> is 1.235 under Western Europe and 2.234
-                under North America.
+                <strong>read</strong>, not just how answers look: <code>1.234 + 1</code>{' '}
+                is 1.235 under Western Europe and 2.234 under North America.
               </>
             }
             value={computed.region}
@@ -86,9 +86,9 @@ export function GlobalSettings(props: GlobalSettingsProps) {
           <section className="reference-group">
             <h3>Variables</h3>
             <p className="reference-blurb">
-              Available to every sheet in every space, as if each had declared
-              them at the top. A space can override one by name, and a sheet can
-              shadow it by declaring the same name itself.
+              Available to every sheet in every space, as if each had declared them at the
+              top. A space can override one by name, and a sheet can shadow it by
+              declaring the same name itself.
             </p>
             <GlobalsEditor
               rows={rows}
@@ -101,8 +101,8 @@ export function GlobalSettings(props: GlobalSettingsProps) {
 
           <section className="reference-group">
             <p className="reference-note">
-              There are no passwords unless <code>SUMLINE_PASSWORD</code> is set,
-              so anyone who can open the app can change what is on this panel.
+              There are no passwords unless <code>SUMLINE_PASSWORD</code> is set, so
+              anyone who can open the app can change what is on this panel.
             </p>
           </section>
         </div>

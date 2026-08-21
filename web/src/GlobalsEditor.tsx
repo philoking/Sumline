@@ -148,8 +148,8 @@ export function GlobalsEditor({
 
       {duplicate && (
         <p className="reference-note global-warning">
-          Two variables share a name. Only one could ever win, so nothing is saved
-          until that is settled.
+          Two variables share a name. Only one could ever win, so nothing is saved until
+          that is settled.
         </p>
       )}
     </>

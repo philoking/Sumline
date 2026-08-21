@@ -202,7 +202,12 @@ const STORABLE_SETTINGS = new Set([
  * inherited value into one of the space's own, and a later change to the shared
  * tier would then stop reaching it.
  */
-const DERIVED_SETTINGS = new Set(['sharedGlobals', 'effectiveGlobals', 'shared', 'effective']);
+const DERIVED_SETTINGS = new Set([
+  'sharedGlobals',
+  'effectiveGlobals',
+  'shared',
+  'effective',
+]);
 
 /**
  * Validates one computed setting, or reports why it cannot be stored.
@@ -277,10 +282,7 @@ export function buildApp(options: AppOptions): App {
   // instance takes its spaces from what the database already owns. Only the
   // DEFAULT clause for a freshly added owner column needs a value this early,
   // and on a database old enough to need that clause there is nothing to adopt.
-  const store = new Store(
-    options.dbPath,
-    (options.spaces?.[0] ?? FALLBACK_SPACE).id,
-  );
+  const store = new Store(options.dbPath, (options.spaces?.[0] ?? FALLBACK_SPACE).id);
 
   /**
    * Fills the space table on an instance that has none.
@@ -501,7 +503,9 @@ export function buildApp(options: AppOptions): App {
       const given = typeof request.body?.id === 'string' ? request.body.id : name;
       const id = deriveSpaceId(given);
       if (!id) {
-        return reply.code(400).send({ error: `No usable id in ${JSON.stringify(given)}` });
+        return reply
+          .code(400)
+          .send({ error: `No usable id in ${JSON.stringify(given)}` });
       }
 
       const created = store.createSpace(id, name);
@@ -625,19 +629,16 @@ export function buildApp(options: AppOptions): App {
    * substituting the current rate would be the wrong answer wearing the right
    * clothes.
    */
-  server.get<{ Querystring: { on?: string } }>(
-    '/api/rates',
-    async (request, reply) => {
-      const on = request.query?.on;
-      if (on === undefined) return rates.current();
+  server.get<{ Querystring: { on?: string } }>('/api/rates', async (request, reply) => {
+    const on = request.query?.on;
+    if (on === undefined) return rates.current();
 
-      const table = await rates.historical(on);
-      if (!table) {
-        return reply.code(404).send({ error: `No exchange rates available for ${on}` });
-      }
-      return table;
-    },
-  );
+    const table = await rates.historical(on);
+    if (!table) {
+      return reply.code(404).send({ error: `No exchange rates available for ${on}` });
+    }
+    return table;
+  });
 
   /**
    * The public holidays behind workday maths.
@@ -648,7 +649,7 @@ export function buildApp(options: AppOptions): App {
    */
   server.get('/api/holidays', async () => holidays.current());
 
-/**
+  /**
    * A space's settings, plus the tier above it and the two resolved together.
    *
    * `sharedGlobals`, `effectiveGlobals`, `shared` and `effective` are derived,
@@ -784,7 +785,9 @@ export function buildApp(options: AppOptions): App {
         typeof globals !== 'object' ||
         Array.isArray(globals)
       ) {
-        return reply.code(400).send({ error: 'globals must be an object of names to values' });
+        return reply
+          .code(400)
+          .send({ error: 'globals must be an object of names to values' });
       }
       const cleaned: Record<string, string> = {};
       for (const [name, value] of Object.entries(globals as Record<string, unknown>)) {
@@ -870,14 +873,22 @@ export function buildApp(options: AppOptions): App {
 
   server.post<{ Body: { input?: unknown } }>('/api/evaluate', async (request, reply) => {
     const input = request.body?.input;
-    const source = Array.isArray(input) ? input : typeof input === 'string' ? input : null;
+    const source = Array.isArray(input)
+      ? input
+      : typeof input === 'string'
+        ? input
+        : null;
     if (source === null) {
-      return reply.code(400).send({ error: 'input must be a string or an array of lines' });
+      return reply
+        .code(400)
+        .send({ error: 'input must be a string or an array of lines' });
     }
 
     const lines = Array.isArray(source) ? source : source.split('\n');
     if (lines.some((line) => typeof line !== 'string')) {
-      return reply.code(400).send({ error: 'input must be a string or an array of lines' });
+      return reply
+        .code(400)
+        .send({ error: 'input must be a string or an array of lines' });
     }
     /*
      * Evaluation is synchronous and this is one process serving everybody, so a
@@ -916,7 +927,9 @@ export function buildApp(options: AppOptions): App {
       );
       // The dates and what came back for each: a date that could not be
       // answered before and can be now is a different engine, not a hit.
-      const past = fetched.map(([date, table]) => `${date}>${table?.date ?? '-'}`).join(',');
+      const past = fetched
+        .map(([date, table]) => `${date}>${table?.date ?? '-'}`)
+        .join(',');
       engine = engineFor(`${spaceKey}\u0000${past}`, rateTable, holidayDates, () =>
         createEngine({ ...base, historicalRates: Object.fromEntries(fetched) }),
       );
@@ -953,7 +966,9 @@ export function buildApp(options: AppOptions): App {
   server.put<{ Params: { id: string }; Body: { name?: string } }>(
     '/api/folders/:id',
     async (request, reply) => {
-      const name = (typeof request.body?.name === 'string' ? request.body.name : '').trim();
+      const name = (
+        typeof request.body?.name === 'string' ? request.body.name : ''
+      ).trim();
       if (!name) return reply.code(400).send({ error: 'name is required' });
       const owner = currentUser(request);
       if (!store.renameFolder(request.params.id, name, owner)) {
@@ -1116,14 +1131,11 @@ export function buildApp(options: AppOptions): App {
     return store.lockAsOf(sheetId);
   };
 
-  server.get<{ Params: { id: string } }>(
-    '/api/sheets/:id',
-    async (request, reply) => {
-      const sheet = store.getSheet(request.params.id);
-      if (!sheet) return reply.code(404).send({ error: 'Sheet not found' });
-      return { ...sheet, lock: lockNow(sheet.id) };
-    },
-  );
+  server.get<{ Params: { id: string } }>('/api/sheets/:id', async (request, reply) => {
+    const sheet = store.getSheet(request.params.id);
+    if (!sheet) return reply.code(404).send({ error: 'Sheet not found' });
+    return { ...sheet, lock: lockNow(sheet.id) };
+  });
 
   // Minting is a POST because it can create a slug, and it is deliberately
   // separate from opening a sheet: the URL only ever carries an identifier
@@ -1168,7 +1180,8 @@ export function buildApp(options: AppOptions): App {
     try {
       const changes: { title?: string; content?: string; folderId?: string | null } = {};
       if (typeof request.body?.title === 'string') changes.title = request.body.title;
-      if (typeof request.body?.content === 'string') changes.content = request.body.content;
+      if (typeof request.body?.content === 'string')
+        changes.content = request.body.content;
       if (request.body?.folderId !== undefined) changes.folderId = request.body.folderId;
       const saved = store.updateSheet(request.params.id, changes, request.body?.version);
       events.emit({

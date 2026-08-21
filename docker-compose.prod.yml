@@ -15,7 +15,7 @@ services:
     container_name: sumline
     restart: unless-stopped
     ports:
-      - "8422:8080"
+      - '8422:8080'
     environment:
       # Date maths resolves in this zone. Overridable from ~/sumline/.env.
       TZ: ${TZ:-America/Los_Angeles}

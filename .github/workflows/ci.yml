@@ -53,6 +53,11 @@ jobs:
       # fail the run — see eslint.config.js for the two rules staged that way.
       - run: npm run lint
 
+      # `--check`, not `--write`: CI reports, a person formats. A job that
+      # rewrote the tree would either have to push its own commit, or would
+      # pass while leaving main unformatted.
+      - run: npm run format:check
+
       - run: npm test
 
       - run: npm run typecheck

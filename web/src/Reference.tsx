@@ -116,16 +116,16 @@ export function Reference({
               <section className="reference-group">
                 <h3>How a sheet works</h3>
                 <p className="reference-blurb">
-                  Type on the left; answers appear on the right as you go. Anything
-                  the engine doesn’t recognise is left alone, so notes and sums can
-                  share a sheet. Start a line with <code>#</code> for a heading or{' '}
-                  <code>//</code> for a comment. Click an answer to cite it, or
-                  right-click one to change how it’s shown.
+                  Type on the left; answers appear on the right as you go. Anything the
+                  engine doesn’t recognise is left alone, so notes and sums can share a
+                  sheet. Start a line with <code>#</code> for a heading or <code>//</code>{' '}
+                  for a comment. Click an answer to cite it, or right-click one to change
+                  how it’s shown.
                 </p>
                 <p className="reference-blurb">
-                  Every example below is checked by the test suite on each deploy,
-                  so nothing here can claim something the calculator doesn’t do.
-                  Click one to try it in your sheet.
+                  Every example below is checked by the test suite on each deploy, so
+                  nothing here can claim something the calculator doesn’t do. Click one to
+                  try it in your sheet.
                 </p>
               </section>
 
@@ -177,18 +177,26 @@ export function Reference({
                 <a href="https://soulver.app/" target="_blank" rel="noreferrer noopener">
                   Soulver
                 </a>
-                ’s idea. Soulver worked out how a sheet like this should behave, and
-                its documentation was the specification this was built against.
-                Sumline is an independent implementation, unaffiliated with
-                Soulver’s makers — if you want the polished native original, buy it.
+                ’s idea. Soulver worked out how a sheet like this should behave, and its
+                documentation was the specification this was built against. Sumline is an
+                independent implementation, unaffiliated with Soulver’s makers — if you
+                want the polished native original, buy it.
               </p>
               <p className="reference-blurb">
                 Exchange rates from{' '}
-                <a href="https://frankfurter.dev/" target="_blank" rel="noreferrer noopener">
+                <a
+                  href="https://frankfurter.dev/"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
                   Frankfurter
                 </a>{' '}
                 (European Central Bank data); public holidays from{' '}
-                <a href="https://date.nager.at/" target="_blank" rel="noreferrer noopener">
+                <a
+                  href="https://date.nager.at/"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
                   Nager.Date
                 </a>
                 .

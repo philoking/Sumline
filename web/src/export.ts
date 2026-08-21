@@ -13,9 +13,7 @@ export function toPlainText(options: ExportOptions): string {
   const lines = prepare(options);
   const width = Math.max(...lines.map(({ text }) => text.length), 0);
   return lines
-    .map(({ text, answer }) =>
-      answer ? `${text.padEnd(width + 4)}${answer}` : text,
-    )
+    .map(({ text, answer }) => (answer ? `${text.padEnd(width + 4)}${answer}` : text))
     .join('\n')
     .replace(/[ \t]+$/gm, '');
 }
@@ -26,14 +24,7 @@ export function toMarkdown(options: ExportOptions): string {
     .filter(({ text, answer }) => text.trim() !== '' || answer !== '')
     .map(({ text, answer }) => `| ${escapeCell(text)} | ${escapeCell(answer)} |`);
 
-  return [
-    `# ${options.title}`,
-    '',
-    '| | |',
-    '| --- | --- |',
-    ...rows,
-    '',
-  ].join('\n');
+  return [`# ${options.title}`, '', '| | |', '| --- | --- |', ...rows, ''].join('\n');
 }
 
 export function toCsv(options: ExportOptions): string {

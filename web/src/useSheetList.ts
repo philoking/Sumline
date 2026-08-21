@@ -27,7 +27,9 @@ export function reordered(current: SheetSummary[], ids: string[]): SheetSummary[
   const byId = new Map(current.map((sheet) => [sheet.id, sheet]));
   const order = ids.map((id) => byId.get(id)).filter((sheet) => sheet !== undefined);
   let next = 0;
-  return current.map((sheet) => (moving.has(sheet.id) ? (order[next++] ?? sheet) : sheet));
+  return current.map((sheet) =>
+    moving.has(sheet.id) ? (order[next++] ?? sheet) : sheet,
+  );
 }
 
 export interface SheetList {
@@ -91,7 +93,10 @@ export function useSheetList(options: {
   }, [query, viewingTrash]);
 
   const refreshFolders = useCallback(async () => {
-    await api.listFolders().then(setFolders).catch(() => undefined);
+    await api
+      .listFolders()
+      .then(setFolders)
+      .catch(() => undefined);
   }, []);
 
   /**

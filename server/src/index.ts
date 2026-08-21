@@ -5,8 +5,7 @@ import { parseSpaces } from './spaces.js';
 const port = Number(process.env['PORT'] ?? 8080);
 const host = process.env['HOST'] ?? '0.0.0.0';
 const dataDir = process.env['DATA_DIR'] ?? resolve(process.cwd(), 'data');
-const staticRoot =
-  process.env['STATIC_ROOT'] ?? resolve(process.cwd(), '../web/dist');
+const staticRoot = process.env['STATIC_ROOT'] ?? resolve(process.cwd(), '../web/dist');
 
 // Left undefined when SPACES says nothing usable, which is not the same as an
 // empty list: the app then takes its spaces from the database rather than

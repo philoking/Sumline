@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     ports:
       # host:container — change the host port if 8422 is taken on your box
-      - "8422:8080"
+      - '8422:8080'
     environment:
       # Date maths ("today + 3 weeks", "days until…") resolves in this zone,
       # so set it to wherever you actually are.

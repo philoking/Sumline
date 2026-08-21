@@ -236,7 +236,17 @@ function readTimecodeTerm(text: string, fps: number): number | null {
 }
 
 function secondsIn(unit: SpanUnit): number {
-  return { year: 31_556_952, month: 2_629_746, week: 604_800, day: 86_400, workday: 86_400, hour: 3600, minute: 60, second: 1, frame: 0 }[unit];
+  return {
+    year: 31_556_952,
+    month: 2_629_746,
+    week: 604_800,
+    day: 86_400,
+    workday: 86_400,
+    hour: 3600,
+    minute: 60,
+    second: 1,
+    frame: 0,
+  }[unit];
 }
 
 function laptimeExpression(s: string): TemporalValue | null {
@@ -376,20 +386,26 @@ function zoneQuery(s: string, o: TemporalOptions): TemporalValue | null {
   const timeIn = /^(?:the\s+)?(time|date)\s+in\s+(.+?)\s*$/i.exec(s);
   if (timeIn) {
     const zone = resolveZone(timeIn[2]!);
-    if (zone) return zonedNow(zone, o, timeIn[1]!.toLowerCase() === 'date' ? 'date' : 'time');
+    if (zone)
+      return zonedNow(zone, o, timeIn[1]!.toLowerCase() === 'date' ? 'date' : 'time');
   }
 
   const placeTime = /^(.+?)\s+(time|date)\s*$/i.exec(s);
   if (placeTime) {
     const zone = resolveZone(placeTime[1]!);
-    if (zone) return zonedNow(zone, o, placeTime[2]!.toLowerCase() === 'date' ? 'date' : 'time');
+    if (zone)
+      return zonedNow(zone, o, placeTime[2]!.toLowerCase() === 'date' ? 'date' : 'time');
   }
 
   return null;
 }
 
 /** The wall clock in a zone right now, as a moment that renders in that zone. */
-function zonedNow(zone: string, o: TemporalOptions, showAs: 'time' | 'date'): CalendarDate {
+function zonedNow(
+  zone: string,
+  o: TemporalOptions,
+  showAs: 'time' | 'date',
+): CalendarDate {
   return new CalendarDate(o.now, 'minute', zone, showAs);
 }
 
@@ -445,9 +461,15 @@ function calendarFacts(s: string, o: TemporalOptions): TemporalValue | null {
     return Timespan.of(daysInQuarter(year, Number(quarter[1])), 'day');
   }
 
-  const inMonth = new RegExp(`^days\\s+in\\s+(${MONTH_PATTERN})(?:\\s+(\\d{4}))?$`, 'i').exec(s);
+  const inMonth = new RegExp(
+    `^days\\s+in\\s+(${MONTH_PATTERN})(?:\\s+(\\d{4}))?$`,
+    'i',
+  ).exec(s);
   if (inMonth) {
-    const anchor = parseDate(`${inMonth[1]} 1${inMonth[2] ? ` ${inMonth[2]}` : ''}`, wall(o));
+    const anchor = parseDate(
+      `${inMonth[1]} 1${inMonth[2] ? ` ${inMonth[2]}` : ''}`,
+      wall(o),
+    );
     if (anchor) {
       return Timespan.of(
         daysInMonth(anchor.date.getFullYear(), anchor.date.getMonth()),
@@ -555,7 +577,9 @@ function between(a: CalendarDate, b: CalendarDate): TemporalValue {
 
 function offsetExpression(s: string, o: TemporalOptions): TemporalValue | null {
   // "3 weeks after March 14" / "28 days before March 12"
-  const relative = new RegExp(`^(.+?)\\s+(after|before|from|ago)\\b\\s*(.*)$`, 'i').exec(s);
+  const relative = new RegExp(`^(.+?)\\s+(after|before|from|ago)\\b\\s*(.*)$`, 'i').exec(
+    s,
+  );
   if (relative) {
     const span = parseSpan(relative[1]!);
     const word = relative[2]!.toLowerCase();
@@ -564,7 +588,9 @@ function offsetExpression(s: string, o: TemporalOptions): TemporalValue | null {
       const sign = word === 'before' || word === 'ago' ? -1 : 1;
       const anchor =
         anchorText === '' || /^now$/i.test(anchorText)
-          ? new CalendarDate(word === 'ago' || word === 'from' ? startOfDay(wall(o)) : wall(o))
+          ? new CalendarDate(
+              word === 'ago' || word === 'from' ? startOfDay(wall(o)) : wall(o),
+            )
           : readMoment(anchorText, o);
       if (anchor) return applySpan(anchor, span, sign, o);
     }
@@ -602,11 +628,21 @@ function applySpan(
   for (const part of span.parts) {
     const amount = part.value * sign;
     switch (part.unit) {
-      case 'year': date = addMonths(date, amount * 12); break;
-      case 'month': date = addMonths(date, amount); break;
-      case 'week': date = addDays(date, amount * 7); break;
-      case 'day': date = addDays(date, amount); break;
-      case 'workday': date = addWorkdays(date, amount, o.holidays); break;
+      case 'year':
+        date = addMonths(date, amount * 12);
+        break;
+      case 'month':
+        date = addMonths(date, amount);
+        break;
+      case 'week':
+        date = addDays(date, amount * 7);
+        break;
+      case 'day':
+        date = addDays(date, amount);
+        break;
+      case 'workday':
+        date = addWorkdays(date, amount, o.holidays);
+        break;
       case 'hour':
         date = shiftByTime(date, amount * 3_600_000, anchor, o);
         precision = 'minute';
@@ -619,7 +655,8 @@ function applySpan(
         date = shiftByTime(date, amount * 1000, anchor, o);
         precision = 'second';
         break;
-      default: break;
+      default:
+        break;
     }
   }
 

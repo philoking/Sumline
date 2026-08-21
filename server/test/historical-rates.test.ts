@@ -78,7 +78,13 @@ describe('GET /api/rates', () => {
     const fetcher = vi.fn<RateFetcher>(async () => CURRENT);
     const { server } = build(fetcher);
 
-    for (const on of ['yesterday', '2020-13-01', '2020-02-30', '01-01-2020', '1998-01-01']) {
+    for (const on of [
+      'yesterday',
+      '2020-13-01',
+      '2020-02-30',
+      '01-01-2020',
+      '1998-01-01',
+    ]) {
       const response = await server.inject({ url: `/api/rates?on=${on}` });
       expect(response.statusCode, on).toBe(404);
     }

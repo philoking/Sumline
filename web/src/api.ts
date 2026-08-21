@@ -1,4 +1,9 @@
-import type { ComputedSettings, EngineSettings, NumberRegion, RateTable } from '@sumline/engine';
+import type {
+  ComputedSettings,
+  EngineSettings,
+  NumberRegion,
+  RateTable,
+} from '@sumline/engine';
 
 export type { NumberRegion };
 
@@ -351,10 +356,9 @@ export const api = {
 
   /** Moves to the trash by default; `purge` removes it permanently. */
   deleteSheet: (id: string, purge = false) =>
-    request<{ deleted: boolean }>(
-      `/api/sheets/${id}${purge ? '?purge=1' : ''}`,
-      { method: 'DELETE' },
-    ),
+    request<{ deleted: boolean }>(`/api/sheets/${id}${purge ? '?purge=1' : ''}`, {
+      method: 'DELETE',
+    }),
 
   /** Every space on this instance, and which one we are working in now. */
   users: () => request<{ users: User[]; current: string }>('/api/users'),
@@ -429,13 +433,10 @@ export const api = {
     ),
 
   acquireLock: (id: string, clientId: string, clientName: string, force = false) =>
-    request<{ granted: boolean; lock: Lock; ttlMs: number }>(
-      `/api/sheets/${id}/lock`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ clientId, clientName, force }),
-      },
-    ),
+    request<{ granted: boolean; lock: Lock; ttlMs: number }>(`/api/sheets/${id}/lock`, {
+      method: 'POST',
+      body: JSON.stringify({ clientId, clientName, force }),
+    }),
 
   releaseLock: (id: string, clientId: string) =>
     request<void>(`/api/sheets/${id}/lock?clientId=${encodeURIComponent(clientId)}`, {

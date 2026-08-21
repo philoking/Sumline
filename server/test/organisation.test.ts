@@ -53,7 +53,9 @@ describe('trash', () => {
     const trashed = await list('?trash=1');
     expect(trashed.map((s) => s.title)).toEqual(['Doomed']);
     // The sheet itself is still readable, so a restore has something to return.
-    expect((await app.server.inject({ url: `/api/sheets/${sheet.id}` })).statusCode).toBe(200);
+    expect((await app.server.inject({ url: `/api/sheets/${sheet.id}` })).statusCode).toBe(
+      200,
+    );
   });
 
   it('restores a trashed sheet', async () => {
@@ -68,7 +70,9 @@ describe('trash', () => {
     await app.server.inject({ method: 'DELETE', url: `/api/sheets/${sheet.id}` });
     const purged = await app.server.inject({ method: 'DELETE', url: '/api/trash' });
     expect(purged.json()).toMatchObject({ purged: 1 });
-    expect((await app.server.inject({ url: `/api/sheets/${sheet.id}` })).statusCode).toBe(404);
+    expect((await app.server.inject({ url: `/api/sheets/${sheet.id}` })).statusCode).toBe(
+      404,
+    );
   });
 
   it('deletes outright when asked to purge', async () => {
@@ -78,14 +82,20 @@ describe('trash', () => {
       url: `/api/sheets/${sheet.id}?purge=1`,
     });
     expect(await list('?trash=1')).toHaveLength(0);
-    expect((await app.server.inject({ url: `/api/sheets/${sheet.id}` })).statusCode).toBe(404);
+    expect((await app.server.inject({ url: `/api/sheets/${sheet.id}` })).statusCode).toBe(
+      404,
+    );
   });
 });
 
 describe('folders', () => {
   it('creates, renames and lists folders', async () => {
     const created = (
-      await app.server.inject({ method: 'POST', url: '/api/folders', payload: { name: 'Work' } })
+      await app.server.inject({
+        method: 'POST',
+        url: '/api/folders',
+        payload: { name: 'Work' },
+      })
     ).json() as { id: string; name: string };
     expect(created.name).toBe('Work');
 
@@ -102,7 +112,11 @@ describe('folders', () => {
 
   it('filters sheets by folder', async () => {
     const folder = (
-      await app.server.inject({ method: 'POST', url: '/api/folders', payload: { name: 'Work' } })
+      await app.server.inject({
+        method: 'POST',
+        url: '/api/folders',
+        payload: { name: 'Work' },
+      })
     ).json() as { id: string };
     const sheet = await createSheet('Filed', 'x');
     await createSheet('Loose', 'x');
@@ -119,7 +133,11 @@ describe('folders', () => {
 
   it('keeps the sheets when a folder is deleted', async () => {
     const folder = (
-      await app.server.inject({ method: 'POST', url: '/api/folders', payload: { name: 'Temp' } })
+      await app.server.inject({
+        method: 'POST',
+        url: '/api/folders',
+        payload: { name: 'Temp' },
+      })
     ).json() as { id: string };
     const sheet = await createSheet('Survivor', 'x');
     await app.server.inject({

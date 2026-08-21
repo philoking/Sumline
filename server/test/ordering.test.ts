@@ -82,7 +82,9 @@ describe('a space that never drags anything', () => {
 
     // Touching the oldest sheet floats it, which is the behaviour the default
     // has always had and must keep.
-    const { sheets } = (await app.server.inject({ url: '/api/sheets', headers: as('ada') })).json() as {
+    const { sheets } = (
+      await app.server.inject({ url: '/api/sheets', headers: as('ada') })
+    ).json() as {
       sheets: Array<{ id: string; title: string; version: number }>;
     };
     const a = sheets.find((s) => s.title === 'A')!;
@@ -98,7 +100,10 @@ describe('a space that never drags anything', () => {
 
   it('reports no order preference until one is made', async () => {
     await threeSheets();
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('ada') });
+    const settings = await app.server.inject({
+      url: '/api/settings',
+      headers: as('ada'),
+    });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
   });
 });
@@ -127,7 +132,10 @@ describe('dragging a sheet', () => {
   it('switches the space to manual without being asked separately', async () => {
     const { a, b, c } = await threeSheets();
     await reorder([b.id, a.id, c.id]);
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('ada') });
+    const settings = await app.server.inject({
+      url: '/api/settings',
+      headers: as('ada'),
+    });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBe('manual');
   });
 
@@ -234,7 +242,10 @@ describe('what a reorder refuses', () => {
     await reorder([a.id, hers.id, b.id]);
     expect(await titles('/api/sheets', 'grace')).toEqual(['Hers']);
 
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('grace') });
+    const settings = await app.server.inject({
+      url: '/api/settings',
+      headers: as('grace'),
+    });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
   });
 
@@ -258,7 +269,10 @@ describe('what a reorder refuses', () => {
 
     // Still recency, and still no preference recorded: nothing was written.
     expect(await titles()).toEqual(['C', 'B', 'A']);
-    const settings = await app.server.inject({ url: '/api/settings', headers: as('ada') });
+    const settings = await app.server.inject({
+      url: '/api/settings',
+      headers: as('ada'),
+    });
     expect((settings.json() as { sheetOrder?: string }).sheetOrder).toBeUndefined();
 
     // The lasting damage of the old behaviour only showed later: positions

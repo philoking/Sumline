@@ -16,12 +16,7 @@ export interface RateTable {
 }
 
 export type LineKind =
-  | 'blank'
-  | 'comment'
-  | 'heading'
-  | 'assignment'
-  | 'directive'
-  | 'expression';
+  'blank' | 'comment' | 'heading' | 'assignment' | 'directive' | 'expression';
 
 export interface LineResult {
   index: number;
@@ -147,11 +142,7 @@ export interface Engine {
    * The sheet-level figure, as total, average, count or median. `total` is
    * the same calculation `total()` performs.
    */
-  summary(
-    results: LineResult[],
-    statistic: Statistic,
-    options?: SummaryOptions,
-  ): string;
+  summary(results: LineResult[], statistic: Statistic, options?: SummaryOptions): string;
   /**
    * Where every token on each line of a sheet is, and what this engine reads
    * it as — one array of tokens per line, offset from that line's own start.

@@ -40,7 +40,14 @@ describe('reading the arguments', () => {
   });
 
   it('reads the options without taking them for expression words', () => {
-    const options = parseArgs(['--url', 'http://box:8422', '--space', 'teaching', '--json', '3+4']);
+    const options = parseArgs([
+      '--url',
+      'http://box:8422',
+      '--space',
+      'teaching',
+      '--json',
+      '3+4',
+    ]);
     expect(options).toMatchObject({
       url: 'http://box:8422',
       space: 'teaching',
@@ -84,10 +91,12 @@ describe('printing the answers', () => {
   it('keeps a single failure off stdout entirely', () => {
     // The failure that matters: `total=$(sumline "…")` must not come back
     // holding a sentence about what went wrong and spend it as a number.
-    expect(render([line('10 USD in XYZ', '', 'No unit or currency called XYZ')])).toEqual({
-      out: [],
-      err: ['No unit or currency called XYZ'],
-    });
+    expect(render([line('10 USD in XYZ', '', 'No unit or currency called XYZ')])).toEqual(
+      {
+        out: [],
+        err: ['No unit or currency called XYZ'],
+      },
+    );
   });
 
   it('lines a sheet’s answers up in a column', () => {

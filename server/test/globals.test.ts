@@ -30,8 +30,9 @@ interface SettingsView {
 }
 
 const settings = async (owner: string) =>
-  (await app.server.inject({ url: '/api/settings', headers: as(owner) })).json() as
-    SettingsView;
+  (
+    await app.server.inject({ url: '/api/settings', headers: as(owner) })
+  ).json() as SettingsView;
 
 const setSpaceGlobals = (owner: string, globals: Record<string, string>) =>
   app.server.inject({

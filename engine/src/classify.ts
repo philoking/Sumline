@@ -110,7 +110,12 @@ export function classify(
   }
 
   if (/^#{1,6}\s+/.test(trimmed) || /^={3,}$/.test(trimmed) || /^-{3,}$/.test(trimmed)) {
-    return { kind: 'heading', body: trimmed, tags, ...(comment !== undefined && { comment }) };
+    return {
+      kind: 'heading',
+      body: trimmed,
+      tags,
+      ...(comment !== undefined && { comment }),
+    };
   }
 
   const directive = DIRECTIVE_RE.exec(trimmed);
@@ -150,7 +155,12 @@ export function classify(
     }
   }
 
-  return { kind: 'expression', body: trimmed, tags, ...(comment !== undefined && { comment }) };
+  return {
+    kind: 'expression',
+    body: trimmed,
+    tags,
+    ...(comment !== undefined && { comment }),
+  };
 }
 
 /**

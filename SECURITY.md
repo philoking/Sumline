@@ -10,7 +10,7 @@ Please don't open a public issue or pull request for a security problem.
 
 This is a hobby project maintained by one person, so an honest expectation: you should hear back
 within about a week. If something is being actively exploited and you have had no reply, opening a
-public issue that says only *that* you have reported something privately is fair.
+public issue that says only _that_ you have reported something privately is fair.
 
 There is no bounty. Credit in the advisory and in the release notes if you want it.
 
@@ -28,7 +28,7 @@ very much a finding.
 ## What is already known, and is not a vulnerability
 
 These are documented decisions, not oversights. Reporting them is welcome only if you have found
-that one of them is *worse* than described.
+that one of them is _worse_ than described.
 
 - **No authentication by default.** An instance with no `SUMLINE_PASSWORD` lets anyone who can
   reach the port read and edit every sheet in every space. That is the default and stays the

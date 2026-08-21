@@ -54,9 +54,7 @@ describe('reading the SPACES setting', () => {
   });
 
   it('normalises an id rather than refusing to start', () => {
-    expect(parseSpaces('Ada M:Ada')).toEqual([
-      { id: 'ada-m', name: 'Ada' },
-    ]);
+    expect(parseSpaces('Ada M:Ada')).toEqual([{ id: 'ada-m', name: 'Ada' }]);
     expect(parseSpaces('Zoë,Ann-Marie')).toEqual([
       { id: 'zoe', name: 'Zoë' },
       { id: 'ann-marie', name: 'Ann-Marie' },
@@ -66,9 +64,7 @@ describe('reading the SPACES setting', () => {
   it('keeps the first of two entries sharing an id', () => {
     // Otherwise the later one would silently take over a space already full
     // of the earlier one's sheets.
-    expect(parseSpaces('ada:Ada,ada:Someone else')).toEqual([
-      { id: 'ada', name: 'Ada' },
-    ]);
+    expect(parseSpaces('ada:Ada,ada:Someone else')).toEqual([{ id: 'ada', name: 'Ada' }]);
   });
 
   it('drops an entry with no usable id or no name', () => {
@@ -309,9 +305,7 @@ describe('managing spaces from the app', () => {
   });
 
   const listSpaces = async () =>
-    (
-      (await app.server.inject({ url: '/api/users' })).json() as { users: Space[] }
-    ).users;
+    ((await app.server.inject({ url: '/api/users' })).json() as { users: Space[] }).users;
 
   const addSpace = (payload: unknown) =>
     app.server.inject({ method: 'POST', url: '/api/spaces', payload });
@@ -460,7 +454,8 @@ describe('managing spaces from the app', () => {
 
   it('refuses to remove the last space', async () => {
     expect(
-      (await app.server.inject({ method: 'DELETE', url: '/api/spaces/grace' })).statusCode,
+      (await app.server.inject({ method: 'DELETE', url: '/api/spaces/grace' }))
+        .statusCode,
     ).toBe(200);
     // With none left every request would resolve to a space that is not there.
     const last = await app.server.inject({ method: 'DELETE', url: '/api/spaces/ada' });

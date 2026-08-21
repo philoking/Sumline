@@ -46,7 +46,7 @@ new kind of token — [`tokenize.ts`](engine/src/tokenize.ts), which is what the
 A rule the tokenizer does not know about shows up as a sheet coloured as though it meant something
 it does not.
 
-**A sheet is plain text.** Per-line formatting is written *into* the line (`1/3 to 2 dp`) rather
+**A sheet is plain text.** Per-line formatting is written _into_ the line (`1/3 to 2 dp`) rather
 than stored against it, because hidden state would not survive a copy, an export, a search, or a
 line being moved. A change that needs invisible per-line state is a change to that decision, and
 belongs in an issue first.
@@ -56,7 +56,7 @@ and both have to give the same answer.
 
 ## Style
 
-The comments in this codebase explain *why*, not *what* — why a rule exists, what it would break,
+The comments in this codebase explain _why_, not _what_ — why a rule exists, what it would break,
 what was tried instead. Match that. A comment restating the line below it is noise; a comment
 recording the reason someone will otherwise undo is the most valuable thing in the file.
 

@@ -1,10 +1,5 @@
 export { createEngine } from './evaluate.js';
-export {
-  CalendarDate,
-  FrameCount,
-  Timecode,
-  Timespan,
-} from './temporal/types.js';
+export { CalendarDate, FrameCount, Timecode, Timespan } from './temporal/types.js';
 export { DEFAULT_PRECISION, PRECISIONS, formatNumber, formatMoney } from './format.js';
 export { SYMBOL_TO_CODE, CODE_TO_SYMBOL } from './currencies.js';
 export { engineOptionsFrom } from './settings.js';

@@ -1,9 +1,4 @@
-import {
-  create,
-  all,
-  type FactoryFunctionMap,
-  type MathJsInstance,
-} from 'mathjs';
+import { create, all, type FactoryFunctionMap, type MathJsInstance } from 'mathjs';
 import { RESERVED_CODES } from './currencies.js';
 import type { HistoricalRates } from './historical.js';
 import { registerValueTypes } from './values.js';
@@ -99,8 +94,8 @@ export function createMathContext(
  * alias, or currency — ends up once `createUnit` has run.
  */
 function registeredUnitNames(math: MathJsInstance): Set<string> {
-  const units = (math as unknown as { Unit?: { UNITS?: Record<string, unknown> } })
-    .Unit?.UNITS;
+  const units = (math as unknown as { Unit?: { UNITS?: Record<string, unknown> } }).Unit
+    ?.UNITS;
   return new Set(Object.keys(units ?? {}));
 }
 
@@ -147,10 +142,14 @@ const EVERYDAY_UNITS: Array<[string, string]> = [
    * Byte rates need nothing: `MB/s` already parses as a rate.
    */
   ['bps', '1 b/s'],
-  ['kbps', '1 kb/s'], ['Kbps', '1 kb/s'],
-  ['mbps', '1 Mb/s'], ['Mbps', '1 Mb/s'],
-  ['gbps', '1 Gb/s'], ['Gbps', '1 Gb/s'],
-  ['tbps', '1 Tb/s'], ['Tbps', '1 Tb/s'],
+  ['kbps', '1 kb/s'],
+  ['Kbps', '1 kb/s'],
+  ['mbps', '1 Mb/s'],
+  ['Mbps', '1 Mb/s'],
+  ['gbps', '1 Gb/s'],
+  ['Gbps', '1 Gb/s'],
+  ['tbps', '1 Tb/s'],
+  ['Tbps', '1 Tb/s'],
   ['Pbps', '1 Pb/s'],
   ['Ebps', '1 Eb/s'],
 ];
@@ -171,11 +170,7 @@ function addEverydayUnits(math: MathJsInstance): void {
  * Some ISO codes collide with built-in math.js units; rather than override
  * physical units (and quietly break `5 cd` or similar), we skip the currency.
  */
-function register(
-  math: MathJsInstance,
-  code: string,
-  definition?: string,
-): boolean {
+function register(math: MathJsInstance, code: string, definition?: string): boolean {
   if (!/^[A-Z]{3}$/.test(code) || RESERVED_CODES.has(code)) return false;
   try {
     math.createUnit(code, definition ? { definition } : {});

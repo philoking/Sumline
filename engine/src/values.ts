@@ -92,16 +92,12 @@ interface UnitLike {
   toNumeric(valuelessUnit: string): number;
 }
 
-export function registerValueTypes(
-  math: MathJsInstance,
-  currencies: Set<string>,
-): void {
+export function registerValueTypes(math: MathJsInstance, currencies: Set<string>): void {
   const typed = math.typed as unknown as {
     addType(spec: { name: string; test: (x: unknown) => boolean }): void;
   };
 
-  const isMoney = (u: UnitLike) =>
-    u.units.some((part) => currencies.has(part.unit.name));
+  const isMoney = (u: UnitLike) => u.units.some((part) => currencies.has(part.unit.name));
 
   /**
    * Adds two units, choosing which one the answer is expressed in.
@@ -173,7 +169,10 @@ export function registerValueTypes(
         Multiplier: (m: Multiplier) => m.factor,
         number: (n: number) => n,
         any: (v: unknown) => {
-          const unit = v as { toNumeric?: (u: string) => number; formatUnits?: () => string };
+          const unit = v as {
+            toNumeric?: (u: string) => number;
+            formatUnits?: () => string;
+          };
           if (typeof unit?.formatUnits === 'function' && unit.toNumeric) {
             return unit.toNumeric(unit.formatUnits());
           }
@@ -186,12 +185,15 @@ export function registerValueTypes(
         const apply = (n: number) => {
           const scaled = n / step;
           const rounded =
-            mode === 'up' ? Math.ceil(scaled)
-            : mode === 'down' ? Math.floor(scaled)
-            : Math.round(scaled);
+            mode === 'up'
+              ? Math.ceil(scaled)
+              : mode === 'down'
+                ? Math.floor(scaled)
+                : Math.round(scaled);
           return rounded * step;
         };
-        if (value instanceof Percentage) return new Percentage(apply(value.ratio * 100) / 100);
+        if (value instanceof Percentage)
+          return new Percentage(apply(value.ratio * 100) / 100);
         if (typeof value === 'number') return apply(value);
         const unit = value as UnitLike;
         if (typeof unit?.formatUnits === 'function') {
@@ -253,8 +255,10 @@ export function registerValueTypes(
         'number, Rate': (a: number, b: Rate) => new Rate(scale(b.amount, a), b.per),
         // Scaling a count keeps what is being counted; two counts multiplied
         // are not a count of anything, so the label goes.
-        'Labelled, number': (a: Labelled, b: number) => new Labelled(a.value * b, a.label),
-        'number, Labelled': (a: number, b: Labelled) => new Labelled(a * b.value, b.label),
+        'Labelled, number': (a: Labelled, b: number) =>
+          new Labelled(a.value * b, a.label),
+        'number, Labelled': (a: number, b: Labelled) =>
+          new Labelled(a * b.value, b.label),
         'Labelled, Labelled': (a: Labelled, b: Labelled) => a.value * b.value,
         'Labelled, Percentage': (a: Labelled, b: Percentage) =>
           new Labelled(a.value * b.ratio, a.label),
@@ -270,7 +274,8 @@ export function registerValueTypes(
         'Percentage, number': (a: Percentage, b: number) => new Percentage(a.ratio / b),
         'number, Percentage': (a: number, b: Percentage) => a / b.ratio,
         'Unit, Percentage': (a: unknown, b: Percentage) => scale(a, 1 / b.ratio),
-        'Labelled, number': (a: Labelled, b: number) => new Labelled(a.value / b, a.label),
+        'Labelled, number': (a: Labelled, b: number) =>
+          new Labelled(a.value / b, a.label),
         // Sharing counts between counts answers how many times over, not how
         // many things, so the label does not survive.
         'Labelled, Labelled': (a: Labelled, b: Labelled) => a.value / b.value,
@@ -351,7 +356,10 @@ function registerMoneyProducts(
   math: MathJsInstance,
   isMoney: (unit: UnitLike) => boolean,
 ): void {
-  const originalMultiply = math.multiply.bind(math) as (a: unknown, b: unknown) => unknown;
+  const originalMultiply = math.multiply.bind(math) as (
+    a: unknown,
+    b: unknown,
+  ) => unknown;
 
   /** A plain amount in a single currency, with no prefix on the unit. */
   const plainMoney = (unit: UnitLike): boolean =>
@@ -395,7 +403,10 @@ function registerAdditionRules(
   sizeOf: (value: unknown) => number,
 ): void {
   const originalAdd = math.add.bind(math) as (a: unknown, b: unknown) => unknown;
-  const originalSubtract = math.subtract.bind(math) as (a: unknown, b: unknown) => unknown;
+  const originalSubtract = math.subtract.bind(math) as (
+    a: unknown,
+    b: unknown,
+  ) => unknown;
   const scale = (value: unknown, factor: number): unknown =>
     math.multiply(value as never, factor as never);
 
@@ -445,7 +456,10 @@ function registerAdditionRules(
         'Unit, number': (a: UnitLike, b: number) =>
           combineUnits(a, assimilate(b, a) as UnitLike, -1),
         'Rate, Rate': (a: Rate, b: Rate) =>
-          new Rate(math.subtract(rateTo(a, b.per).amount as never, b.amount as never), b.per),
+          new Rate(
+            math.subtract(rateTo(a, b.per).amount as never, b.amount as never),
+            b.per,
+          ),
         'Labelled, Labelled': (a: Labelled, b: Labelled) =>
           combineLabels(a, b, a.value - b.value),
         'Labelled, any': (a: Labelled, b: unknown) =>

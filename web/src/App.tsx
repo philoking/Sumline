@@ -61,9 +61,6 @@ import { Backdrop } from './Popover';
 import { Mark, Wordmark } from './Wordmark';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
-
-
-
 /**
  * How long the app waits before acting on a change the server announced.
  *
@@ -151,8 +148,8 @@ export function App() {
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
-  const [referenceOpen, setReferenceOpen] = useState(
-    () => new URLSearchParams(window.location.search).has('help'),
+  const [referenceOpen, setReferenceOpen] = useState(() =>
+    new URLSearchParams(window.location.search).has('help'),
   );
 
   /**
@@ -493,7 +490,10 @@ export function App() {
          * to work out the size of the gap.
          */
         refreshListSoon();
-        void api.settings().then(setSettings).catch(() => undefined);
+        void api
+          .settings()
+          .then(setSettings)
+          .catch(() => undefined);
         void refreshRates();
         if (activeId) {
           void api
@@ -534,7 +534,10 @@ export function App() {
         // resolves into this space's effective values, so both are worth
         // re-reading here.
         if (event.owner === null || event.owner === space) {
-          void api.settings().then(setSettings).catch(() => undefined);
+          void api
+            .settings()
+            .then(setSettings)
+            .catch(() => undefined);
         }
         break;
     }
@@ -660,14 +663,22 @@ export function App() {
   };
 
   const addSpace = async () => {
-    const name = await ask.name({ title: 'Name for the new space', value: '', confirm: 'Add space' });
+    const name = await ask.name({
+      title: 'Name for the new space',
+      value: '',
+      confirm: 'Add space',
+    });
     if (name === null) return;
     await addSpaceNamed(name);
   };
 
   /** The switcher's rename, which has to ask for the name first. */
   const renameSpace = async (user: User) => {
-    const next = await ask.name({ title: 'Rename space', value: user.name, confirm: 'Rename' });
+    const next = await ask.name({
+      title: 'Rename space',
+      value: user.name,
+      confirm: 'Rename',
+    });
     if (next === null) return;
     await applySpaceName(user, next);
   };
@@ -692,7 +703,11 @@ export function App() {
   };
 
   const renameSheet = async (sheet: SheetSummary) => {
-    const next = await ask.name({ title: 'Rename sheet', value: sheet.title, confirm: 'Rename' });
+    const next = await ask.name({
+      title: 'Rename sheet',
+      value: sheet.title,
+      confirm: 'Rename',
+    });
     if (next === null || next === sheet.title) return;
     try {
       await api.saveSheet(sheet.id, { title: next }, sheet.version);
@@ -784,7 +799,10 @@ export function App() {
     // The size is set here rather than in the stylesheet so the line height,
     // the answer column and the gutter — all of which derive from it — scale
     // together instead of drifting apart at the edges of the range.
-    <div className="app" style={{ '--sheet-font-size': `${fontSize}px` } as CSSProperties}>
+    <div
+      className="app"
+      style={{ '--sheet-font-size': `${fontSize}px` } as CSSProperties}
+    >
       <header className="topbar">
         {/* The mark is decorative and hidden from assistive tech — the name
             beside it says the same thing, and the document title said it
@@ -1001,7 +1019,10 @@ export function App() {
                 />
                 <ul className="answer-menu user-menu" role="menu">
                   {users.map((user) => (
-                    <li key={user.id} className={managingSpaces ? 'space-row' : undefined}>
+                    <li
+                      key={user.id}
+                      className={managingSpaces ? 'space-row' : undefined}
+                    >
                       <button
                         type="button"
                         role={managingSpaces ? 'menuitem' : 'menuitemradio'}
@@ -1066,7 +1087,7 @@ export function App() {
                       }}
                     >
                       <span className="tick" />
-                      {currentUserName || "Space"} settings…
+                      {currentUserName || 'Space'} settings…
                     </button>
                   </li>
                   <li>
@@ -1157,8 +1178,8 @@ export function App() {
       {!lock.granted && activeId && !viewingTrash && (
         <div className="banner">
           <span>
-            Read-only — {lock.holder?.clientName ?? 'another browser'} is editing
-            this sheet.
+            Read-only — {lock.holder?.clientName ?? 'another browser'} is editing this
+            sheet.
           </span>
           <button type="button" onClick={() => void takeOver()}>
             Take over editing
@@ -1212,7 +1233,11 @@ export function App() {
           onQuery={setQuery}
           onCreateFolder={() => {
             void ask
-              .name({ title: 'Name for the new folder', value: '', confirm: 'Create folder' })
+              .name({
+                title: 'Name for the new folder',
+                value: '',
+                confirm: 'Create folder',
+              })
               .then((name) => {
                 if (name !== null) createFolder(name);
               });

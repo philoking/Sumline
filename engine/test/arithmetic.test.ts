@@ -35,11 +35,7 @@ describe('arithmetic', () => {
   }
 
   it('leaves prose alone', () => {
-    expect(answers('shopping list\nremember to call the bank\n')).toEqual([
-      '',
-      '',
-      '',
-    ]);
+    expect(answers('shopping list\nremember to call the bank\n')).toEqual(['', '', '']);
   });
 
   it('keeps evaluating after a broken line', () => {
@@ -47,9 +43,7 @@ describe('arithmetic', () => {
   });
 
   it('flags a broken calculation but stays quiet about prose', () => {
-    const [calc, prose] = createEngine().evaluate(
-      '5 +* 3\nbuy apples at the market',
-    );
+    const [calc, prose] = createEngine().evaluate('5 +* 3\nbuy apples at the market');
     expect(calc?.error).toBeTruthy();
     expect(prose?.error).toBeUndefined();
   });

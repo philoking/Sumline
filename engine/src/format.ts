@@ -94,7 +94,9 @@ export function formatValue(value: unknown, ctx: FormatContext): string {
 
   if (value instanceof CalendarDate) return formatMoment(value, ctx.now);
   if (value instanceof Timespan) {
-    return formatTimespan(value, (n) => formatNumber(n, { ...ctx, largeNumberNotation: false }));
+    return formatTimespan(value, (n) =>
+      formatNumber(n, { ...ctx, largeNumberNotation: false }),
+    );
   }
   if (value instanceof Timecode) return formatTimecode(value);
   if (value instanceof TemporalNumber) {
@@ -167,9 +169,7 @@ function formatFraction(value: MathFraction): string {
   const sign = Number(value.s) < 0 ? '-' : '';
   const numerator = Number(value.n);
   const denominator = Number(value.d);
-  return denominator === 1
-    ? `${sign}${numerator}`
-    : `${sign}${numerator}/${denominator}`;
+  return denominator === 1 ? `${sign}${numerator}` : `${sign}${numerator}/${denominator}`;
 }
 
 function formatUnit(unit: MathUnit, ctx: FormatContext): string {
@@ -236,11 +236,7 @@ function currencyCode(unit: MathUnit, currencies: Set<string>): string | null {
   return entry?.prefix?.name ? null : name;
 }
 
-export function formatMoney(
-  amount: number,
-  code: string,
-  ctx: FormatContext,
-): string {
+export function formatMoney(amount: number, code: string, ctx: FormatContext): string {
   const grouping = groupingFor(ctx);
   const symbol = CODE_TO_SYMBOL[code];
   const money = (body: string, negative: boolean) => {
@@ -341,8 +337,12 @@ export function formatNumber(value: number, ctx: FormatContext): string {
    * `toFixed` also does the rounding, rather than `round` — that multiplies by
    * 10^places, which passes 2^53 and loses the low digits at this magnitude.
    */
-  const magnitudeDigits = Math.abs(clean) >= 1 ? Math.floor(Math.log10(Math.abs(clean))) + 1 : 1;
-  const places = Math.min(ctx.precision, Math.max(0, SIGNIFICANT_DIGITS - magnitudeDigits));
+  const magnitudeDigits =
+    Math.abs(clean) >= 1 ? Math.floor(Math.log10(Math.abs(clean))) + 1 : 1;
+  const places = Math.min(
+    ctx.precision,
+    Math.max(0, SIGNIFICANT_DIGITS - magnitudeDigits),
+  );
   const fixed = trimZeros(clean.toFixed(places));
   const [whole = '0', fraction] = fixed.split('.');
   const sign = whole.startsWith('-') ? '-' : '';

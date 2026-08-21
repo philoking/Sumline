@@ -281,7 +281,10 @@ describe('seeding and migration', () => {
     const seeded = build(true);
     try {
       const ada = await seeded.server.inject({ url: '/api/sheets', headers: as('ada') });
-      const grace = await seeded.server.inject({ url: '/api/sheets', headers: as('grace') });
+      const grace = await seeded.server.inject({
+        url: '/api/sheets',
+        headers: as('grace'),
+      });
       const titles = (r: typeof ada) =>
         (r.json() as { sheets: Array<{ title: string }> }).sheets.map((s) => s.title);
       expect(titles(ada)).toEqual(['Welcome']);

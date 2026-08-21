@@ -105,11 +105,29 @@ function readCollapsed(): Set<string> {
 
 export function Sidebar(props: SidebarProps) {
   const {
-    sheets, folders, activeId, query, viewingTrash, open,
-    onSelect, onCreate, onRename, onDelete, onRestore, onMove, onQuery,
-    onCreateFolder, onRenameFolder, onDeleteFolder,
-    onColorSheet, onColorFolder, onReorder, manualOrder, onSortByRecent,
-    onToggleTrash, onEmptyTrash,
+    sheets,
+    folders,
+    activeId,
+    query,
+    viewingTrash,
+    open,
+    onSelect,
+    onCreate,
+    onRename,
+    onDelete,
+    onRestore,
+    onMove,
+    onQuery,
+    onCreateFolder,
+    onRenameFolder,
+    onDeleteFolder,
+    onColorSheet,
+    onColorFolder,
+    onReorder,
+    manualOrder,
+    onSortByRecent,
+    onToggleTrash,
+    onEmptyTrash,
   } = props;
 
   /**
@@ -232,19 +250,21 @@ export function Sidebar(props: SidebarProps) {
     return list.map((sheet, index) => (
       <li
         key={sheet.id}
-        className={[
-          sheet.id === activeId ? 'active' : '',
-          group !== TOP_LEVEL && !flat ? 'in-folder' : '',
-          dragging?.id === sheet.id ? 'dragging' : '',
-          dropAt?.group === group && dropAt.index === index ? 'drop-before' : '',
-          dropAt?.group === group &&
-          dropAt.index === index + 1 &&
-          index === list.length - 1
-            ? 'drop-after'
-            : '',
-        ]
-          .filter(Boolean)
-          .join(' ') + colorClass(sheet.color)}
+        className={
+          [
+            sheet.id === activeId ? 'active' : '',
+            group !== TOP_LEVEL && !flat ? 'in-folder' : '',
+            dragging?.id === sheet.id ? 'dragging' : '',
+            dropAt?.group === group && dropAt.index === index ? 'drop-before' : '',
+            dropAt?.group === group &&
+            dropAt.index === index + 1 &&
+            index === list.length - 1
+              ? 'drop-after'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ') + colorClass(sheet.color)
+        }
         draggable={reorderable}
         onDragStart={(event) => {
           setDragging({ id: sheet.id, group });
@@ -450,7 +470,9 @@ export function Sidebar(props: SidebarProps) {
                         className="ghost"
                         title="Rename or colour folder"
                         aria-haspopup="menu"
-                        aria-expanded={editing?.kind === 'folder' && editing.id === folder.id}
+                        aria-expanded={
+                          editing?.kind === 'folder' && editing.id === folder.id
+                        }
                         onClick={(event) => toggleEditor('folder', folder.id, event)}
                       >
                         ✎
@@ -514,7 +536,11 @@ export function Sidebar(props: SidebarProps) {
 
         {sheets.length === 0 && (
           <li className="empty">
-            {query ? 'Nothing matches' : viewingTrash ? 'Trash is empty' : 'No sheets yet'}
+            {query
+              ? 'Nothing matches'
+              : viewingTrash
+                ? 'Trash is empty'
+                : 'No sheets yet'}
           </li>
         )}
       </ul>

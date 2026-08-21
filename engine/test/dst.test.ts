@@ -54,7 +54,8 @@ interface WallClock {
 /** What a zone's clock reads at an instant, straight from `Intl`. */
 function wallClock(at: Date, zone: string): WallClock {
   const parts = formatterFor(zone).formatToParts(at);
-  const read = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? '0');
+  const read = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
   return {
     year: read('year'),
     month: read('month'),
@@ -125,7 +126,13 @@ const TRANSITIONS: Transition[] = SUPPORTED_ZONES.flatMap((zone) =>
 
 /** An instant at which the zone's clock reads the given date and time. */
 function instantAt(zone: string, clock: WallClock): Date {
-  const naive = Date.UTC(clock.year, clock.month - 1, clock.day, clock.hour, clock.minute);
+  const naive = Date.UTC(
+    clock.year,
+    clock.month - 1,
+    clock.day,
+    clock.hour,
+    clock.minute,
+  );
   let stamp = naive - offsetMinutes(new Date(naive), zone) * 60_000;
   stamp = naive - offsetMinutes(new Date(stamp), zone) * 60_000;
   return new Date(stamp);
@@ -149,11 +156,25 @@ function shiftDate(clock: WallClock, days: number): WallClock {
   };
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /** Reads `Sun 8 Mar 2026` back apart, and the timed form it may arrive in. */
 function readAnswer(output: string): (WallClock & { timed: boolean }) | null {
-  const match = /^\w{3} (\d{1,2}) (\w{3}) (\d{4})(?: at (\d{1,2}):(\d{2}) (am|pm))?$/.exec(output);
+  const match =
+    /^\w{3} (\d{1,2}) (\w{3}) (\d{4})(?: at (\d{1,2}):(\d{2}) (am|pm))?$/.exec(output);
   if (!match) return null;
   const month = MONTHS.indexOf(match[2]!) + 1;
   if (month === 0) return null;
@@ -197,10 +218,16 @@ describe('the transitions themselves', () => {
     expect(TRANSITIONS.length).toBeGreaterThan(50);
 
     for (const zone of ['Europe/London', 'America/New_York', 'Australia/Sydney']) {
-      expect(TRANSITIONS.filter((t) => t.zone === zone), zone).toHaveLength(2);
+      expect(
+        TRANSITIONS.filter((t) => t.zone === zone),
+        zone,
+      ).toHaveLength(2);
     }
     for (const zone of ['UTC', 'Asia/Tokyo', 'Asia/Kolkata']) {
-      expect(TRANSITIONS.filter((t) => t.zone === zone), zone).toHaveLength(0);
+      expect(
+        TRANSITIONS.filter((t) => t.zone === zone),
+        zone,
+      ).toHaveLength(0);
     }
   });
 
@@ -222,7 +249,9 @@ describe('a calendar day across a transition', () => {
       const now = instantAt(zone, { ...dayBefore, hour: 12, minute: 0 });
       const answered = readAnswer(answerIn(zone, now, 'today + 1 day'));
       if (!answered || iso(answered) !== iso(onTheDay)) {
-        wrong.push(`${zone} ${iso(dayBefore)} + 1 day -> ${answerIn(zone, now, 'today + 1 day')}`);
+        wrong.push(
+          `${zone} ${iso(dayBefore)} + 1 day -> ${answerIn(zone, now, 'today + 1 day')}`,
+        );
       }
     }
     expect(wrong).toEqual([]);
@@ -279,8 +308,10 @@ describe('what a zone must never move, across a transition', () => {
     const wrong: string[] = [];
     for (const { zone, at } of TRANSITIONS.slice(0, 40)) {
       const here = createEngine({ now: at }).evaluate('current timestamp')[0]?.output;
-      const there = createEngine({ zone, now: at }).evaluate('current timestamp')[0]?.output;
-      if (here !== there) wrong.push(`${zone} at ${at.toISOString()}: ${here} vs ${there}`);
+      const there = createEngine({ zone, now: at }).evaluate('current timestamp')[0]
+        ?.output;
+      if (here !== there)
+        wrong.push(`${zone} at ${at.toISOString()}: ${here} vs ${there}`);
     }
     expect(wrong).toEqual([]);
   });
@@ -324,8 +355,12 @@ describe('a duration across a transition', () => {
   });
 
   it('while a day stays a day', () => {
-    expect(answerIn('America/New_York', march, '2026-03-07 + 1 day')).toBe('Sun 8 Mar 2026');
-    expect(answerIn('America/New_York', november, '2026-10-31 + 1 day')).toBe('Sun 1 Nov 2026');
+    expect(answerIn('America/New_York', march, '2026-03-07 + 1 day')).toBe(
+      'Sun 8 Mar 2026',
+    );
+    expect(answerIn('America/New_York', november, '2026-10-31 + 1 day')).toBe(
+      'Sun 1 Nov 2026',
+    );
   });
 
   it('and a shift that clears the change is untouched by it', () => {
@@ -352,7 +387,10 @@ describe('a duration across a transition', () => {
         continue;
       }
       // What that zone's clock reads one real hour after the anchor.
-      const wanted = wallClock(new Date(instantAt(zone, before).getTime() + 3_600_000), zone);
+      const wanted = wallClock(
+        new Date(instantAt(zone, before).getTime() + 3_600_000),
+        zone,
+      );
       if (answered.hour !== wanted.hour || answered.minute !== wanted.minute) {
         wrong.push(
           `${zone} ${line} -> ${pad(answered.hour)}:${pad(answered.minute)}, ` +

@@ -87,7 +87,12 @@ describe('the options that reach the engine', () => {
     // tidying and impossible to notice from the answers.
     const stale = { base: 'USD', date: '2020-01-01', rates: { EUR: 0.9 } };
     const fresh = { base: 'USD', date: '2026-08-14', rates: { EUR: 0.8 } };
-    const inputs = engineInputs({ rates: stale, historicalRates: { x: null } }, fresh, null, {});
+    const inputs = engineInputs(
+      { rates: stale, historicalRates: { x: null } },
+      fresh,
+      null,
+      {},
+    );
     expect(inputs.rates).toBe(fresh);
     expect(inputs.historicalRates).toEqual({});
   });

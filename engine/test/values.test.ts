@@ -125,10 +125,7 @@ describe('comment forms', () => {
   }
 
   it('declares no variable for a labelled line', () => {
-    expect(answers('Cost of iPhone: $999\nCost of iPhone * 2')).toEqual([
-      '$999.00',
-      '',
-    ]);
+    expect(answers('Cost of iPhone: $999\nCost of iPhone * 2')).toEqual(['$999.00', '']);
   });
 
   it('does not mistake real parentheses for a comment', () => {

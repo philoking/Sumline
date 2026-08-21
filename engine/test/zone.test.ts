@@ -25,7 +25,13 @@ describe('with no zone set', () => {
     // instance that sets no zone behaves exactly as it did before zones existed.
     const without = createEngine({ now: NOW });
     const asBefore = createEngine({ now: NOW, zone: undefined });
-    for (const line of ['today', 'now', 'tomorrow', 'week of year', 'current timestamp']) {
+    for (const line of [
+      'today',
+      'now',
+      'tomorrow',
+      'week of year',
+      'current timestamp',
+    ]) {
       expect(without.evaluate(line)[0]?.output).toBe(asBefore.evaluate(line)[0]?.output);
     }
   });
@@ -51,7 +57,9 @@ describe('with a zone set', () => {
     expect(answer('tomorrow', 'Asia/Tokyo')).toBe('Wed 19 Aug 2026');
     expect(answer('yesterday', 'Asia/Tokyo')).toBe('Mon 17 Aug 2026');
     expect(answer('today + 5 business days', 'Asia/Tokyo')).toBe('Tue 25 Aug 2026');
-    expect(answer('today + 5 business days', 'America/Los_Angeles')).toBe('Mon 24 Aug 2026');
+    expect(answer('today + 5 business days', 'America/Los_Angeles')).toBe(
+      'Mon 24 Aug 2026',
+    );
   });
 
   it('takes a place name as readily as an IANA identifier', () => {
@@ -69,7 +77,12 @@ describe('what a zone must never move', () => {
     // with them.
     const epoch = String(Math.round(NOW.getTime() / 1000));
     const expected = Number(epoch).toLocaleString('en-US');
-    for (const zone of [undefined, 'America/Los_Angeles', 'Asia/Tokyo', 'Europe/Berlin']) {
+    for (const zone of [
+      undefined,
+      'America/Los_Angeles',
+      'Asia/Tokyo',
+      'Europe/Berlin',
+    ]) {
       expect(answer('current timestamp', zone)).toBe(expected);
     }
   });

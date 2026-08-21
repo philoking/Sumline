@@ -113,7 +113,10 @@ export function useSheetLock(options: {
 
   /** What the server just said, and who should hear about it. */
   const record = useCallback(
-    (result: { granted: boolean; lock: Lock; ttlMs: number }, say: 'both' | 'granted') => {
+    (
+      result: { granted: boolean; lock: Lock; ttlMs: number },
+      say: 'both' | 'granted',
+    ) => {
       ttl.current = result.ttlMs;
       setLock({ granted: result.granted, holder: result.lock });
       if (result.granted) announce.current('idle');

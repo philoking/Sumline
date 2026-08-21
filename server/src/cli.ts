@@ -133,7 +133,10 @@ async function signIn(url: string, password: string): Promise<string> {
   return cookie.split(';')[0] as string;
 }
 
-function cookieHeader(space: string | undefined, session: string | null): string | undefined {
+function cookieHeader(
+  space: string | undefined,
+  session: string | null,
+): string | undefined {
   const parts = [
     ...(session ? [session] : []),
     ...(space ? [`sumline_user=${encodeURIComponent(space)}`] : []),
@@ -169,7 +172,10 @@ async function evaluate(
  * expected the number, and act on it as though it were one. The message goes to
  * stderr, and the exit status says which happened.
  */
-export function render(results: readonly EvaluatedLine[]): { out: string[]; err: string[] } {
+export function render(results: readonly EvaluatedLine[]): {
+  out: string[];
+  err: string[];
+} {
   if (results.length === 1) {
     const only = results[0] as EvaluatedLine;
     return only.error ? { out: [], err: [only.error] } : { out: [only.output], err: [] };
@@ -209,7 +215,8 @@ export async function main(argv: readonly string[]): Promise<number> {
      */
     if (response.status === 401) {
       const password = process.env['SUMLINE_PASSWORD'];
-      if (!password) throw new Error(`${options.url} needs a password; set SUMLINE_PASSWORD`);
+      if (!password)
+        throw new Error(`${options.url} needs a password; set SUMLINE_PASSWORD`);
       session = await signIn(options.url, password);
       response = await evaluate(options, lines, session);
     }
@@ -221,7 +228,9 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    process.stderr.write(`sumline: ${body?.error ?? `${options.url} answered ${response.status}`}\n`);
+    process.stderr.write(
+      `sumline: ${body?.error ?? `${options.url} answered ${response.status}`}\n`,
+    );
     return 1;
   }
 

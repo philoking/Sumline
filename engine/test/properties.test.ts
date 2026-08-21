@@ -268,8 +268,9 @@ describe('percentages', () => {
 describe('a sheet’s own arithmetic', () => {
   const random = mulberry32(0xabcd);
   const sheets = Array.from({ length: 40 }, () =>
-    Array.from({ length: 2 + Math.floor(random() * 5) }, () =>
-      Math.round(random() * 100000) / 100,
+    Array.from(
+      { length: 2 + Math.floor(random() * 5) },
+      () => Math.round(random() * 100000) / 100,
     ),
   );
 
@@ -355,7 +356,9 @@ describe('rules the engine holds on purpose', () => {
       // by value, which is the half that says which currency won.
       const shape = (text: string) => text.replace(/[\d.,\s]/g, '');
       if (output && shape(output) !== shape(alone)) {
-        broken.push(`10 ${first} + 10 ${last} -> ${output}, expected ${alone}'s currency`);
+        broken.push(
+          `10 ${first} + 10 ${last} -> ${output}, expected ${alone}'s currency`,
+        );
       }
     }
     expect(broken).toEqual([]);

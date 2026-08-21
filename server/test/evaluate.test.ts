@@ -55,7 +55,13 @@ afterEach(async () => {
 const as = (space: string) => ({ cookie: `sumline_user=${space}` });
 
 interface EvaluateResponse {
-  results: Array<{ index: number; kind: string; input: string; output: string; error?: string }>;
+  results: Array<{
+    index: number;
+    kind: string;
+    input: string;
+    output: string;
+    error?: string;
+  }>;
   total: string;
   rateDate: string | null;
 }

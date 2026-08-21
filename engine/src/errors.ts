@@ -178,7 +178,8 @@ function explain(error: unknown, vocabulary: Vocabulary): Explained {
   const tooFew = /^Too few arguments in function (\w+)/.exec(raw);
   if (tooFew) return { message: `${tooFew[1]} needs more values than that` };
 
-  const tooMany = /^Too many arguments in function (\w+) \(expected: (\d+), actual: (\d+)\)/.exec(raw);
+  const tooMany =
+    /^Too many arguments in function (\w+) \(expected: (\d+), actual: (\d+)\)/.exec(raw);
   if (tooMany) {
     const values = tooMany[2] === '1' ? 'value' : 'values';
     return { message: `${tooMany[1]} takes ${tooMany[2]} ${values}, not ${tooMany[3]}` };
@@ -221,7 +222,12 @@ function isCodeShaped(token: string): boolean {
 
 /** `5 km` -> `km`, so a mismatch names units rather than quoting the line. */
 function bareUnit(text: string): string {
-  return text.trim().replace(/^[\d.,\s]+/, '').trim() || text.trim();
+  return (
+    text
+      .trim()
+      .replace(/^[\d.,\s]+/, '')
+      .trim() || text.trim()
+  );
 }
 
 /**
@@ -273,16 +279,18 @@ function editDistance(a: string, b: string): number {
  * expression rather than the line as it was written.
  */
 function tidy(message: string): string {
-  return message
-    .replace(/^Error:\s*/, '')
-    .replace(/\s*\(char \d+\)$/, '')
-    .replace(/__v\d+/g, 'value')
-    // The number is optional because a line that named no line still gets
-    // the placeholder: `line 1 % of 50` reaches math.js as a bare `__line`,
-    // and "No function called __line" is not a sentence about anything the
-    // writer typed.
-    .replace(/__line(\d*)/g, (_match, number: string) =>
-      number ? `line ${number}` : 'line',
-    )
-    .replace(/__prev/g, 'prev');
+  return (
+    message
+      .replace(/^Error:\s*/, '')
+      .replace(/\s*\(char \d+\)$/, '')
+      .replace(/__v\d+/g, 'value')
+      // The number is optional because a line that named no line still gets
+      // the placeholder: `line 1 % of 50` reaches math.js as a bare `__line`,
+      // and "No function called __line" is not a sentence about anything the
+      // writer typed.
+      .replace(/__line(\d*)/g, (_match, number: string) =>
+        number ? `line ${number}` : 'line',
+      )
+      .replace(/__prev/g, 'prev')
+  );
 }

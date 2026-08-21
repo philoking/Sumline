@@ -34,7 +34,13 @@ function lines(count: number): string {
  * differs, says what each button destroys, and offers a third answer that
  * destroys nothing.
  */
-export function Conflict({ mine, theirs, onKeepMine, onTakeTheirs, onKeepBoth }: ConflictProps) {
+export function Conflict({
+  mine,
+  theirs,
+  onKeepMine,
+  onTakeTheirs,
+  onKeepBoth,
+}: ConflictProps) {
   const changes = useMemo(() => diffLines(mine, theirs), [mine, theirs]);
 
   const counts = changes ? countChanges(changes) : null;
@@ -48,8 +54,8 @@ export function Conflict({ mine, theirs, onKeepMine, onTakeTheirs, onKeepBoth }:
         <strong>This sheet changed on the server while you were editing.</strong>
         {counts ? (
           <span>
-            Yours has {lines(counts.mine)} the server’s does not; the server’s
-            has {lines(counts.theirs)} yours does not.
+            Yours has {lines(counts.mine)} the server’s does not; the server’s has{' '}
+            {lines(counts.theirs)} yours does not.
           </span>
         ) : (
           // The comparison is refused on very long sheets, so say the one true
@@ -65,7 +71,10 @@ export function Conflict({ mine, theirs, onKeepMine, onTakeTheirs, onKeepBoth }:
       {shown.length > 0 && (
         <ul className="conflict-diff">
           {shown.map((change, index) => (
-            <li key={`${change.kind}-${change.line}-${index}`} className={`from-${change.kind}`}>
+            <li
+              key={`${change.kind}-${change.line}-${index}`}
+              className={`from-${change.kind}`}
+            >
               <span className="conflict-mark" aria-hidden="true">
                 {change.kind === 'mine' ? '−' : '+'}
               </span>
@@ -79,9 +88,7 @@ export function Conflict({ mine, theirs, onKeepMine, onTakeTheirs, onKeepBoth }:
       )}
 
       {hidden > 0 && (
-        <p className="conflict-more">
-          …and {lines(hidden)} more that differ.
-        </p>
+        <p className="conflict-more">…and {lines(hidden)} more that differ.</p>
       )}
 
       <div className="conflict-actions">
@@ -97,8 +104,8 @@ export function Conflict({ mine, theirs, onKeepMine, onTakeTheirs, onKeepBoth }:
         {/* Spelled out because the previous wording was the trap: "Load theirs"
             reads as the careful option and was the destructive one. */}
         <span className="conflict-hint">
-          Keep both saves yours and copies the server’s into a new sheet.
-          The other two discard one version.
+          Keep both saves yours and copies the server’s into a new sheet. The other two
+          discard one version.
         </span>
       </div>
     </div>

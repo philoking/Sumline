@@ -1025,14 +1025,30 @@ button.danger-button:disabled {
 
 /* ---- colour coding ---- */
 
-.tint-red { --tint: var(--tint-red); }
-.tint-orange { --tint: var(--tint-orange); }
-.tint-yellow { --tint: var(--tint-yellow); }
-.tint-green { --tint: var(--tint-green); }
-.tint-teal { --tint: var(--tint-teal); }
-.tint-blue { --tint: var(--tint-blue); }
-.tint-purple { --tint: var(--tint-purple); }
-.tint-pink { --tint: var(--tint-pink); }
+.tint-red {
+  --tint: var(--tint-red);
+}
+.tint-orange {
+  --tint: var(--tint-orange);
+}
+.tint-yellow {
+  --tint: var(--tint-yellow);
+}
+.tint-green {
+  --tint: var(--tint-green);
+}
+.tint-teal {
+  --tint: var(--tint-teal);
+}
+.tint-blue {
+  --tint: var(--tint-blue);
+}
+.tint-purple {
+  --tint: var(--tint-purple);
+}
+.tint-pink {
+  --tint: var(--tint-pink);
+}
 
 /* A bar down the leading edge rather than a tinted row: the sheet name has to
    stay as readable as an uncoloured one, and a wash behind it in eight
@@ -1547,7 +1563,6 @@ button.danger-button:disabled {
 .user-chip:hover {
   border-color: var(--muted);
 }
-
 
 /* Marks a sheet reached from the other space, so "why is this not in my
    list?" answers itself. */

@@ -45,9 +45,7 @@ describe('a line inserted above a reference', () => {
 
   it('leaves everything alone when no line was added or removed', () => {
     const state = sheet('100\nline 1 + 5');
-    expect(after(state, { changes: { from: 3, insert: '0' } })).toBe(
-      '1000\nline 1 + 5',
-    );
+    expect(after(state, { changes: { from: 3, insert: '0' } })).toBe('1000\nline 1 + 5');
   });
 });
 

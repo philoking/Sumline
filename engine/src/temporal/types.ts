@@ -43,15 +43,7 @@ export class CalendarDate {
 }
 
 export type SpanUnit =
-  | 'year'
-  | 'month'
-  | 'week'
-  | 'day'
-  | 'workday'
-  | 'hour'
-  | 'minute'
-  | 'second'
-  | 'frame';
+  'year' | 'month' | 'week' | 'day' | 'workday' | 'hour' | 'minute' | 'second' | 'frame';
 
 export interface SpanPart {
   value: number;
@@ -166,7 +158,9 @@ export function decomposeSeconds(totalSeconds: number): Timespan {
     if (unit !== 'second') remaining -= whole * size;
   }
 
-  return parts.length > 0 ? new Timespan(parts) : new Timespan([{ value: 0, unit: 'second' }]);
+  return parts.length > 0
+    ? new Timespan(parts)
+    : new Timespan([{ value: 0, unit: 'second' }]);
 }
 
 function round(value: number, decimals: number): number {

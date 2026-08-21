@@ -32,8 +32,8 @@ describe('welcome sheet', () => {
   });
 
   it('resolves its line reference to the calculation it points at', () => {
-    const reference = results.find(
-      (result) => lines[result.index]?.startsWith('line 5 +'),
+    const reference = results.find((result) =>
+      lines[result.index]?.startsWith('line 5 +'),
     );
     expect(reference?.output).toBe('508');
   });

@@ -21,7 +21,8 @@ export async function fetchFromNager(country: string, year: number): Promise<str
   });
   if (!response.ok) throw new Error(`Holiday provider returned ${response.status}`);
   const body = (await response.json()) as Array<{ date?: string }>;
-  if (!Array.isArray(body)) throw new Error('Holiday provider returned an unexpected payload');
+  if (!Array.isArray(body))
+    throw new Error('Holiday provider returned an unexpected payload');
   return body.map((entry) => entry.date).filter((date): date is string => Boolean(date));
 }
 

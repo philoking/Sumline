@@ -8,7 +8,6 @@ import {
 } from '@sumline/engine';
 import { api, type HolidayTable } from './api';
 
-
 /**
  * The caller's options, plus what this hook fetched for itself.
  *

@@ -21,9 +21,15 @@ function answer(line: string, options: Parameters<typeof createEngine>[0] = {}) 
 
 describe('the number region', () => {
   it('formats according to the region it is given', () => {
-    expect(answer('1234567.89 in full', { region: 'north-america' })).toBe('1,234,567.89');
-    expect(answer('1234567.89 in full', { region: 'western-europe' })).toBe('1.234.567,89');
-    expect(answer('1234567.89 in full', { region: 'eastern-europe' })).toBe('1 234 567,89');
+    expect(answer('1234567.89 in full', { region: 'north-america' })).toBe(
+      '1,234,567.89',
+    );
+    expect(answer('1234567.89 in full', { region: 'western-europe' })).toBe(
+      '1.234.567,89',
+    );
+    expect(answer('1234567.89 in full', { region: 'eastern-europe' })).toBe(
+      '1 234 567,89',
+    );
   });
 
   it('reads input by the same convention it writes', () => {
@@ -71,7 +77,15 @@ describe('the default frame rate', () => {
   it('coerces anything unusable to the default', () => {
     expect(toFps(30)).toBe(30);
     expect(toFps(23.976)).toBe(23.976);
-    for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '30', null, undefined]) {
+    for (const value of [
+      0,
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '30',
+      null,
+      undefined,
+    ]) {
       expect(toFps(value)).toBe(DEFAULT_FPS);
     }
   });

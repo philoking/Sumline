@@ -85,10 +85,7 @@ describe('what the engine will not be reading', () => {
   it('leaves a label alone, numbers and all', () => {
     // `128 GB` is inside the label, so the engine never sees it — colouring it
     // as a quantity would say the opposite.
-    expect(marks('Cost of 128 GB iPhone 16: $999')).toEqual([
-      'currency:$',
-      'number:999',
-    ]);
+    expect(marks('Cost of 128 GB iPhone 16: $999')).toEqual(['currency:$', 'number:999']);
   });
 
   it('greys out the asides it discards', () => {
@@ -179,9 +176,11 @@ describe('variables and references', () => {
       now: TEST_NOW,
       globals: { 'day rate': '$550' },
     });
-    expect(
-      withGlobals.tokenize('day rate * 5')[0]?.map((t) => t.kind),
-    ).toEqual(['name', 'operator', 'number']);
+    expect(withGlobals.tokenize('day rate * 5')[0]?.map((t) => t.kind)).toEqual([
+      'name',
+      'operator',
+      'number',
+    ]);
   });
 });
 

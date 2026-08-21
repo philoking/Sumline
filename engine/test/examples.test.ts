@@ -67,10 +67,26 @@ describe('the example set itself', () => {
     const ids = EXAMPLE_GROUPS.map((group) => group.id);
     expect(ids).toEqual(
       expect.arrayContaining([
-        'arithmetic', 'numbers', 'rounding', 'functions', 'trigonometry',
-        'bases', 'percentages', 'percentage-change',
-        'fractions', 'units', 'rates', 'currency', 'past-rates', 'dates', 'intervals',
-        'workdays', 'time', 'timecode', 'statistics', 'notes',
+        'arithmetic',
+        'numbers',
+        'rounding',
+        'functions',
+        'trigonometry',
+        'bases',
+        'percentages',
+        'percentage-change',
+        'fractions',
+        'units',
+        'rates',
+        'currency',
+        'past-rates',
+        'dates',
+        'intervals',
+        'workdays',
+        'time',
+        'timecode',
+        'statistics',
+        'notes',
       ]),
     );
   });
