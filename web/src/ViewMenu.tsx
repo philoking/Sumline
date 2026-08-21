@@ -1,6 +1,7 @@
+import { useRef } from 'react';
 import { PRECISIONS } from '@sumline/engine';
 import { formatShortcut } from './shortcuts';
-import { Backdrop } from './Popover';
+import { Backdrop, useMenuKeys } from './Popover';
 
 /**
  * How far the sheet's text can be scaled, and in what steps.
@@ -51,7 +52,7 @@ function Check({
   onClick(): void;
 }) {
   return (
-    <li>
+    <li role="none">
       <button type="button" role="menuitemcheckbox" aria-checked={on} onClick={onClick}>
         <span className="tick">{on ? '✓' : ''}</span>
         <span className="view-label">{label}</span>
@@ -77,13 +78,22 @@ function Check({
  */
 export function ViewMenu(props: ViewMenuProps) {
   const { open, fontSize, onClose } = props;
+  // Before the early return, because hooks cannot run conditionally.
+  const menuRef = useRef<HTMLUListElement | null>(null);
+  const onMenuKey = useMenuKeys(menuRef, open, onClose);
   if (!open) return null;
 
   return (
     <>
       <Backdrop onClose={onClose} />
-      <ul className="answer-menu view-menu" role="menu" aria-label="View">
-        <li>
+      <ul
+        className="answer-menu view-menu"
+        role="menu"
+        aria-label="View"
+        ref={menuRef}
+        onKeyDown={onMenuKey}
+      >
+        <li role="none">
           <button
             type="button"
             role="menuitem"
@@ -95,7 +105,7 @@ export function ViewMenu(props: ViewMenuProps) {
             <span className="view-hint">{formatShortcut(['Mod', '+'])}</span>
           </button>
         </li>
-        <li>
+        <li role="none">
           <button
             type="button"
             role="menuitem"
@@ -108,7 +118,7 @@ export function ViewMenu(props: ViewMenuProps) {
           </button>
         </li>
         {fontSize !== DEFAULT_FONT_SIZE && (
-          <li>
+          <li role="none">
             <button
               type="button"
               role="menuitem"
@@ -153,7 +163,7 @@ export function ViewMenu(props: ViewMenuProps) {
         <li className="view-group" role="presentation">
           Number format
         </li>
-        <li className="view-precision">
+        <li role="none" className="view-precision">
           {/* The same empty gutter the ticked rows carry, so this label lines
               up with theirs instead of starting where their ticks do. */}
           <span className="tick" />

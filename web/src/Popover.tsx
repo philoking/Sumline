@@ -1,4 +1,12 @@
-import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
+} from 'react';
 
 /**
  * The click-anywhere-to-dismiss layer under a menu or a panel.
@@ -76,4 +84,67 @@ export function usePopoverPlacement(
       ? { bottom: Math.max(EDGE, window.innerHeight - top + gap) }
       : { top: bottom + gap }),
   };
+}
+
+/**
+ * The keyboard a `role="menu"` promises.
+ *
+ * Declaring that role is a claim about behaviour, not a styling hook: a screen
+ * reader tells its user this is a menu, and its user then expects arrow keys to
+ * move through it, Home and End to reach the ends, and Escape to leave. Three
+ * of the four menus in this app made the claim and handled no keys at all,
+ * which is worse than not making it — someone told to press Down pressed Down
+ * and nothing happened.
+ *
+ * The fourth had a correct implementation, inline in the editor. This is that
+ * one, lifted so there is a single answer rather than four that drift.
+ *
+ * Focus moves to the first item on opening, because a menu raised from the
+ * keyboard is no use if focus stays behind on the button that raised it.
+ * Disabled items are skipped rather than focused and stepped over: the view
+ * menu greys out "Bigger text" at maximum size, and stopping on it would be a
+ * dead key press.
+ */
+export function useMenuKeys(
+  menu: RefObject<HTMLElement | null>,
+  open: boolean,
+  onClose: () => void,
+): (event: ReactKeyboardEvent<HTMLElement>) => void {
+  useEffect(() => {
+    if (!open) return;
+    items(menu)[0]?.focus();
+  }, [open, menu]);
+
+  return useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      const reachable = items(menu);
+      if (reachable.length === 0) return;
+
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        (event.key === 'Home' ? reachable[0] : reachable[reachable.length - 1])?.focus();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      event.preventDefault();
+      const at = reachable.indexOf(document.activeElement as HTMLElement);
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      // Wrapping, which is what the menu pattern asks for: Down on the last
+      // item reaches the first rather than doing nothing.
+      reachable[(at + step + reachable.length) % reachable.length]?.focus();
+    },
+    [menu, onClose],
+  );
+}
+
+/** The items a keyboard can actually land on, in the order they are shown. */
+function items(menu: RefObject<HTMLElement | null>): HTMLElement[] {
+  return [
+    ...(menu.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? []),
+  ];
 }

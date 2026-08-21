@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { Folder, SheetSummary } from './api';
 import { SHEET_COLORS, colorClass, colorLabel } from './colors';
 import { Snippet } from './Snippet';
-import { Backdrop, usePopoverPlacement } from './Popover';
+import { Backdrop, usePopoverPlacement, useMenuKeys } from './Popover';
 
 /** The group id standing for sheets in no folder. */
 const TOP_LEVEL = '';
@@ -215,6 +215,9 @@ export function Sidebar(props: SidebarProps) {
   // One flyout is open at a time, so one ref and one placement serve both the
   // sheet rows and the folder rows.
   const flyoutRef = useRef<HTMLDivElement | null>(null);
+  // The flyout claims `role="menu"` in both places it is rendered, so it owes
+  // the keyboard that goes with it.
+  const onFlyoutKey = useMenuKeys(flyoutRef, editing !== null, closeEditor);
   const flyoutStyle = usePopoverPlacement(
     editing && {
       right: editing.anchor.right,
@@ -357,7 +360,14 @@ export function Sidebar(props: SidebarProps) {
         {editing?.kind === 'sheet' && editing.id === sheet.id && (
           <>
             <Backdrop onClose={closeEditor} />
-            <div className="edit-flyout" role="menu" style={flyoutStyle} ref={flyoutRef}>
+            <div
+              className="edit-flyout"
+              role="menu"
+              aria-label="Sheet"
+              style={flyoutStyle}
+              ref={flyoutRef}
+              onKeyDown={onFlyoutKey}
+            >
               <button
                 type="button"
                 role="menuitem"
@@ -493,8 +503,10 @@ export function Sidebar(props: SidebarProps) {
                         <div
                           className="edit-flyout"
                           role="menu"
+                          aria-label="Folder"
                           style={flyoutStyle}
                           ref={flyoutRef}
+                          onKeyDown={onFlyoutKey}
                         >
                           <button
                             type="button"

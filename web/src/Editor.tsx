@@ -42,7 +42,7 @@ import {
 } from '@codemirror/search';
 import type { LineResult, Token, TokenKind } from '@sumline/engine';
 import { keepReferencesPointing, replacingDocument } from './references';
-import { Backdrop, usePopoverPlacement } from './Popover';
+import { Backdrop, usePopoverPlacement, useMenuKeys } from './Popover';
 import { loadUndoHistory, saveUndoHistory } from './undoHistory';
 
 /** How a sheet's text is read — `engine.tokenize`, handed in by the app. */
@@ -1067,27 +1067,9 @@ export function Editor({
     if (line !== undefined) focusAnswer(line);
   };
 
-  const onMenuKey = (event: ReactKeyboardEvent<HTMLUListElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeMenu();
-      return;
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    const items = [
-      ...(menuRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []),
-    ];
-    if (items.length === 0) return;
-    const at = items.indexOf(document.activeElement as HTMLButtonElement);
-    const step = event.key === 'ArrowDown' ? 1 : -1;
-    items[(at + step + items.length) % items.length]?.focus();
-  };
-
-  // A menu is no use to the keyboard that raised it if focus stays behind.
-  useEffect(() => {
-    if (menu) menuRef.current?.querySelector('button')?.focus();
-  }, [menu]);
+  // This menu's arrow keys and focus-on-open were the only correct ones in the
+  // app, so they are now `useMenuKeys` and the other three use them too.
+  const onMenuKey = useMenuKeys(menuRef, menu !== null, closeMenu);
 
   useEffect(() => {
     if (errorAt) errorRef.current?.focus();
@@ -1224,7 +1206,7 @@ export function Editor({
             ref={menuRef}
             onKeyDown={onMenuKey}
           >
-            <li>
+            <li role="none">
               <button
                 type="button"
                 role="menuitem"
@@ -1236,7 +1218,7 @@ export function Editor({
                 Copy answer
               </button>
             </li>
-            <li>
+            <li role="none">
               <button
                 type="button"
                 role="menuitem"
@@ -1250,9 +1232,9 @@ export function Editor({
                 Insert reference
               </button>
             </li>
-            <li className="menu-separator" />
+            <li className="menu-separator" role="separator" />
             {[0, 2, 4].map((places) => (
-              <li key={places}>
+              <li role="none" key={places}>
                 <button
                   type="button"
                   role="menuitem"
@@ -1262,7 +1244,7 @@ export function Editor({
                 </button>
               </li>
             ))}
-            <li>
+            <li role="none">
               <button
                 type="button"
                 role="menuitem"
@@ -1271,7 +1253,7 @@ export function Editor({
                 Write number in full
               </button>
             </li>
-            <li>
+            <li role="none">
               <button
                 type="button"
                 role="menuitem"

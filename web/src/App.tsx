@@ -57,7 +57,7 @@ import { useActiveSheet, type Status } from './useActiveSheet';
 import { useSheetList } from './useSheetList';
 import { useSpaces } from './useSpaces';
 import { useAsk } from './Ask';
-import { Backdrop } from './Popover';
+import { Backdrop, useMenuKeys } from './Popover';
 import { Mark, Wordmark } from './Wordmark';
 import { download, safeFilename, toCsv, toMarkdown, toPlainText } from './export';
 
@@ -145,6 +145,13 @@ export function App() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   /** Turns the space list into an editable one, rather than a second menu. */
   const [managingSpaces, setManagingSpaces] = useState(false);
+
+  const userMenuRef = useRef<HTMLUListElement | null>(null);
+  const closeUserMenu = useCallback(() => {
+    setUserMenuOpen(false);
+    setManagingSpaces(false);
+  }, []);
+  const onUserMenuKey = useMenuKeys(userMenuRef, userMenuOpen, closeUserMenu);
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false);
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   // `?help` opens the reference on load, so it can be linked to directly.
@@ -1011,15 +1018,17 @@ export function App() {
             </button>
             {userMenuOpen && (
               <>
-                <Backdrop
-                  onClose={() => {
-                    setUserMenuOpen(false);
-                    setManagingSpaces(false);
-                  }}
-                />
-                <ul className="answer-menu user-menu" role="menu">
+                <Backdrop onClose={closeUserMenu} />
+                <ul
+                  className="answer-menu user-menu"
+                  role="menu"
+                  aria-label="Spaces"
+                  ref={userMenuRef}
+                  onKeyDown={onUserMenuKey}
+                >
                   {users.map((user) => (
                     <li
+                      role="none"
                       key={user.id}
                       className={managingSpaces ? 'space-row' : undefined}
                     >
@@ -1076,7 +1085,7 @@ export function App() {
 
                   <li className="menu-separator" role="separator" />
 
-                  <li>
+                  <li role="none">
                     <button
                       type="button"
                       role="menuitem"
@@ -1090,7 +1099,7 @@ export function App() {
                       {currentUserName || 'Space'} settings…
                     </button>
                   </li>
-                  <li>
+                  <li role="none">
                     <button
                       type="button"
                       role="menuitem"
@@ -1104,7 +1113,7 @@ export function App() {
                       Global settings…
                     </button>
                   </li>
-                  <li>
+                  <li role="none">
                     <button
                       type="button"
                       role="menuitem"
@@ -1118,7 +1127,7 @@ export function App() {
                       Add space…
                     </button>
                   </li>
-                  <li>
+                  <li role="none">
                     <button
                       type="button"
                       role="menuitem"
@@ -1133,7 +1142,7 @@ export function App() {
                   {session.required && (
                     <>
                       <li className="menu-separator" role="separator" />
-                      <li>
+                      <li role="none">
                         <button
                           type="button"
                           role="menuitem"
@@ -1157,8 +1166,12 @@ export function App() {
         )}
       </header>
 
+      {/* `alert`, which is assertive: something went wrong and the reader needs
+          to know now rather than after whatever they are typing. The polite
+          region on the save chip was the only one in the app, so the thing
+          being narrated was "Saved" and the thing going unsaid was this. */}
       {error && (
-        <div className="banner banner-error">
+        <div className="banner banner-error" role="alert">
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)}>
             Dismiss
@@ -1166,8 +1179,10 @@ export function App() {
         </div>
       )}
 
+      {/* Polite: a notice is the outcome of something the reader just did, so
+          it can wait for a pause rather than interrupt. */}
       {notice && (
-        <div className="banner">
+        <div className="banner" role="status">
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice(null)}>
             Dismiss
@@ -1175,8 +1190,13 @@ export function App() {
         </div>
       )}
 
+      {/* "Somebody else is editing this" is the message most worth announcing in
+          the whole app: it is the difference between typing and typing into
+          something that will not save. Polite rather than assertive, because it
+          arrives while the reader is looking at the sheet rather than in
+          response to anything they did. */}
       {!lock.granted && activeId && !viewingTrash && (
-        <div className="banner">
+        <div className="banner" role="status">
           <span>
             Read-only — {lock.holder?.clientName ?? 'another browser'} is editing this
             sheet.
