@@ -38,6 +38,18 @@ import { useDialog } from './useDialog';
 import { SpaceSettings } from './SpaceSettings';
 import { GlobalSettings } from './GlobalSettings';
 import { useEngine, useResults } from './useEngine';
+
+/**
+ * The empty set of globals, as one object rather than a new one per render.
+ *
+ * `settings.globals ?? {}` minted a fresh identity every time App rendered,
+ * and the settings panel resets its rows when that prop changes. Sheet text
+ * lives at this root, so "every time App rendered" is every keystroke and
+ * every event off the stream: a variable being typed was wiped mid-entry, row
+ * and all. It only bit while `settings.globals` was undefined, which is to say
+ * only for somebody who had never set one, so it hit first use exclusively.
+ */
+const NO_GLOBALS: Record<string, string> = Object.freeze({});
 import { useLive, type LiveEvent } from './live';
 import { useTheme } from './useTheme';
 import { useSheetLock } from './useSheetLock';
@@ -1299,8 +1311,8 @@ export function App() {
         <SpaceSettings
           open={spaceSettingsOpen}
           space={{ id: space, name: currentUserName || space }}
-          globals={settings.globals ?? {}}
-          sharedGlobals={settings.sharedGlobals ?? {}}
+          globals={settings.globals ?? NO_GLOBALS}
+          sharedGlobals={settings.sharedGlobals ?? NO_GLOBALS}
           canRemove={users.length > 1}
           computed={{
             ...(settings.region && { region: settings.region }),
@@ -1329,7 +1341,7 @@ export function App() {
       <GlobalSettings
         open={globalSettingsOpen}
         computed={settings.shared ?? {}}
-        globals={settings.sharedGlobals ?? {}}
+        globals={settings.sharedGlobals ?? NO_GLOBALS}
         preview={(expression) => engine.evaluate(expression)[0]?.output ?? ''}
         onSaveComputed={(key, value) => {
           // Refetched rather than merged: the server owns the resolved view, and

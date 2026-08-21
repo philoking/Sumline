@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Editing a set of named variables.
@@ -168,14 +168,29 @@ export function GlobalsEditor({
  * would be exactly the invisible state this project avoids elsewhere: a figure
  * right in one space and wrong in another, with nothing on screen saying why.
  */
-/** Keeps a set of rows in step with the stored set whenever a panel opens. */
+/**
+ * Keeps a set of rows in step with the stored set whenever a panel opens.
+ *
+ * On opening, and only on opening. The effect used to depend on `stored` as
+ * well, which made it fire whenever that object changed *identity* rather than
+ * content — so a caller passing an inline `?? {}` reset the rows on every
+ * render of its parent, discarding whatever was half-typed.
+ *
+ * Reading the latest `stored` through a ref rather than listing it as a
+ * dependency, because the value wanted here is the one at the moment of
+ * opening. Content-comparing it would work too and would still be answering
+ * the wrong question: an edit in progress should survive the stored set
+ * changing underneath it, not be replaced by it.
+ */
 export function useRows(
   stored: Record<string, string>,
   open: boolean,
 ): [Row[], React.Dispatch<React.SetStateAction<Row[]>>] {
   const [rows, setRows] = useState<Row[]>(() => toRows(stored));
+  const latest = useRef(stored);
+  latest.current = stored;
   useEffect(() => {
-    if (open) setRows(toRows(stored));
-  }, [open, stored]);
+    if (open) setRows(toRows(latest.current));
+  }, [open]);
   return [rows, setRows];
 }
