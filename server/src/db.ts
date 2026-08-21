@@ -215,6 +215,34 @@ interface LockRow {
   expires_at: number;
 }
 
+/**
+ * What this build understands, stamped into `PRAGMA user_version`.
+ *
+ * Raise it in the same commit that adds a `STEPS` entry, never on its own: the
+ * number's only job is to say which steps a database has already had.
+ */
+const SCHEMA_VERSION = 1;
+
+/**
+ * Changes that must happen once against rows that already exist.
+ *
+ * Empty on purpose. Every schema change so far has been "add a column and let
+ * null mean not set", which the idempotent adds handle without needing to know
+ * whether they have run before. This exists so the first change that *cannot*
+ * be written that way has an obvious home, instead of being the reason to
+ * invent one under pressure.
+ *
+ * A step runs inside a transaction, only against a database older than its
+ * version, and in ascending order. It must tolerate being the first thing to
+ * touch a fresh database as well as an old one.
+ */
+const STEPS: Array<{
+  version: number;
+  /** What it does, for whoever is reading a stack trace at the wrong hour. */
+  describes: string;
+  run(db: DatabaseSync): void;
+}> = [];
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sheets (
   id         TEXT PRIMARY KEY,
@@ -380,15 +408,64 @@ export class Store {
     }
   }
 
+  /** What `PRAGMA user_version` says, or 0 for a database that predates it. */
+  private schemaVersion(): number {
+    const row = this.db.prepare('PRAGMA user_version').get() as { user_version?: number };
+    return Number(row?.user_version ?? 0);
+  }
+
+  /**
+   * Brings a database up to `SCHEMA_VERSION`, or refuses to touch it.
+   *
+   * Two things happen here, and they are different in kind.
+   *
+   * The column adds below are idempotent and run every time. That is the shape
+   * this started as and it has a real virtue worth keeping: re-running it
+   * cannot break anything, so a restart, a rollback and a fresh database all
+   * take the same path.
+   *
+   * What that shape could not do is express a **backfill** — a change that has
+   * to transform rows that already exist rather than add somewhere to put new
+   * ones. There was nowhere to write "do this once", so any such change had no
+   * home. `STEPS` is that home: each entry runs only against a database older
+   * than it, in order, and the version is stamped afterwards.
+   *
+   * It also could not **notice a newer database**. An older binary opened one
+   * written by a later version and carried on as though the columns it did not
+   * know about were not there, which is a silent way to lose a write. Now it
+   * refuses, because a rollback that quietly drops data is worse than one that
+   * will not start.
+   */
+  private migrate(): void {
+    const from = this.schemaVersion();
+    if (from > SCHEMA_VERSION) {
+      throw new Error(
+        `This database is at schema version ${from} and this build understands ${SCHEMA_VERSION}. ` +
+          'It was written by a newer version of Sumline; upgrade rather than downgrade, ' +
+          'because running on it would ignore whatever that version added.',
+      );
+    }
+
+    this.addColumns();
+
+    for (const step of STEPS) {
+      if (from >= step.version) continue;
+      this.transact(() => step.run(this.db));
+    }
+
+    if (from !== SCHEMA_VERSION) this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  }
+
   /**
    * Adds columns introduced after the first release.
    *
    * `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists,
    * so a deployed database would otherwise never gain these. Each is checked
    * individually and added only when missing, which makes this safe to run on
-   * every start.
+   * every start — and is why it stays outside the versioned steps above rather
+   * than being rewritten as one.
    */
-  private migrate(): void {
+  private addColumns(): void {
     this.addColumn('sheets', 'folder_id', 'TEXT');
     this.addColumn('sheets', 'deleted_at', 'TEXT');
     // The slug a sheet is currently shared under. Null until it is first
@@ -858,12 +935,43 @@ export class Store {
       updatedAt: new Date().toISOString(),
     };
 
-    this.db
+    /*
+     * The version is checked again in the `WHERE`, not only in the branch above.
+     *
+     * Reading the row, comparing, and then writing is only safe if nothing can
+     * interleave between the two, which today is true because `node:sqlite` is
+     * synchronous. That is a property of the driver rather than of this code,
+     * and it stops being true the moment the storage layer becomes async: a
+     * pool, a different driver, a move off `node:sqlite` at all. The invariant
+     * would still be written down and would quietly stop holding.
+     *
+     * One clause moves the check into the database, where two writers are the
+     * database's problem. Zero rows changed means somebody else got there
+     * first, which is the same conflict the branch above reports, so it reports
+     * it the same way.
+     */
+    const result = this.db
       .prepare(
         `UPDATE sheets SET title = ?, content = ?, folder_id = ?, version = ?, updated_at = ?
-         WHERE id = ?`,
+         WHERE id = ? AND version = ?`,
       )
-      .run(next.title, next.content, next.folderId, next.version, next.updatedAt, id);
+      .run(
+        next.title,
+        next.content,
+        next.folderId,
+        next.version,
+        next.updatedAt,
+        id,
+        current.version,
+      );
+
+    if (result.changes === 0) {
+      // Re-read rather than reusing `current`: the caller is about to be told
+      // what the sheet says now, and `current` is the copy that just lost.
+      const latest = this.getSheet(id);
+      if (!latest) throw new Error('Sheet not found');
+      throw new VersionConflictError(latest);
+    }
 
     return next;
   }

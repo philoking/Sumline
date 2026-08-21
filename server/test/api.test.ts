@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp, type App } from '../src/app.js';
+import { VersionConflictError } from '../src/db.js';
+import { FALLBACK_SPACE } from '../src/spaces.js';
 import type { RateTable } from '../src/rates.js';
 
 const LIVE_RATES: RateTable = {
@@ -138,6 +140,31 @@ describe('version conflicts', () => {
     expect(stale.json()).toMatchObject({
       current: { content: 'edited elsewhere', version: 2 },
     });
+  });
+
+  it('refuses in the database as well as in the branch above it', async () => {
+    /*
+     * The `UPDATE` carries `AND version = ?`, so a stale write changes zero
+     * rows and is reported as the conflict it is.
+     *
+     * There is no observable difference today: `node:sqlite` is synchronous, so
+     * nothing can interleave between reading the version and writing it, and
+     * the branch above catches every stale write before the query runs. What
+     * this pins is that the check survives being reached — if the branch is
+     * ever bypassed, refactored away, or the driver stops being synchronous,
+     * the query still refuses rather than overwriting somebody's edit.
+     *
+     * Driven through the store rather than the API, because that branch is what
+     * an HTTP caller hits first and it would answer before the clause matters.
+     */
+    const { store } = app;
+    const sheet = store.createSheet(FALLBACK_SPACE.id, 'Contested', 'one');
+    store.updateSheet(sheet.id, { content: 'two' }, sheet.version);
+    // `sheet.version` is now a version behind, which is the losing writer.
+    expect(() => store.updateSheet(sheet.id, { content: 'three' }, sheet.version)).toThrow(
+      VersionConflictError,
+    );
+    expect(store.getSheet(sheet.id)?.content).toBe('two');
   });
 
   it('allows a write with no version, for clients that do not track it', async () => {

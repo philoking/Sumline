@@ -208,6 +208,65 @@ describe('settings', () => {
   });
 });
 
+describe('schema versioning', () => {
+  it('stamps a fresh database with the version this build understands', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-version-'));
+    const store = new Store(join(dir, 'fresh.db'));
+    const db = new DatabaseSync(join(dir, 'fresh.db'));
+    try {
+      const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
+      expect(row.user_version).toBeGreaterThan(0);
+    } finally {
+      db.close();
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('adopts a database that predates the stamp rather than refusing it', () => {
+    // Every instance deployed before this existed reads as version 0, and the
+    // column adds are what carry it forward. Refusing those would be refusing
+    // every real database in existence.
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-version-'));
+    const path = join(dir, 'old.db');
+    // Shaped like the first release, which is what every deployed instance
+    // looked like before the stamp existed.
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE sheets (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL DEFAULT '',
+      version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+    old.exec('PRAGMA user_version = 0');
+    old.close();
+
+    const store = new Store(path);
+    store.close();
+
+    // Opened, migrated, and stamped forward rather than rejected.
+    const check = new DatabaseSync(path);
+    try {
+      const row = check.prepare('PRAGMA user_version').get() as { user_version: number };
+      expect(row.user_version).toBeGreaterThan(0);
+    } finally {
+      check.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a database written by a newer build instead of ignoring it', () => {
+    // The failure this prevents is silent: an older binary opening a newer
+    // database behaved as though the columns it did not know about were not
+    // there, and wrote over them. Not starting is the better of the two.
+    const dir = mkdtempSync(join(tmpdir(), 'sumline-version-'));
+    const path = join(dir, 'future.db');
+    const future = new DatabaseSync(path);
+    future.exec('PRAGMA user_version = 9999');
+    future.close();
+
+    expect(() => new Store(path)).toThrow(/newer version/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('schema migration', () => {
   it('adds the new columns to a database created before they existed', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sumline-migrate-'));
